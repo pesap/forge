@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -41,21 +40,11 @@ fn gather_project_config(args: &NewArgs) -> Result<ProjectConfig> {
     let mut author_email = args.author_email.clone();
 
     if !args.yes {
-        if project_name.is_none() {
-            project_name = Some(Input::new().with_prompt("Project name").interact_text()?);
-        }
-        if package_name.is_none() {
-            package_name = Some(Input::new().with_prompt("Package name").interact_text()?);
-        }
-        if description.is_none() {
-            description = Some(Input::new().with_prompt("Description").interact_text()?);
-        }
-        if author_name.is_none() {
-            author_name = Some(Input::new().with_prompt("Author name").interact_text()?);
-        }
-        if author_email.is_none() {
-            author_email = Some(Input::new().with_prompt("Author email").interact_text()?);
-        }
+        prompt_if_missing(&mut project_name, "Project name")?;
+        prompt_if_missing(&mut package_name, "Package name")?;
+        prompt_if_missing(&mut description, "Description")?;
+        prompt_if_missing(&mut author_name, "Author name")?;
+        prompt_if_missing(&mut author_email, "Author email")?;
     }
 
     Ok(ProjectConfig {
@@ -72,13 +61,20 @@ fn gather_project_config(args: &NewArgs) -> Result<ProjectConfig> {
     })
 }
 
+fn prompt_if_missing(value: &mut Option<String>, prompt: &str) -> Result<()> {
+    if value.is_none() {
+        *value = Some(Input::new().with_prompt(prompt).interact_text()?);
+    }
+    Ok(())
+}
+
 fn require_field(name: &str, value: Option<String>) -> Result<String> {
     value.ok_or_else(|| anyhow::anyhow!("--{} is required (or run without --yes)", name))
 }
 
 fn destination_path(config: &ProjectConfig, path: &Option<PathBuf>) -> Result<PathBuf> {
     match path {
-        Some(path) => Ok(path.canonicalize().unwrap_or_else(|_| path.clone())),
+        Some(path) => Ok(path.clone()),
         None => Ok(std::env::current_dir()?.join(&config.project_name)),
     }
 }
@@ -114,17 +110,21 @@ fn initialize_git_repository(destination: &Path, github_requested: bool) -> Resu
     run_command(destination, "git", &["init", "-b", "main"])?;
     run_command(destination, "git", &["add", "."])?;
 
-    let commit_result = run_command(
-        destination,
-        "git",
-        &["commit", "-m", "chore: initialize project with forge"],
-    );
-
     if github_requested {
-        commit_result?;
+        commit_initial_files(destination)?;
+    } else {
+        let _ = commit_initial_files(destination);
     }
 
     Ok(())
+}
+
+fn commit_initial_files(destination: &Path) -> Result<()> {
+    run_command(
+        destination,
+        "git",
+        &["commit", "-m", "chore: initialize project with forge"],
+    )
 }
 
 fn create_github_repo(
@@ -167,41 +167,53 @@ fn create_github_repo(
 }
 
 fn ensure_gh_ready(assume_yes: bool) -> Result<()> {
-    if !command_exists("gh") {
-        if assume_yes {
-            bail!("GitHub CLI is not installed. Install gh first: https://cli.github.com/");
-        }
+    ensure_gh_installed(assume_yes)?;
+    ensure_gh_authenticated(assume_yes)?;
+    Ok(())
+}
 
-        let should_install = Confirm::new()
-            .with_prompt("GitHub CLI (gh) is missing. Install it now?")
-            .default(true)
-            .interact()?;
-
-        if !should_install {
-            bail!("gh is required for GitHub repo creation");
-        }
-
-        try_install_gh()?;
+fn ensure_gh_installed(assume_yes: bool) -> Result<()> {
+    if command_exists("gh") {
+        return Ok(());
     }
 
-    if !gh_is_authenticated()? {
-        if assume_yes {
-            bail!("GitHub CLI is not authenticated. Run `gh auth login` and retry.");
-        }
+    if assume_yes {
+        bail!("GitHub CLI is not installed. Install gh first: https://cli.github.com/");
+    }
 
-        let should_login = Confirm::new()
-            .with_prompt("Run `gh auth login` now?")
-            .default(true)
-            .interact()?;
+    let should_install = Confirm::new()
+        .with_prompt("GitHub CLI (gh) is missing. Install it now?")
+        .default(true)
+        .interact()?;
 
-        if !should_login {
-            bail!("gh authentication is required for GitHub repo creation");
-        }
+    if !should_install {
+        bail!("gh is required for GitHub repo creation");
+    }
 
-        let status = Command::new("gh").args(["auth", "login"]).status()?;
-        if !status.success() {
-            bail!("`gh auth login` failed");
-        }
+    try_install_gh()
+}
+
+fn ensure_gh_authenticated(assume_yes: bool) -> Result<()> {
+    if gh_is_authenticated()? {
+        return Ok(());
+    }
+
+    if assume_yes {
+        bail!("GitHub CLI is not authenticated. Run `gh auth login` and retry.");
+    }
+
+    let should_login = Confirm::new()
+        .with_prompt("Run `gh auth login` now?")
+        .default(true)
+        .interact()?;
+
+    if !should_login {
+        bail!("gh authentication is required for GitHub repo creation");
+    }
+
+    let status = Command::new("gh").args(["auth", "login"]).status()?;
+    if !status.success() {
+        bail!("`gh auth login` failed");
     }
 
     Ok(())
@@ -266,6 +278,5 @@ fn run_command(cwd: &Path, program: &str, args: &[&str]) -> Result<()> {
         bail!("command failed: {} {}", program, args.join(" "));
     }
 
-    io::stdout().flush().ok();
     Ok(())
 }

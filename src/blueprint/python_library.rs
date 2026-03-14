@@ -58,51 +58,7 @@ pub fn is_valid_package_name(value: &str) -> bool {
 }
 
 pub fn render_project_files(config: &ProjectConfig) -> BTreeMap<PathBuf, String> {
-    let mut files = BTreeMap::new();
-
-    files.insert(PathBuf::from("README.md"), render_readme(config));
-    files.insert(PathBuf::from("LICENSE"), render_license(config));
-    files.insert(PathBuf::from(".gitignore"), render_gitignore());
-    files.insert(
-        PathBuf::from(".python-version"),
-        format!("{}\n", config.python_min),
-    );
-    files.insert(PathBuf::from("pyproject.toml"), render_pyproject(config));
-    files.insert(PathBuf::from("justfile"), render_justfile());
-    files.insert(
-        PathBuf::from(".pre-commit-config.yaml"),
-        render_precommit_config(),
-    );
-    files.insert(PathBuf::from("CHANGELOG.md"), render_changelog());
-    files.insert(PathBuf::from("AGENTS.md"), render_agents());
-    files.insert(
-        PathBuf::from(".github/workflows/ci.yaml"),
-        render_ci_workflow(config),
-    );
-    files.insert(
-        PathBuf::from(".github/workflows/release-please.yaml"),
-        render_release_please_workflow(),
-    );
-    files.insert(
-        PathBuf::from(".release-please-config.json"),
-        render_release_please_config(),
-    );
-    files.insert(
-        PathBuf::from(".release-please-manifest.json"),
-        render_release_please_manifest(),
-    );
-
-    if config.pypi_publish {
-        files.insert(
-            PathBuf::from(".github/workflows/publish-pypi.yaml"),
-            render_publish_pypi(),
-        );
-    }
-
-    if config.docs {
-        files.insert(PathBuf::from("mkdocs.yml"), render_mkdocs(config));
-        files.insert(PathBuf::from("docs/index.md"), render_docs_index(config));
-    }
+    let mut files = render_infrastructure_files(config);
 
     files.insert(
         PathBuf::from(format!("src/{}/__init__.py", config.package_name)),
@@ -125,6 +81,10 @@ pub fn render_project_files(config: &ProjectConfig) -> BTreeMap<PathBuf, String>
 }
 
 pub fn render_managed_files(config: &ProjectConfig) -> BTreeMap<PathBuf, String> {
+    render_infrastructure_files(config)
+}
+
+fn render_infrastructure_files(config: &ProjectConfig) -> BTreeMap<PathBuf, String> {
     let mut files = BTreeMap::new();
 
     files.insert(PathBuf::from("README.md"), render_readme(config));
@@ -170,14 +130,14 @@ pub fn render_managed_files(config: &ProjectConfig) -> BTreeMap<PathBuf, String>
         files.insert(PathBuf::from("mkdocs.yml"), render_mkdocs(config));
         files.insert(PathBuf::from("docs/index.md"), render_docs_index(config));
     }
-
     files
 }
 
 pub fn clean_optional_files(root: &Path, config: &ProjectConfig) -> Result<()> {
     if !config.docs {
-        remove_if_exists(&root.join("mkdocs.yml"))?;
-        remove_if_exists(&root.join("docs/index.md"))?;
+        for file in ["mkdocs.yml", "docs/index.md"] {
+            remove_if_exists(&root.join(file))?;
+        }
     }
 
     if !config.pypi_publish {
@@ -313,12 +273,11 @@ fn render_agents() -> String {
 }
 
 fn render_ci_workflow(config: &ProjectConfig) -> String {
-    let mut codecov_step = String::new();
-    if config.codecov {
-        codecov_step =
-            "      - name: Upload coverage to Codecov\n        uses: codecov/codecov-action@v5\n"
-                .to_string();
-    }
+    let codecov_step = if config.codecov {
+        "      - name: Upload coverage to Codecov\n        uses: codecov/codecov-action@v5\n"
+    } else {
+        ""
+    };
     format!(
         "name: CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        python-version: [\"{}\", \"3.12\", \"3.13\"]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: astral-sh/setup-uv@v6\n      - uses: actions/setup-python@v5\n        with:\n          python-version: ${{{{ matrix.python-version }}}}\n      - run: uv sync --all-groups\n      - run: uv run prek run --all-files\n      - run: uv run pytest --cov --cov-report=xml\n{}      - run: uv build\n",
         config.python_min, codecov_step
