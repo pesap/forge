@@ -4,9 +4,9 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles};
 
 pub fn render_agent_instructions(extra_guidance: &[&str]) -> String {
     let mut instructions = vec![
-        "Follow TDD for feature and bug changes.",
-        "Keep infrastructure scripts and CI deterministic.",
-        "Preserve user-authored project code during managed infrastructure updates.",
+        "MUST FOLLOW TDD FOR FEATURES AND BUG FIXES.",
+        "MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC.",
+        "MUST PRESERVE USER-AUTHORED PROJECT CODE DURING MANAGED UPDATES.",
     ];
     instructions.extend(extra_guidance);
 
@@ -15,7 +15,7 @@ pub fn render_agent_instructions(extra_guidance: &[&str]) -> String {
         .map(|instruction| format!("- {instruction}\n"))
         .collect::<String>();
 
-    format!("# AGENTS\n\nShared project-level instructions for coding agents.\n\n{bullets}")
+    format!("# AGENTS\n\nGuidance for coding agents in this repository.\n\n{bullets}")
 }
 
 pub fn render_agent_files(extra_guidance: &[&str]) -> GeneratedFiles {
@@ -41,9 +41,9 @@ mod tests {
         let instructions = render_agent_instructions(&[]);
 
         assert!(instructions.contains("# AGENTS"));
-        assert!(instructions.contains("Follow TDD"));
-        assert!(instructions.contains("Keep infrastructure scripts and CI deterministic"));
-        assert!(instructions.contains("Preserve user-authored project code"));
+        assert!(instructions.contains("MUST FOLLOW TDD"));
+        assert!(instructions.contains("MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC"));
+        assert!(instructions.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
     }
 
     #[test]
@@ -61,7 +61,7 @@ mod tests {
             files
                 .get(&PathBuf::from("AGENTS.md"))
                 .and_then(|file| file.as_text())
-                .is_some_and(|content| content.contains("Shared project-level instructions"))
+                .is_some_and(|content| content.contains("Guidance for coding agents"))
         );
         assert_eq!(
             files

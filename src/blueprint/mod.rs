@@ -109,7 +109,10 @@ impl BlueprintName {
     pub fn option_default_enabled(self, option: ManagedOption) -> bool {
         matches!(
             (self, option),
-            (_, ManagedOption::Docs) | (Self::PythonLibrary, ManagedOption::Codecov)
+            (_, ManagedOption::Docs)
+                | (Self::PythonLibrary, ManagedOption::Codecov)
+                | (Self::PythonLibrary, ManagedOption::PythonRules)
+                | (Self::RustLibrary, ManagedOption::RustRules)
         )
     }
 
@@ -182,6 +185,7 @@ pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
             ManagedOption::Docs,
             ManagedOption::Codecov,
             ManagedOption::PypiPublish,
+            ManagedOption::PythonRules,
             ManagedOption::Prettier,
             ManagedOption::Editorconfig,
             ManagedOption::Markdownlint,
@@ -200,6 +204,7 @@ pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
         fields: RUST_LIBRARY_FIELDS,
         options: &[
             ManagedOption::Docs,
+            ManagedOption::RustRules,
             ManagedOption::Prettier,
             ManagedOption::Editorconfig,
             ManagedOption::Markdownlint,
@@ -260,6 +265,8 @@ pub enum ManagedOption {
     Markdownlint,
     Codecov,
     PypiPublish,
+    PythonRules,
+    RustRules,
 }
 
 impl ManagedOption {
@@ -271,6 +278,8 @@ impl ManagedOption {
             Self::Markdownlint => ManagedComponent::Markdownlint.option_name(),
             Self::Codecov => "codecov",
             Self::PypiPublish => "pypi-publish",
+            Self::PythonRules => "python-rules",
+            Self::RustRules => "rust-rules",
         }
     }
 
@@ -282,6 +291,8 @@ impl ManagedOption {
             Self::Markdownlint => ManagedComponent::Markdownlint.description(),
             Self::Codecov => "Codecov coverage upload step in CI",
             Self::PypiPublish => "Trusted PyPI publishing workflow for releases",
+            Self::PythonRules => "Python-specific pre-commit hooks (ruff, ty, pytest)",
+            Self::RustRules => "Rust-specific pre-commit hooks (cargo fmt, cargo clippy)",
         }
     }
 
@@ -297,6 +308,8 @@ impl ManagedOption {
             "markdownlint" => Ok(Self::Markdownlint),
             "codecov" => Ok(Self::Codecov),
             "pypi-publish" => Ok(Self::PypiPublish),
+            "python-rules" => Ok(Self::PythonRules),
+            "rust-rules" => Ok(Self::RustRules),
             other => Err(coded_error(
                 error_code,
                 format!("unsupported managed option '{other}'"),

@@ -4,7 +4,7 @@ default_install_hook_types:
 repos:
   - repo: local
     hooks:
-      - id: ruff-format
+{% if python_rules %}      - id: ruff-format
         name: ruff format check
         entry: uv run --locked ruff format --check
         language: system
@@ -19,10 +19,10 @@ repos:
         entry: uv run --locked ty check
         language: system
         types_or: [python, pyi]
-{{ component_hooks }}      - id: pytest
+{% endif %}{{ component_hooks }}{% if python_rules %}      - id: pytest
         name: pytest
         entry: uv run --locked pytest -q --maxfail=1
         language: system
         pass_filenames: false
         stages: [pre-push]
-{{ forge_update_check_hook }}{{ uv_lock_hook }}
+{% endif %}{{ uv_lock_hook }}

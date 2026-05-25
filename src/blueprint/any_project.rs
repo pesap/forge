@@ -241,7 +241,6 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     #[derive(Serialize)]
     struct Context<'a> {
         component_hooks: String,
-        forge_update_check_hook: &'a str,
         uv_lock_hook: &'a str,
     }
 
@@ -249,7 +248,6 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
         "any_project/pre-commit-config.yaml.j2",
         Context {
             component_hooks: config.components.pre_commit_hooks(),
-            forge_update_check_hook: precommit::forge_update_check_hook(),
             uv_lock_hook: precommit::uv_lock_hook(),
         },
     )
@@ -362,7 +360,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let options = forge.options.unwrap_or_default();
+    let options = forge
+        .options
+        .context("missing [tool.forge.options] metadata")?;
     let options = validate_managed_options_from_metadata(BlueprintName::AnyProject, options)?;
 
     let config = ProjectConfig {
@@ -458,8 +458,6 @@ mod tests {
 
         assert!(precommit.contains("repo: https://github.com/astral-sh/uv-pre-commit"));
         assert!(precommit.contains("id: uv-lock"));
-        assert!(precommit.contains("id: forge-update-check"));
-        assert!(precommit.contains("forge update --path . --check"));
     }
 
     #[test]

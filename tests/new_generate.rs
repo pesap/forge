@@ -49,7 +49,7 @@ fn new_generates_python_project_with_metadata() {
         .stdout(contains("[ok] generated grid-tools"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov; disabled: pypi-publish, prettier, editorconfig, markdownlint",
+            "options: enabled: docs, codecov, python-rules; disabled: pypi-publish, prettier, editorconfig, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))
@@ -88,8 +88,8 @@ fn new_generates_python_project_with_metadata() {
 
     assert!(project_path.join("src/grid_tools/__init__.py").exists());
     let agents = fs::read_to_string(project_path.join("AGENTS.md")).expect("AGENTS should exist");
-    assert!(agents.contains("Follow TDD"));
-    assert!(agents.contains("Preserve user-authored project code"));
+    assert!(agents.contains("MUST FOLLOW TDD"));
+    assert!(agents.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
     assert!(agents.contains("Preserve user-authored Python package code"));
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
@@ -117,8 +117,6 @@ fn new_generates_python_project_with_metadata() {
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
-    assert!(precommit.contains("id: forge-update-check"));
-    assert!(precommit.contains("forge update --path . --check"));
     assert!(precommit.contains("entry: uv run --locked ruff format --check"));
     assert!(precommit.contains("entry: uv run --locked ruff check"));
     assert!(precommit.contains("entry: uv run --locked pytest -q --maxfail=1"));
@@ -282,7 +280,7 @@ fn new_dry_run_previews_files_without_writing() {
         .stdout(contains("Project creation preview"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov; disabled: pypi-publish, prettier, editorconfig, markdownlint",
+            "options: enabled: docs, codecov, python-rules; disabled: pypi-publish, prettier, editorconfig, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))

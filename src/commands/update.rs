@@ -1085,6 +1085,7 @@ python_min = "3.12"
 docs = true
 codecov = true
 pypi-publish = false
+python-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false

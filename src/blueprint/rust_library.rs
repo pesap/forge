@@ -29,6 +29,7 @@ pub struct ProjectConfig {
     pub license: String,
     pub rust_edition: String,
     pub docs: bool,
+    pub rust_rules: bool,
     pub components: ComponentSelection,
 }
 
@@ -260,7 +261,7 @@ fn render_cargo_toml(config: &ProjectConfig) -> String {
 fn render_pyproject(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/pyproject.toml.j2",
-        serde_json::json!({"blueprint_name": BLUEPRINT_NAME, "blueprint_version": BLUEPRINT_VERSION, "project_name": toml_value::string_literal(&config.project_name), "crate_name": toml_value::string_literal(&config.crate_name), "description": toml_value::string_literal(&config.description), "author_name": render_optional_forge_field("author_name", &config.author_name), "author_email": render_optional_forge_field("author_email", &config.author_email), "license": toml_value::string_literal(&config.license), "rust_edition": toml_value::string_literal(&config.rust_edition), "docs_group": render_docs_dependency_group(config.docs), "docs": config.docs, "prettier": config.components.is_enabled(ManagedComponent::Prettier), "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig), "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)}),
+        serde_json::json!({"blueprint_name": BLUEPRINT_NAME, "blueprint_version": BLUEPRINT_VERSION, "project_name": toml_value::string_literal(&config.project_name), "crate_name": toml_value::string_literal(&config.crate_name), "description": toml_value::string_literal(&config.description), "author_name": render_optional_forge_field("author_name", &config.author_name), "author_email": render_optional_forge_field("author_email", &config.author_email), "license": toml_value::string_literal(&config.license), "rust_edition": toml_value::string_literal(&config.rust_edition), "docs_group": render_docs_dependency_group(config.docs), "docs": config.docs, "rust_rules": config.rust_rules, "prettier": config.components.is_enabled(ManagedComponent::Prettier), "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig), "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)}),
     )
 }
 
@@ -287,7 +288,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "forge_update_check_hook": precommit::forge_update_check_hook(), "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "rust_rules": config.rust_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -369,7 +370,10 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let options = forge.options.unwrap_or_default();
+    let mut options = forge
+        .options
+        .context("missing [tool.forge.options] metadata")?;
+    options.entry("rust-rules".to_string()).or_insert(true);
     let options = validate_managed_options_from_metadata(BlueprintName::RustLibrary, options)?;
 
     let config = ProjectConfig {
@@ -381,6 +385,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         license: forge.license,
         rust_edition: forge.rust_edition,
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
+        rust_rules: managed_option_enabled(&options, ManagedOption::RustRules)?,
         components: ComponentSelection::from_options(&options)?,
     };
     config.validate()?;
@@ -446,6 +451,7 @@ mod tests {
             license: "MIT".to_string(),
             rust_edition: "2024".to_string(),
             docs,
+            rust_rules: true,
             components: ComponentSelection::default(),
         }
     }
@@ -478,8 +484,6 @@ mod tests {
 
         assert!(precommit.contains("repo: https://github.com/astral-sh/uv-pre-commit"));
         assert!(precommit.contains("id: uv-lock"));
-        assert!(precommit.contains("id: forge-update-check"));
-        assert!(precommit.contains("forge update --path . --check"));
     }
 
     #[test]
@@ -496,6 +500,7 @@ rust_edition = "2024"
 
 [tool.forge.options]
 docs = true
+rust-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -520,6 +525,7 @@ rust_edition = "2024"
 
 [tool.forge.options]
 docs = true
+rust-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false

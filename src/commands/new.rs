@@ -331,6 +331,7 @@ fn python_library_managed_option_values(
     values.insert(ManagedOption::Docs, config.docs);
     values.insert(ManagedOption::Codecov, config.codecov);
     values.insert(ManagedOption::PypiPublish, config.pypi_publish);
+    values.insert(ManagedOption::PythonRules, config.python_rules);
     values.insert(
         ManagedOption::Prettier,
         config.components.is_enabled(ManagedComponent::Prettier),
@@ -349,6 +350,7 @@ fn python_library_managed_option_values(
 fn rust_library_managed_option_values(config: &rust_library::ProjectConfig) -> ManagedOptionValues {
     let mut values = ManagedOptionValues::new();
     values.insert(ManagedOption::Docs, config.docs);
+    values.insert(ManagedOption::RustRules, config.rust_rules);
     values.insert(
         ManagedOption::Prettier,
         config.components.is_enabled(ManagedComponent::Prettier),
@@ -844,7 +846,7 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
             is_non_empty_text,
             "description cannot be empty",
         )?;
-        docs = prompt_bool("Generate MkDocs documentation?", docs)?;
+        docs = prompt_bool("Generate Starlight documentation?", docs)?;
         prompt_supported_components(&mut components, BlueprintName::AnyProject)?;
     }
 
@@ -909,7 +911,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
             python_library::is_valid_python_version,
             "python-min must be between 3.8 and 3.14 as major.minor",
         )?;
-        docs = prompt_bool("Generate MkDocs documentation?", docs)?;
+        docs = prompt_bool("Generate Starlight documentation?", docs)?;
         codecov = prompt_bool("Enable Codecov upload in CI?", codecov)?;
         pypi_publish = prompt_bool("Add trusted PyPI publish workflow?", pypi_publish)?;
         prompt_supported_components(&mut components, BlueprintName::PythonLibrary)?;
@@ -932,6 +934,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         docs,
         codecov,
         pypi_publish,
+        python_rules: true,
         components,
     })
 }
@@ -979,7 +982,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
             is_supported_license,
             "license must be BSD-3-Clause, MIT, or Apache-2.0",
         )?;
-        docs = prompt_bool("Generate MkDocs documentation?", docs)?;
+        docs = prompt_bool("Generate Starlight documentation?", docs)?;
         prompt_supported_components(&mut components, BlueprintName::RustLibrary)?;
     }
 
@@ -995,6 +998,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         rust_edition: "2024".to_string(),
         docs,
+        rust_rules: true,
         components,
     })
 }

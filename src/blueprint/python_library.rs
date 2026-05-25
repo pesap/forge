@@ -20,6 +20,8 @@ pub const BLUEPRINT_NAME: &str = "python-library";
 pub const BLUEPRINT_VERSION: &str = "0.1.0";
 pub const PYPI_PUBLISH_NOTICE: &str =
     "Register this workflow as a trusted publisher in PyPI before uncommenting the publish step.";
+pub const CODECOV_NOTICE: &str =
+    "Configure Codecov for this repository before uncommenting the upload step.";
 
 #[derive(Clone, Debug)]
 pub struct ProjectConfig {
@@ -33,6 +35,7 @@ pub struct ProjectConfig {
     pub docs: bool,
     pub codecov: bool,
     pub pypi_publish: bool,
+    pub python_rules: bool,
     pub components: ComponentSelection,
 }
 
@@ -341,6 +344,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "docs": config.docs,
             "codecov": config.codecov,
             "pypi_publish": config.pypi_publish,
+            "python_rules": config.python_rules,
             "prettier": config.components.is_enabled(ManagedComponent::Prettier),
             "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig),
             "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)
@@ -371,7 +375,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "forge_update_check_hook": precommit::forge_update_check_hook(), "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -398,7 +402,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "forge_update_check_step": github_actions::forge_update_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {"      - name: Upload coverage to Codecov\n        uses: codecov/codecov-action@v6\n"} else {""}
+            "codecov_step": if config.codecov {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@v6\n", CODECOV_NOTICE)} else {String::new()}
         }),
     )
 }
@@ -535,7 +539,10 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let options = forge.options.unwrap_or_default();
+    let mut options = forge
+        .options
+        .context("missing [tool.forge.options] metadata")?;
+    options.entry("python-rules".to_string()).or_insert(true);
     let options = validate_managed_options_from_metadata(BlueprintName::PythonLibrary, options)?;
 
     let config = ProjectConfig {
@@ -549,6 +556,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
+        python_rules: managed_option_enabled(&options, ManagedOption::PythonRules)?,
         components: ComponentSelection::from_options(&options)?,
     };
     config.validate()?;
@@ -645,6 +653,7 @@ mod tests {
             docs: true,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
 
@@ -682,7 +691,8 @@ mod tests {
             "pytest --cov --cov-report=xml"
         )));
         assert!(workflow.contains("actions/setup-python@v6"));
-        assert!(workflow.contains("codecov/codecov-action@v6"));
+        assert!(workflow.contains("# - name: Upload coverage to Codecov"));
+        assert!(workflow.contains(CODECOV_NOTICE));
         assert!(workflow.contains("run: uv build --locked"));
     }
 
@@ -706,8 +716,6 @@ mod tests {
 
         assert!(precommit.contains("repo: https://github.com/astral-sh/uv-pre-commit"));
         assert!(precommit.contains("id: uv-lock"));
-        assert!(precommit.contains("id: forge-update-check"));
-        assert!(precommit.contains("forge update --path . --check"));
     }
 
     #[test]
@@ -757,6 +765,7 @@ mod tests {
             docs,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         }
     }
@@ -774,6 +783,7 @@ mod tests {
             docs: true,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
         assert!(config.validate().is_ok());
@@ -792,6 +802,7 @@ mod tests {
             docs: true,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
         assert!(config.validate().is_err());
@@ -810,6 +821,7 @@ mod tests {
             docs: true,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
         assert!(config.validate().is_err());
@@ -828,6 +840,7 @@ mod tests {
             docs: true,
             codecov: false,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
         assert!(config.validate().is_err());
@@ -849,6 +862,7 @@ python_min = "3.11\n3.12"
 docs = true
 codecov = false
 pypi-publish = false
+python-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -876,6 +890,7 @@ unknown_option = true
 docs = true
 codecov = true
 pypi-publish = false
+python-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -926,6 +941,7 @@ pypi-publish = false
             docs: true,
             codecov: true,
             pypi_publish: false,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
 
@@ -1015,6 +1031,7 @@ pypi-publish = false
             docs: false,
             codecov: false,
             pypi_publish: true,
+            python_rules: true,
             components: ComponentSelection::default(),
         };
 
