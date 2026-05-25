@@ -199,11 +199,19 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
 
     if config.docs {
         files.insert(
-            PathBuf::from("mkdocs.yml"),
-            GeneratedFile::text(render_mkdocs(config)),
+            PathBuf::from("docs/package.json"),
+            GeneratedFile::text(render_docs_package_json(config)),
         );
         files.insert(
-            PathBuf::from("docs/index.md"),
+            PathBuf::from("docs/astro.config.mjs"),
+            GeneratedFile::text(render_docs_astro_config()),
+        );
+        files.insert(
+            PathBuf::from("docs/tsconfig.json"),
+            GeneratedFile::text(render_docs_tsconfig()),
+        );
+        files.insert(
+            PathBuf::from("docs/src/content/docs/index.mdx"),
             GeneratedFile::text(render_docs_index(config)),
         );
     }
@@ -228,9 +236,14 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if !config.docs {
         files.extend(
-            ["mkdocs.yml", "docs/index.md"]
-                .into_iter()
-                .map(PathBuf::from),
+            [
+                "docs/package.json",
+                "docs/astro.config.mjs",
+                "docs/tsconfig.json",
+                "docs/src/content/docs/index.mdx",
+            ]
+            .into_iter()
+            .map(PathBuf::from),
         );
     }
 
@@ -335,18 +348,14 @@ fn render_pyproject(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_docs_dependency_group(enabled: bool) -> &'static str {
-    if enabled {
-        "docs = [\"mkdocs-material>=9.7.0,<10.0.0\"]\n\n"
-    } else {
-        ""
-    }
+fn render_docs_dependency_group(_enabled: bool) -> &'static str {
+    ""
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/justfile.j2",
-        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    uv run mkdocs serve\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
+        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
     )
 }
 
@@ -440,16 +449,24 @@ fn render_publish_pypi() -> String {
     )
 }
 
-fn render_mkdocs(config: &ProjectConfig) -> String {
+fn render_docs_package_json(config: &ProjectConfig) -> String {
     template_engine::render_template(
-        "python_library/mkdocs.yml.j2",
+        "python_library/docs-package.json.j2",
         serde_json::json!({"project_name": config.project_name}),
     )
 }
 
+fn render_docs_astro_config() -> String {
+    template_engine::render_template("python_library/docs-astro.config.mjs.j2", ())
+}
+
+fn render_docs_tsconfig() -> String {
+    template_engine::render_template("python_library/docs-tsconfig.json.j2", ())
+}
+
 fn render_docs_index(config: &ProjectConfig) -> String {
     template_engine::render_template(
-        "python_library/docs-index.md.j2",
+        "python_library/docs-index.mdx.j2",
         serde_json::json!({"project_name": config.project_name, "description": config.description}),
     )
 }
@@ -703,11 +720,11 @@ mod tests {
     }
 
     #[test]
-    fn mkdocs_config_does_not_invent_site_url() {
-        let mkdocs = render_mkdocs(&test_config(true));
+    fn starlight_config_uses_expected_site_title() {
+        let package_json = render_docs_package_json(&test_config(true));
 
-        assert!(mkdocs.contains("site_name: test-project"));
-        assert!(!mkdocs.contains("site_url:"));
+        assert!(package_json.contains("\"name\": \"test-project-docs\""));
+        assert!(package_json.contains("\"@astrojs/starlight\""));
     }
 
     #[test]
@@ -717,10 +734,10 @@ mod tests {
         let pyproject = render_pyproject(&config);
         let justfile = render_justfile(&config);
 
-        assert!(!pyproject.contains("mkdocs-material"));
+        assert!(!pyproject.contains("@astrojs/starlight"));
         assert!(!pyproject.contains("docs = ["));
         assert!(!justfile.contains("\ndocs:\n"));
-        assert!(!justfile.contains("mkdocs serve"));
+        assert!(!justfile.contains("npm run dev"));
     }
 
     fn test_config(docs: bool) -> ProjectConfig {

@@ -2549,8 +2549,12 @@ fn update_refreshes_language_agnostic_infra_project() {
     assert!(just_after.contains("forge update --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
     assert!(ci_after.contains("forge update --path . --check"));
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
 }
 
 #[test]
@@ -2765,8 +2769,12 @@ fn update_refreshes_rust_library_managed_infra_without_touching_source() {
         ci_after.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
     assert!(ci_after.contains("forge update --path . --check"));
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
 }
 
 #[test]
@@ -2958,9 +2966,15 @@ fn update_removes_rust_docs_when_disabled_in_metadata() {
     ]);
     new_project.assert().success();
 
-    fs::write(project_path.join("mkdocs.yml"), "BROKEN\n").expect("stale mkdocs should write");
-    fs::create_dir_all(project_path.join("docs")).expect("docs dir should create");
-    fs::write(project_path.join("docs/index.md"), "BROKEN\n").expect("stale docs should write");
+    fs::create_dir_all(project_path.join("docs/src/content/docs"))
+        .expect("docs dir should create");
+    fs::write(project_path.join("docs/package.json"), "BROKEN\n")
+        .expect("stale docs package should write");
+    fs::write(
+        project_path.join("docs/src/content/docs/index.mdx"),
+        "BROKEN\n",
+    )
+    .expect("stale docs should write");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
     update.args([
@@ -2971,8 +2985,12 @@ fn update_removes_rust_docs_when_disabled_in_metadata() {
     ]);
     update.assert().success();
 
-    assert!(!project_path.join("mkdocs.yml").exists());
-    assert!(!project_path.join("docs/index.md").exists());
+    assert!(!project_path.join("docs/package.json").exists());
+    assert!(
+        !project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
 }
 
 #[test]
@@ -3011,20 +3029,24 @@ fn update_set_can_disable_rust_docs() {
     update
         .assert()
         .success()
-        .stdout(contains("remove  docs/index.md"))
-        .stdout(contains("remove  mkdocs.yml"));
+        .stdout(contains("remove  docs/src/content/docs/index.mdx"))
+        .stdout(contains("remove  docs/package.json"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("docs = false"));
-    assert!(!pyproject.contains("mkdocs-material"));
+    assert!(!pyproject.contains("@astrojs/starlight"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(!justfile.contains("\ndocs:\n"));
-    assert!(!justfile.contains("mkdocs serve"));
-    assert!(!project_path.join("mkdocs.yml").exists());
-    assert!(!project_path.join("docs/index.md").exists());
-    assert!(!project_path.join("docs").exists());
+    assert!(!justfile.contains("npm run dev"));
+    assert!(!project_path.join("docs/package.json").exists());
+    assert!(
+        !project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
+    assert!(project_path.join("docs").exists());
 }
 
 #[test]
@@ -3074,10 +3096,17 @@ fn update_set_dry_run_reports_empty_docs_directory_removal() {
             .as_array()
             .expect("actions should be an array")
             .iter()
-            .any(|action| action["action"] == "remove" && action["path"] == "docs")
+            .any(|action| {
+                action["action"] == "remove"
+                    && action["path"] == "docs/src/content/docs/index.mdx"
+            })
     );
 
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert!(project_path.join("docs").exists());
 }
 
@@ -3134,7 +3163,11 @@ fn update_set_dry_run_preserves_nonempty_docs_directory_in_report() {
             .any(|action| action["action"] == "remove" && action["path"] == "docs")
     );
 
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert!(project_path.join("docs/guide.md").exists());
     assert!(project_path.join("docs").exists());
 }
@@ -3177,19 +3210,23 @@ fn update_set_can_enable_rust_docs() {
     update
         .assert()
         .success()
-        .stdout(contains("create  docs/index.md"))
-        .stdout(contains("create  mkdocs.yml"));
+        .stdout(contains("create  docs/src/content/docs/index.mdx"))
+        .stdout(contains("create  docs/package.json"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("docs = true"));
-    assert!(pyproject.contains("mkdocs-material"));
+    assert!(!pyproject.contains("mkdocs-material"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(justfile.contains("\ndocs:\n"));
-    assert!(justfile.contains("uv run mkdocs serve"));
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(justfile.contains("cd docs && npm run dev"));
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
 }
 
 #[test]
@@ -3230,7 +3267,11 @@ fn update_set_preserves_docs_directory_when_user_files_remain() {
     ]);
     update.assert().success();
 
-    assert!(!project_path.join("docs/index.md").exists());
+    assert!(
+        !project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert!(project_path.join("docs/guide.md").exists());
     assert!(project_path.join("docs").exists());
 }

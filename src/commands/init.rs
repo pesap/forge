@@ -674,7 +674,7 @@ mod tests {
                 crate::blueprint::files::GeneratedFile::symlink("AGENTS.md"),
             ),
             (
-                PathBuf::from("mkdocs.yml"),
+                PathBuf::from("docs/package.json"),
                 crate::blueprint::files::GeneratedFile::text("site_name: Repo\n".to_string()),
             ),
             (

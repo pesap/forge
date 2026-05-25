@@ -221,8 +221,12 @@ fn init_adds_managed_infrastructure_to_existing_any_project_repo() {
     assert!(pyproject.contains("blueprint = \"any-project\""));
     assert!(pyproject.contains("prettier = true"));
     assert!(project_path.join(".prettierrc.json").exists());
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert_eq!(
         fs::read_link(project_path.join("CLAUDE.md")).expect("CLAUDE.md should be a symlink"),
         std::path::PathBuf::from("AGENTS.md")

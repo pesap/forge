@@ -1161,7 +1161,7 @@ markdownlint = false
             ManagedFileAction::Remove(PathBuf::from(".prettierrc.json")),
             ManagedFileAction::Keep(PathBuf::from("README.md")),
             ManagedFileAction::Conflict {
-                path: PathBuf::from("docs/index.md"),
+                path: PathBuf::from("docs/src/content/docs/index.mdx"),
                 reason: ManagedFileConflict::Directory,
             },
         ];

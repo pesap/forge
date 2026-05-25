@@ -56,14 +56,26 @@ fn build_environment() -> Environment<'static> {
         .expect("template should parse");
     environment
         .add_template(
-            "any_project/mkdocs.yml.j2",
-            include_str!("templates/any_project/mkdocs.yml.j2"),
+            "any_project/docs-package.json.j2",
+            include_str!("templates/any_project/docs-package.json.j2"),
         )
         .expect("template should parse");
     environment
         .add_template(
-            "any_project/docs-index.md.j2",
-            include_str!("templates/any_project/docs-index.md.j2"),
+            "any_project/docs-astro.config.mjs.j2",
+            include_str!("templates/any_project/docs-astro.config.mjs.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "any_project/docs-tsconfig.json.j2",
+            include_str!("templates/any_project/docs-tsconfig.json.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "any_project/docs-index.mdx.j2",
+            include_str!("templates/any_project/docs-index.mdx.j2"),
         )
         .expect("template should parse");
 
@@ -153,14 +165,26 @@ fn build_environment() -> Environment<'static> {
         .expect("template should parse");
     environment
         .add_template(
-            "python_library/mkdocs.yml.j2",
-            include_str!("templates/python_library/mkdocs.yml.j2"),
+            "python_library/docs-package.json.j2",
+            include_str!("templates/python_library/docs-package.json.j2"),
         )
         .expect("template should parse");
     environment
         .add_template(
-            "python_library/docs-index.md.j2",
-            include_str!("templates/python_library/docs-index.md.j2"),
+            "python_library/docs-astro.config.mjs.j2",
+            include_str!("templates/python_library/docs-astro.config.mjs.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "python_library/docs-tsconfig.json.j2",
+            include_str!("templates/python_library/docs-tsconfig.json.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "python_library/docs-index.mdx.j2",
+            include_str!("templates/python_library/docs-index.mdx.j2"),
         )
         .expect("template should parse");
     environment
@@ -250,14 +274,26 @@ fn build_environment() -> Environment<'static> {
         .expect("template should parse");
     environment
         .add_template(
-            "rust_library/mkdocs.yml.j2",
-            include_str!("templates/rust_library/mkdocs.yml.j2"),
+            "rust_library/docs-package.json.j2",
+            include_str!("templates/rust_library/docs-package.json.j2"),
         )
         .expect("template should parse");
     environment
         .add_template(
-            "rust_library/docs-index.md.j2",
-            include_str!("templates/rust_library/docs-index.md.j2"),
+            "rust_library/docs-astro.config.mjs.j2",
+            include_str!("templates/rust_library/docs-astro.config.mjs.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "rust_library/docs-tsconfig.json.j2",
+            include_str!("templates/rust_library/docs-tsconfig.json.j2"),
+        )
+        .expect("template should parse");
+    environment
+        .add_template(
+            "rust_library/docs-index.mdx.j2",
+            include_str!("templates/rust_library/docs-index.mdx.j2"),
         )
         .expect("template should parse");
 

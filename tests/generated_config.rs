@@ -50,9 +50,13 @@ fn generated_python_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/publish-pypi.yaml"),
         &["name", "on", "jobs"],
     );
-    assert_yaml_file(
-        project_path.join("mkdocs.yml"),
-        &["site_name", "theme", "nav"],
+    assert_json_file(
+        project_path.join("docs/package.json"),
+        &["name", "scripts", "dependencies"],
+    );
+    assert_file_contains(
+        project_path.join("docs/astro.config.mjs"),
+        &["starlight(", "title:"],
     );
     assert_json_file(
         project_path.join(".release-please-config.json"),
@@ -101,9 +105,13 @@ fn generated_rust_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/forge-update.yaml"),
         &["name", "on", "jobs"],
     );
-    assert_yaml_file(
-        project_path.join("mkdocs.yml"),
-        &["site_name", "theme", "nav"],
+    assert_json_file(
+        project_path.join("docs/package.json"),
+        &["name", "scripts", "dependencies"],
+    );
+    assert_file_contains(
+        project_path.join("docs/astro.config.mjs"),
+        &["starlight(", "title:"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
@@ -140,9 +148,13 @@ fn generated_any_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/forge-update.yaml"),
         &["name", "on", "jobs"],
     );
-    assert_yaml_file(
-        project_path.join("mkdocs.yml"),
-        &["site_name", "theme", "nav"],
+    assert_json_file(
+        project_path.join("docs/package.json"),
+        &["name", "scripts", "dependencies"],
+    );
+    assert_file_contains(
+        project_path.join("docs/astro.config.mjs"),
+        &["starlight(", "title:"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
@@ -183,6 +195,18 @@ fn assert_json_file(path: PathBuf, required_keys: &[&str]) {
         assert!(
             object.contains_key(*key),
             "{} should contain top-level JSON key {key}",
+            path.display()
+        );
+    }
+}
+
+fn assert_file_contains(path: PathBuf, snippets: &[&str]) {
+    let content = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    for snippet in snippets {
+        assert!(
+            content.contains(snippet),
+            "{} should contain {snippet:?}",
             path.display()
         );
     }

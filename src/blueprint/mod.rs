@@ -276,7 +276,7 @@ impl ManagedOption {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Docs => "MkDocs documentation site and docs index",
+            Self::Docs => "Starlight documentation site and docs index",
             Self::Prettier => ManagedComponent::Prettier.description(),
             Self::Editorconfig => ManagedComponent::Editorconfig.description(),
             Self::Markdownlint => ManagedComponent::Markdownlint.description(),

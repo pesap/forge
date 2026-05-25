@@ -587,7 +587,7 @@ pub(crate) fn managed_infrastructure_summary(files: &GeneratedFiles) -> String {
     if files.contains_key(Path::new("CLAUDE.md")) {
         parts.push("CLAUDE.md link".to_string());
     }
-    if files.contains_key(Path::new("mkdocs.yml")) {
+    if files.contains_key(Path::new("docs/package.json")) {
         parts.push("docs".to_string());
     }
 
@@ -2092,7 +2092,7 @@ mod tests {
                     crate::blueprint::files::GeneratedFile::symlink("AGENTS.md"),
                 ),
                 (
-                    PathBuf::from("mkdocs.yml"),
+                    PathBuf::from("docs/package.json"),
                     crate::blueprint::files::GeneratedFile::text("site_name: Repo\n".to_string()),
                 ),
                 (

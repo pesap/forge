@@ -78,7 +78,7 @@ fn new_generates_python_project_with_metadata() {
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(justfile.contains("\ndocs:\n"));
-    assert!(justfile.contains("uv run mkdocs serve"));
+    assert!(justfile.contains("cd docs && npm run dev"));
     assert!(justfile.contains("uv lock --check"));
     assert!(justfile.contains("uv run --locked ruff format --check ."));
     assert!(justfile.contains("uv run --locked ruff check ."));
@@ -1513,18 +1513,22 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
         .expect("pyproject.toml should be generated");
     assert!(pyproject.contains("docs = false"));
     assert!(pyproject.contains("codecov = false"));
-    assert!(!pyproject.contains("mkdocs-material"));
+    assert!(!pyproject.contains("@astrojs/starlight"));
 
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(!justfile.contains("\ndocs:\n"));
-    assert!(!justfile.contains("mkdocs serve"));
+    assert!(!justfile.contains("npm run dev"));
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
     assert!(!ci.contains("codecov/codecov-action"));
-    assert!(!project_path.join("mkdocs.yml").exists());
-    assert!(!project_path.join("docs/index.md").exists());
+    assert!(!project_path.join("docs/package.json").exists());
+    assert!(
+        !project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
 }
 
 #[test]
@@ -1939,8 +1943,12 @@ fn new_generates_language_agnostic_infra_project() {
     assert!(justfile.contains("uv lock --check"));
     assert!(justfile.contains("forge update --path . --check"));
     assert!(project_path.join(".prettierrc.json").exists());
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert!(!project_path.join("src").exists());
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
@@ -2023,8 +2031,12 @@ fn new_generates_rust_library_project() {
     assert!(ci.contains("cargo fmt --all --check"));
     assert!(ci.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings"));
     assert!(ci.contains("forge update --path . --check"));
-    assert!(project_path.join("mkdocs.yml").exists());
-    assert!(project_path.join("docs/index.md").exists());
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
     assert_eq!(
         fs::read_link(project_path.join("CLAUDE.md")).expect("CLAUDE.md should be a symlink"),
         std::path::PathBuf::from("AGENTS.md")
