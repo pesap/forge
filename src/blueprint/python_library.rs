@@ -394,6 +394,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "uv_lock_check_step": github_actions::uv_lock_check_step(),
             "ruff_format_step": github_actions::uv_run_locked_step("ruff format --check ."),
             "ruff_check_step": github_actions::uv_run_locked_step("ruff check ."),
+            "ty_check_step": github_actions::uv_run_locked_step("ty check"),
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "forge_update_check_step": github_actions::forge_update_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
@@ -660,6 +661,7 @@ mod tests {
         assert!(justfile.contains("verify:\n    uv lock --check"));
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
+        assert!(justfile.contains("uv run --locked ty check"));
         assert!(justfile.contains("forge update --path . --check"));
         assert!(justfile.contains("uv run --locked pytest --tb=short"));
         assert!(justfile.contains("uv build --locked"));
@@ -674,6 +676,7 @@ mod tests {
         assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff format --check .")));
         assert!(workflow.contains(github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff check .")));
+        assert!(workflow.contains(&github_actions::uv_run_locked_step("ty check")));
         assert!(workflow.contains("run: forge update --path . --check"));
         assert!(workflow.contains(&github_actions::uv_run_locked_step(
             "pytest --cov --cov-report=xml"
@@ -713,9 +716,11 @@ mod tests {
 
         assert!(precommit.contains("entry: uv run --locked ruff format --check"));
         assert!(precommit.contains("entry: uv run --locked ruff check"));
+        assert!(precommit.contains("entry: uv run --locked ty check"));
         assert!(precommit.contains("entry: uv run --locked pytest -q --maxfail=1"));
         assert!(!precommit.contains("uv run ruff format\n"));
         assert!(!precommit.contains("uv run ruff check --fix"));
+        assert!(!precommit.contains("uv run ty check\n"));
         assert!(!precommit.contains("uv run pytest -q --maxfail=1"));
     }
 

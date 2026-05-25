@@ -2966,8 +2966,7 @@ fn update_removes_rust_docs_when_disabled_in_metadata() {
     ]);
     new_project.assert().success();
 
-    fs::create_dir_all(project_path.join("docs/src/content/docs"))
-        .expect("docs dir should create");
+    fs::create_dir_all(project_path.join("docs/src/content/docs")).expect("docs dir should create");
     fs::write(project_path.join("docs/package.json"), "BROKEN\n")
         .expect("stale docs package should write");
     fs::write(
@@ -3097,8 +3096,7 @@ fn update_set_dry_run_reports_empty_docs_directory_removal() {
             .expect("actions should be an array")
             .iter()
             .any(|action| {
-                action["action"] == "remove"
-                    && action["path"] == "docs/src/content/docs/index.mdx"
+                action["action"] == "remove" && action["path"] == "docs/src/content/docs/index.mdx"
             })
     );
 
