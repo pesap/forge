@@ -17,14 +17,16 @@ use crate::blueprint::{
 
 pub const BLUEPRINT_NAME: &str = "python-library";
 pub const BLUEPRINT_VERSION: &str = "0.1.0";
+pub const PYPI_PUBLISH_NOTICE: &str =
+    "Register this workflow as a trusted publisher in PyPI before uncommenting the publish step.";
 
 #[derive(Clone, Debug)]
 pub struct ProjectConfig {
     pub project_name: String,
     pub package_name: String,
     pub description: String,
-    pub author_name: String,
-    pub author_email: String,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
     pub license: String,
     pub python_min: String,
     pub docs: bool,
@@ -41,8 +43,15 @@ impl ProjectConfig {
         if !is_valid_package_name(&self.package_name) {
             bail!("invalid package name: {}", self.package_name);
         }
-        if !self.author_email.contains('@') {
-            bail!("invalid author email: {}", self.author_email);
+        if let Some(author_name) = &self.author_name
+            && author_name.trim().is_empty()
+        {
+            bail!("author name cannot be empty");
+        }
+        if let Some(author_email) = &self.author_email
+            && !author_email.contains('@')
+        {
+            bail!("invalid author email: {}", author_email);
         }
         if !matches!(self.license.as_str(), "BSD-3-Clause" | "MIT" | "Apache-2.0") {
             bail!("license must be BSD-3-Clause, MIT, or Apache-2.0");
@@ -253,18 +262,16 @@ fn render_readme(config: &ProjectConfig) -> String {
 
 fn render_license(config: &ProjectConfig) -> String {
     let year = "2026";
+    let author = author_display_name(config);
     match config.license.as_str() {
         "MIT" => format!(
-            "MIT License\n\nCopyright (c) {year} {}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-            config.author_name
+            "MIT License\n\nCopyright (c) {year} {author}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
         ),
         "Apache-2.0" => format!(
-            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nCopyright {year} {}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
-            config.author_name
+            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nCopyright {year} {author}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
         ),
         _ => format!(
-            "BSD 3-Clause License\n\nCopyright (c) {year}, {}\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
-            config.author_name
+            "BSD 3-Clause License\n\nCopyright (c) {year}, {author}\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
         ),
     }
 }
@@ -273,20 +280,49 @@ fn render_gitignore() -> String {
     "__pycache__/\n*.py[cod]\n.venv/\n.pytest_cache/\n.ruff_cache/\n.mypy_cache/\n.coverage\n.coverage.*\nhtmlcov/\nbuild/\ndist/\n*.egg-info/\nsite/\n".to_string()
 }
 
+fn render_authors(config: &ProjectConfig) -> String {
+    match (&config.author_name, &config.author_email) {
+        (Some(author_name), Some(author_email)) => format!(
+            "authors = [{{ name = {}, email = {} }}]\n",
+            toml_value::string_literal(author_name),
+            toml_value::string_literal(author_email)
+        ),
+        (Some(author_name), None) => format!(
+            "authors = [{{ name = {} }}]\n",
+            toml_value::string_literal(author_name)
+        ),
+        (None, Some(author_email)) => format!(
+            "authors = [{{ email = {} }}]\n",
+            toml_value::string_literal(author_email)
+        ),
+        (None, None) => String::new(),
+    }
+}
+
+fn render_optional_forge_field(name: &str, value: &Option<String>) -> String {
+    value
+        .as_ref()
+        .map(|value| format!("{name} = {}\n", toml_value::string_literal(value)))
+        .unwrap_or_default()
+}
+
+fn author_display_name(config: &ProjectConfig) -> String {
+    config
+        .author_name
+        .clone()
+        .or_else(|| config.author_email.clone())
+        .unwrap_or_else(|| "the authors".to_string())
+}
+
 fn render_pyproject(config: &ProjectConfig) -> String {
-    let authors = format!(
-        "{{ name = {}, email = {} }}",
-        toml_value::string_literal(&config.author_name),
-        toml_value::string_literal(&config.author_email)
-    );
+    let authors = render_authors(config);
     let docs_group = render_docs_dependency_group(config.docs);
     format!(
         r#"[project]
 name = {project_name}
 version = "0.1.0"
 description = {description}
-authors = [{authors}]
-license = {{ file = "LICENSE" }}
+{authors}license = {{ file = "LICENSE" }}
 readme = "README.md"
 requires-python = {requires_python}
 dependencies = []
@@ -326,9 +362,7 @@ blueprint_version = "{blueprint_version}"
 project_name = {project_name}
 package_name = {package_name}
 description = {description}
-author_name = {author_name}
-author_email = {author_email}
-license = {license}
+{author_name}{author_email}license = {license}
 python_min = {python_min}
 
 [tool.forge.options]
@@ -348,8 +382,8 @@ markdownlint = {markdownlint}
         coverage_arg = toml_value::string_literal(&format!("--cov={}", config.package_name)),
         blueprint_name = BLUEPRINT_NAME,
         blueprint_version = BLUEPRINT_VERSION,
-        author_name = toml_value::string_literal(&config.author_name),
-        author_email = toml_value::string_literal(&config.author_email),
+        author_name = render_optional_forge_field("author_name", &config.author_name),
+        author_email = render_optional_forge_field("author_email", &config.author_email),
         license = toml_value::string_literal(&config.license),
         python_min = toml_value::string_literal(&config.python_min),
         docs = config.docs,
@@ -478,11 +512,12 @@ fn render_release_please_manifest() -> String {
 
 fn render_publish_pypi() -> String {
     format!(
-        "name: publish-pypi\n\non:\n  release:\n    types: [published]\n\n{}jobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment: pypi\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n{}{}      - run: uv build --locked\n      - run: uv publish\n",
+        "name: publish-pypi\n\non:\n  release:\n    types: [published]\n\n{}jobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment:\n      name: pypi\n      url: https://pypi.org/p/<your-pypi-project-name>\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n{}{}      - run: uv build --locked\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@release/v1\n",
         github_actions::serialized_release_concurrency(),
         github_actions::job_timeout(),
         github_actions::read_only_checkout_step(),
-        github_actions::setup_uv_step()
+        github_actions::setup_uv_step(),
+        PYPI_PUBLISH_NOTICE,
     )
 }
 
@@ -546,8 +581,8 @@ struct ForgeSection {
     project_name: String,
     package_name: String,
     description: String,
-    author_name: String,
-    author_email: String,
+    author_name: Option<String>,
+    author_email: Option<String>,
     license: String,
     python_min: String,
     options: Option<BTreeMap<String, bool>>,
@@ -672,8 +707,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.13".to_string(),
             docs: true,
@@ -780,8 +815,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
             docs,
@@ -797,8 +832,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
             docs: true,
@@ -815,8 +850,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "not-an-email".to_string(), // Invalid
+            author_name: Some("Test User".to_string()),
+            author_email: Some("not-an-email".to_string()), // Invalid
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
             docs: true,
@@ -833,8 +868,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "GPL-3.0".to_string(), // Not in allowed list
             python_min: "3.11".to_string(),
             docs: true,
@@ -851,8 +886,8 @@ mod tests {
             project_name: "test-project".to_string(),
             package_name: "test_project".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11\n3.12".to_string(),
             docs: true,
@@ -949,8 +984,8 @@ pypi-publish = false
             project_name: "my-cool-lib".to_string(),
             package_name: "my_cool_lib".to_string(),
             description: "A cool library".to_string(),
-            author_name: "Ada Lovelace".to_string(),
-            author_email: "ada@example.com".to_string(),
+            author_name: Some("Ada Lovelace".to_string()),
+            author_email: Some("ada@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
             docs: true,
@@ -1005,6 +1040,9 @@ pypi-publish = false
         assert!(publish_pypi.contains(github_actions::read_only_checkout_step()));
         assert!(publish_pypi.contains("enable-cache: true"));
         assert!(publish_pypi.contains("run: uv build --locked"));
+        assert!(publish_pypi.contains(PYPI_PUBLISH_NOTICE));
+        assert!(publish_pypi.contains("# - name: Publish package distributions to PyPI"));
+        assert!(publish_pypi.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
     }
 
     #[test]
@@ -1020,7 +1058,8 @@ pypi-publish = false
     fn publish_pypi_workflow_uses_dedicated_environment_and_job_permissions() {
         let publish_pypi = render_publish_pypi();
 
-        assert!(publish_pypi.contains("    environment: pypi\n"));
+        assert!(publish_pypi.contains("    environment:\n      name: pypi\n"));
+        assert!(publish_pypi.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
         assert!(
             publish_pypi
                 .contains("    permissions:\n      id-token: write\n      contents: read\n")
@@ -1034,8 +1073,8 @@ pypi-publish = false
             project_name: "meta-test".to_string(),
             package_name: "meta_test".to_string(),
             description: "Testing metadata".to_string(),
-            author_name: "Grace Hopper".to_string(),
-            author_email: "grace@example.com".to_string(),
+            author_name: Some("Grace Hopper".to_string()),
+            author_email: Some("grace@example.com".to_string()),
             license: "BSD-3-Clause".to_string(),
             python_min: "3.12".to_string(),
             docs: false,

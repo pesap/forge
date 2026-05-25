@@ -40,8 +40,8 @@ const PYTHON_LIBRARY_FIELDS: &[BlueprintField] = &[
         "Python import package name",
     ),
     BlueprintField::required("description", "Short project description"),
-    BlueprintField::required("author-name", "Package author name"),
-    BlueprintField::required("author-email", "Package author email"),
+    BlueprintField::optional("author-name", "Package author name"),
+    BlueprintField::optional("author-email", "Package author email"),
     BlueprintField::defaulted("license", "BSD-3-Clause", "SPDX license identifier"),
     BlueprintField::defaulted("python-min", "3.11", "Minimum supported Python version"),
 ];
@@ -54,8 +54,8 @@ const RUST_LIBRARY_FIELDS: &[BlueprintField] = &[
         "Rust crate library name",
     ),
     BlueprintField::required("description", "Short project description"),
-    BlueprintField::required("author-name", "Package author name"),
-    BlueprintField::required("author-email", "Package author email"),
+    BlueprintField::optional("author-name", "Package author name"),
+    BlueprintField::optional("author-email", "Package author email"),
     BlueprintField::defaulted("license", "BSD-3-Clause", "SPDX license identifier"),
 ];
 
@@ -237,6 +237,15 @@ impl BlueprintField {
             name,
             required: false,
             default: Some(default),
+            description,
+        }
+    }
+
+    pub const fn optional(name: &'static str, description: &'static str) -> Self {
+        Self {
+            name,
+            required: false,
+            default: None,
             description,
         }
     }

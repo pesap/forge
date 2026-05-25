@@ -10,7 +10,7 @@ use crate::blueprint::BlueprintName;
     name = "forge",
     version,
     about = "Create and update project blueprints",
-    after_help = "Quickstart:\n  forge blueprints\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge update --path ./my-lib --check"
+    after_help = "Quickstart:\n  forge blueprints\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge update --path ./my-lib --check"
 )]
 pub struct Cli {
     /// Colorized terminal output policy
@@ -39,7 +39,7 @@ pub enum Commands {
     Completions(CompletionsArgs),
     /// Initialize Forge-managed infrastructure in an existing repository
     #[command(
-        after_help = "Examples:\n  forge init --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge init --blueprint any-project --path . --project-name infra --description \"Shared repo infrastructure\" --dry-run"
+        after_help = "Examples:\n  forge init --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge init --blueprint any-project --path . --project-name infra --description \"Shared repo infrastructure\" --dry-run"
     )]
     Init(InitArgs),
     /// Create a new project from a blueprint

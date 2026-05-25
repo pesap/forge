@@ -88,7 +88,7 @@ fn format_field(field: &BlueprintField) -> String {
     match field.default {
         Some(default) => format!("{} (default: {})", field.name, default),
         None if field.required => format!("{} (required)", field.name),
-        None => field.name.to_string(),
+        None => format!("{} (optional)", field.name),
     }
 }
 

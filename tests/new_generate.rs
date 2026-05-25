@@ -912,10 +912,6 @@ fn new_yes_mode_uses_library_defaults_without_requiring_defaulted_fields() {
         "grid-tools",
         "--description",
         "Grid toolchain",
-        "--author-name",
-        "Ada Lovelace",
-        "--author-email",
-        "ada@example.com",
         "--yes",
     ]);
 
@@ -926,6 +922,9 @@ fn new_yes_mode_uses_library_defaults_without_requiring_defaulted_fields() {
     assert!(pyproject.contains("license = \"BSD-3-Clause\""));
     assert!(pyproject.contains("python_min = \"3.11\""));
     assert!(pyproject.contains("requires-python = \">=3.11,<3.15\""));
+    assert!(!pyproject.contains("authors ="));
+    assert!(!pyproject.contains("author_name ="));
+    assert!(!pyproject.contains("author_email ="));
 }
 
 #[test]
@@ -979,8 +978,8 @@ fn new_yes_mode_reports_all_missing_required_fields() {
         .failure()
         .stderr(contains("missing required options for --yes"))
         .stderr(contains("--description"))
-        .stderr(contains("--author-name"))
-        .stderr(contains("--author-email"))
+        .stderr(predicates::str::contains("--author-name").not())
+        .stderr(predicates::str::contains("--author-email").not())
         .stderr(contains("or run without --yes"));
     assert!(!project_path.exists());
 }
@@ -1012,8 +1011,8 @@ fn new_json_yes_mode_missing_required_keeps_stdout_empty() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("missing required options for --yes"));
     assert!(stderr.contains("--description"));
-    assert!(stderr.contains("--author-name"));
-    assert!(stderr.contains("--author-email"));
+    assert!(!stderr.contains("--author-name"));
+    assert!(!stderr.contains("--author-email"));
     assert!(stderr.contains("error_code: FORGE_E_INPUT"));
     assert!(!project_path.exists());
 }
@@ -1430,11 +1429,55 @@ fn new_accepts_value_less_optional_workflow_flags() {
     assert!(publish_pypi.contains(
         "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"
     ));
-    assert!(publish_pypi.contains("    environment: pypi\n"));
+    assert!(publish_pypi.contains("    environment:\n      name: pypi\n"));
+    assert!(publish_pypi.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
     assert!(
         publish_pypi.contains("    permissions:\n      id-token: write\n      contents: read\n")
     );
+    assert!(publish_pypi.contains(
+        "# Register this workflow as a trusted publisher in PyPI before uncommenting the publish step."
+    ));
+    assert!(publish_pypi.contains("# - name: Publish package distributions to PyPI"));
+    assert!(publish_pypi.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
     assert!(!publish_pypi.contains("\npermissions:\n  id-token: write\n"));
+}
+
+#[test]
+fn new_dry_run_warns_when_pypi_publishing_is_selected() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "new",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--author-name",
+        "Ada Lovelace",
+        "--author-email",
+        "ada@example.com",
+        "--pypi-publish",
+        "--yes",
+        "--dry-run",
+    ]);
+
+    let output = cmd.output().expect("new dry-run should run");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    assert!(stdout.contains("Project creation preview"));
+    assert!(stdout.contains("pypi"));
+    assert!(stdout.contains(
+        "Register this workflow as a trusted publisher in PyPI before uncommenting the publish step."
+    ));
 }
 
 #[test]

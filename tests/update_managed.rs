@@ -2163,11 +2163,16 @@ fn update_set_can_enable_python_pypi_publish_workflow() {
     let publish_workflow =
         fs::read_to_string(project_path.join(".github/workflows/publish-pypi.yaml"))
             .expect("publish workflow should exist");
-    assert!(publish_workflow.contains("uv publish"));
+    assert!(publish_workflow.contains(
+        "# Register this workflow as a trusted publisher in PyPI before uncommenting the publish step."
+    ));
+    assert!(publish_workflow.contains("# - name: Publish package distributions to PyPI"));
+    assert!(publish_workflow.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
     assert!(publish_workflow.contains(
         "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"
     ));
-    assert!(publish_workflow.contains("    environment: pypi\n"));
+    assert!(publish_workflow.contains("    environment:\n      name: pypi\n"));
+    assert!(publish_workflow.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
     assert!(
         publish_workflow
             .contains("    permissions:\n      id-token: write\n      contents: read\n")

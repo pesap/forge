@@ -26,8 +26,6 @@ forge new \
   --project-name demo-lib \
   --package-name demo_lib \
   --description "Demo package" \
-  --author-name "Jane Doe" \
-  --author-email jane@example.com \
   --license BSD-3-Clause \
   --python-min 3.11 \
   --yes
@@ -155,11 +153,11 @@ Other useful flags:
 <details>
 <summary>Blueprint-specific flags and interactive mode</summary>
 
-Python library blueprints accept `--package-name`, `--author-name`,
-`--author-email`, `--license`, `--python-min`, and component flags.
+Python library blueprints accept `--package-name`, optional `--author-name`,
+optional `--author-email`, `--license`, `--python-min`, and component flags.
 
-Rust library blueprints accept `--package-name`, `--author-name`,
-`--author-email`, `--license`, and component flags.
+Rust library blueprints accept `--package-name`, optional `--author-name`,
+optional `--author-email`, `--license`, and component flags.
 
 `any-project` accepts `--author-name`, `--author-email`, `--license`, and
 component flags.
@@ -172,6 +170,10 @@ configured minimum through `3.14`.
 Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
 `--pypi-publish`. Use `--docs=false` to disable MkDocs (enabled by default for
 `any-project` and `rust-library`).
+
+If you enable `--pypi-publish`, Forge writes a commented trusted-publishing
+workflow at `.github/workflows/publish-pypi.yaml`; register that workflow as a
+trusted publisher in PyPI before uncommenting the publish step.
 
 Boolean flags accept script-friendly forms: `--pypi-publish` or
 `--pypi-publish=true`.

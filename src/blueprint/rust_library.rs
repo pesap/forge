@@ -23,8 +23,8 @@ pub struct ProjectConfig {
     pub project_name: String,
     pub crate_name: String,
     pub description: String,
-    pub author_name: String,
-    pub author_email: String,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
     pub license: String,
     pub rust_edition: String,
     pub docs: bool,
@@ -42,8 +42,15 @@ impl ProjectConfig {
         if self.description.trim().is_empty() {
             bail!("description cannot be empty");
         }
-        if !self.author_email.contains('@') {
-            bail!("invalid author email: {}", self.author_email);
+        if let Some(author_name) = &self.author_name
+            && author_name.trim().is_empty()
+        {
+            bail!("author name cannot be empty");
+        }
+        if let Some(author_email) = &self.author_email
+            && !author_email.contains('@')
+        {
+            bail!("invalid author email: {}", author_email);
         }
         if !matches!(self.license.as_str(), "BSD-3-Clause" | "MIT" | "Apache-2.0") {
             bail!("license must be BSD-3-Clause, MIT, or Apache-2.0");
@@ -192,24 +199,48 @@ fn render_readme(config: &ProjectConfig) -> String {
 
 fn render_license(config: &ProjectConfig) -> String {
     let year = "2026";
+    let author = author_display_name(config);
     match config.license.as_str() {
         "MIT" => format!(
-            "MIT License\n\nCopyright (c) {year} {}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-            config.author_name
+            "MIT License\n\nCopyright (c) {year} {author}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
         ),
         "Apache-2.0" => format!(
-            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nCopyright {year} {}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
-            config.author_name
+            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nCopyright {year} {author}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
         ),
         _ => format!(
-            "BSD 3-Clause License\n\nCopyright (c) {year}, {}\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
-            config.author_name
+            "BSD 3-Clause License\n\nCopyright (c) {year}, {author}\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
         ),
     }
 }
 
 fn render_gitignore() -> String {
     "target/\nCargo.lock\n.venv/\n.cache/\n.DS_Store\n".to_string()
+}
+
+fn render_cargo_authors(config: &ProjectConfig) -> String {
+    match (&config.author_name, &config.author_email) {
+        (Some(author_name), Some(author_email)) => {
+            toml_value::string_literal(&format!("{author_name} <{author_email}>"))
+        }
+        (Some(author_name), None) => toml_value::string_literal(author_name),
+        (None, Some(author_email)) => toml_value::string_literal(author_email),
+        (None, None) => String::new(),
+    }
+}
+
+fn render_optional_forge_field(name: &str, value: &Option<String>) -> String {
+    value
+        .as_ref()
+        .map(|value| format!("{name} = {}\n", toml_value::string_literal(value)))
+        .unwrap_or_default()
+}
+
+fn author_display_name(config: &ProjectConfig) -> String {
+    config
+        .author_name
+        .clone()
+        .or_else(|| config.author_email.clone())
+        .unwrap_or_else(|| "the authors".to_string())
 }
 
 fn render_cargo_toml(config: &ProjectConfig) -> String {
@@ -219,7 +250,7 @@ fn render_cargo_toml(config: &ProjectConfig) -> String {
         toml_value::string_literal(&config.rust_edition),
         toml_value::string_literal(&config.description),
         toml_value::string_literal(&config.license),
-        toml_value::string_literal(&format!("{} <{}>", config.author_name, config.author_email)),
+        render_cargo_authors(config),
         toml_value::string_literal(&config.crate_name)
     )
 }
@@ -246,9 +277,7 @@ blueprint_version = "{blueprint_version}"
 project_name = {project_name}
 crate_name = {crate_name}
 description = {description}
-author_name = {author_name}
-author_email = {author_email}
-license = {license}
+{author_name}{author_email}license = {license}
 rust_edition = {rust_edition}
 
 [tool.forge.options]
@@ -262,8 +291,8 @@ markdownlint = {markdownlint}
         project_name = toml_value::string_literal(&config.project_name),
         crate_name = toml_value::string_literal(&config.crate_name),
         description = toml_value::string_literal(&config.description),
-        author_name = toml_value::string_literal(&config.author_name),
-        author_email = toml_value::string_literal(&config.author_email),
+        author_name = render_optional_forge_field("author_name", &config.author_name),
+        author_email = render_optional_forge_field("author_email", &config.author_email),
         license = toml_value::string_literal(&config.license),
         rust_edition = toml_value::string_literal(&config.rust_edition),
         docs_group = docs_group,
@@ -370,8 +399,8 @@ struct ForgeSection {
     project_name: String,
     crate_name: String,
     description: String,
-    author_name: String,
-    author_email: String,
+    author_name: Option<String>,
+    author_email: Option<String>,
     license: String,
     rust_edition: String,
     options: Option<BTreeMap<String, bool>>,
@@ -465,8 +494,8 @@ mod tests {
             project_name: "test-rs".to_string(),
             crate_name: "test_rs".to_string(),
             description: "A test project".to_string(),
-            author_name: "Test User".to_string(),
-            author_email: "test@example.com".to_string(),
+            author_name: Some("Test User".to_string()),
+            author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             rust_edition: "2024".to_string(),
             docs,

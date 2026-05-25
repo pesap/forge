@@ -95,6 +95,9 @@ pub fn run(args: NewArgs) -> Result<()> {
             "github",
             github_preview(args.github, args.github_visibility),
         );
+        if pypi_publish_notice(&project.options) {
+            ui::info("pypi", python_library::PYPI_PUBLISH_NOTICE);
+        }
         ui::info("files", project.files.len());
         for relative_path in project.files.keys() {
             ui::action("create", relative_path.display());
@@ -160,6 +163,9 @@ pub fn run(args: NewArgs) -> Result<()> {
         required_tools_summary_for_options(blueprint, &project.options),
     );
     ui::info("infrastructure", infrastructure);
+    if pypi_publish_notice(&project.options) {
+        ui::info("pypi", python_library::PYPI_PUBLISH_NOTICE);
+    }
     ui::info("managed update", "forge update --path .");
     ui::section("Next steps");
     ui::next_step(&format!(
@@ -410,7 +416,7 @@ fn new_setup_review_context(
     project: &ProjectRender,
     replay_command: &str,
 ) -> Vec<SetupReviewItem> {
-    vec![
+    let mut context = vec![
         SetupReviewItem::new("files", project.files.len().to_string()),
         SetupReviewItem::new(
             "infrastructure",
@@ -425,7 +431,22 @@ fn new_setup_review_context(
             github_preview(args.github, args.github_visibility),
         ),
         SetupReviewItem::new("apply", replay_command),
-    ]
+    ];
+
+    if pypi_publish_notice(&project.options) {
+        context.push(SetupReviewItem::new(
+            "pypi",
+            python_library::PYPI_PUBLISH_NOTICE,
+        ));
+    }
+
+    context
+}
+
+fn pypi_publish_notice(options: &[SelectedOption]) -> bool {
+    options
+        .iter()
+        .any(|option| option.name == ManagedOption::PypiPublish.as_str() && option.enabled)
 }
 
 fn preview_new_command(
@@ -839,8 +860,8 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
     let mut project_name = args.project_name.clone();
     let mut package_name = args.package_name.clone();
     let mut description = args.description.clone();
-    let mut author_name = args.author_name.clone();
-    let mut author_email = args.author_email.clone();
+    let author_name = args.author_name.clone();
+    let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut python_min = args.python_min.clone();
     let mut docs = docs_enabled(args);
@@ -874,18 +895,6 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
             is_non_empty_text,
             "description cannot be empty",
         )?;
-        prompt_if_missing_validated(
-            &mut author_name,
-            "Author name",
-            is_non_empty_text,
-            "author name cannot be empty",
-        )?;
-        prompt_if_missing_validated(
-            &mut author_email,
-            "Author email",
-            is_valid_author_email,
-            "invalid author email",
-        )?;
         prompt_if_missing_with_default_validated(
             &mut license,
             "License",
@@ -916,8 +925,8 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         project_name,
         package_name,
         description: require_field("description", description)?,
-        author_name: require_field("author-name", author_name)?,
-        author_email: require_field("author-email", author_email)?,
+        author_name,
+        author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min: python_min.unwrap_or_else(|| DEFAULT_PYTHON_MIN.to_string()),
         docs,
@@ -931,8 +940,8 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
     let mut project_name = args.project_name.clone();
     let mut crate_name = args.package_name.clone();
     let mut description = args.description.clone();
-    let mut author_name = args.author_name.clone();
-    let mut author_email = args.author_email.clone();
+    let author_name = args.author_name.clone();
+    let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut docs = docs_enabled(args);
     let mut components = component_selection_from_args(args);
@@ -963,18 +972,6 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
             is_non_empty_text,
             "description cannot be empty",
         )?;
-        prompt_if_missing_validated(
-            &mut author_name,
-            "Author name",
-            is_non_empty_text,
-            "author name cannot be empty",
-        )?;
-        prompt_if_missing_validated(
-            &mut author_email,
-            "Author email",
-            is_valid_author_email,
-            "invalid author email",
-        )?;
         prompt_if_missing_with_default_validated(
             &mut license,
             "License",
@@ -993,8 +990,8 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         project_name,
         crate_name,
         description: require_field("description", description)?,
-        author_name: require_field("author-name", author_name)?,
-        author_email: require_field("author-email", author_email)?,
+        author_name,
+        author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         rust_edition: "2024".to_string(),
         docs,
@@ -1061,10 +1058,6 @@ fn require_field(name: &str, value: Option<String>) -> Result<String> {
 
 fn is_non_empty_text(value: &str) -> bool {
     !value.trim().is_empty()
-}
-
-fn is_valid_author_email(value: &str) -> bool {
-    value.contains('@')
 }
 
 fn is_supported_license(value: &str) -> bool {
@@ -1679,9 +1672,6 @@ mod tests {
     fn interactive_prompt_validators_match_supported_metadata_rules() {
         assert!(is_non_empty_text("project"));
         assert!(!is_non_empty_text("   "));
-
-        assert!(is_valid_author_email("ada@example.com"));
-        assert!(!is_valid_author_email("ada.example.com"));
 
         assert!(is_supported_license("BSD-3-Clause"));
         assert!(is_supported_license("MIT"));

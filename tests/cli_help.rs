@@ -59,7 +59,6 @@ fn top_level_help_lists_expected_commands() {
         .stdout(contains("Quickstart:"))
         .stdout(contains("forge blueprints"))
         .stdout(contains("--description \"My library\""))
-        .stdout(contains("--author-email ada@example.com"))
         .stdout(contains("forge update --path ./my-lib --check"))
         .stdout(contains("--color"))
         .stdout(contains("blueprints"))
