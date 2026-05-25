@@ -1,1 +1,642 @@
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use clap::ValueEnum;
+use serde::Serialize;
+use toml::Value;
+
+use crate::blueprint::components::ManagedComponent;
+use crate::blueprint::files::GeneratedFiles;
+use crate::errors::{ErrorCode, coded_error};
+
+pub mod agents;
+pub mod any_project;
+pub mod components;
+pub mod files;
+pub mod github_actions;
+pub mod precommit;
 pub mod python_library;
+pub mod readme;
+pub mod rust_library;
+pub mod toml_value;
+
+const ANY_PROJECT_FIELDS: &[BlueprintField] = &[
+    BlueprintField::required(
+        "project-name",
+        "Project distribution name, for example my-project",
+    ),
+    BlueprintField::required("description", "Short project description"),
+];
+
+const PYTHON_LIBRARY_FIELDS: &[BlueprintField] = &[
+    BlueprintField::required(
+        "project-name",
+        "Project distribution name, for example my-library",
+    ),
+    BlueprintField::defaulted(
+        "package-name",
+        "derived from project-name",
+        "Python import package name",
+    ),
+    BlueprintField::required("description", "Short project description"),
+    BlueprintField::required("author-name", "Package author name"),
+    BlueprintField::required("author-email", "Package author email"),
+    BlueprintField::defaulted("license", "BSD-3-Clause", "SPDX license identifier"),
+    BlueprintField::defaulted("python-min", "3.11", "Minimum supported Python version"),
+];
+
+const RUST_LIBRARY_FIELDS: &[BlueprintField] = &[
+    BlueprintField::required("project-name", "Cargo package name, for example my-library"),
+    BlueprintField::defaulted(
+        "package-name",
+        "derived from project-name",
+        "Rust crate library name",
+    ),
+    BlueprintField::required("description", "Short project description"),
+    BlueprintField::required("author-name", "Package author name"),
+    BlueprintField::required("author-email", "Package author email"),
+    BlueprintField::defaulted("license", "BSD-3-Clause", "SPDX license identifier"),
+];
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum BlueprintName {
+    AnyProject,
+    PythonLibrary,
+    RustLibrary,
+}
+
+impl BlueprintName {
+    pub const ALL: [Self; 3] = [Self::AnyProject, Self::PythonLibrary, Self::RustLibrary];
+
+    pub fn definition(self) -> &'static BlueprintDefinition {
+        BLUEPRINT_REGISTRY
+            .iter()
+            .find(|blueprint| blueprint.id == self)
+            .expect("blueprint enum variant must be present in registry")
+    }
+
+    pub fn as_str(self) -> &'static str {
+        self.definition().name
+    }
+
+    pub fn description(self) -> &'static str {
+        self.definition().description
+    }
+
+    pub fn summary(self) -> &'static str {
+        self.definition().summary
+    }
+
+    pub fn version(self) -> &'static str {
+        self.definition().version
+    }
+
+    pub fn supported_options(self) -> &'static [ManagedOption] {
+        self.definition().options
+    }
+
+    pub fn creation_fields(self) -> &'static [BlueprintField] {
+        self.definition().fields
+    }
+
+    pub fn supports_option(self, option: ManagedOption) -> bool {
+        self.supported_options().contains(&option)
+    }
+
+    pub fn option_default_enabled(self, option: ManagedOption) -> bool {
+        matches!(
+            (self, option),
+            (_, ManagedOption::Docs) | (Self::PythonLibrary, ManagedOption::Codecov)
+        )
+    }
+
+    pub fn from_metadata(value: &str) -> Result<Self> {
+        Self::from_metadata_with_error_code(value, ErrorCode::Env)
+    }
+
+    pub fn from_metadata_with_error_code(value: &str, error_code: ErrorCode) -> Result<Self> {
+        BLUEPRINT_REGISTRY
+            .iter()
+            .find(|blueprint| blueprint.name == value)
+            .map(|blueprint| blueprint.id)
+            .ok_or_else(|| coded_error(error_code, format!("unsupported blueprint '{value}'")))
+    }
+
+    pub fn render_managed_files_from_pyproject(self, content: &str) -> Result<GeneratedFiles> {
+        (self.definition().render_managed_files)(content)
+    }
+
+    pub fn clean_optional_files_from_pyproject(self, root: &Path, content: &str) -> Result<()> {
+        (self.definition().clean_optional_files)(root, content)
+    }
+
+    pub fn optional_cleanup_paths_from_pyproject(self, content: &str) -> Result<Vec<PathBuf>> {
+        (self.definition().optional_cleanup_paths)(content)
+    }
+}
+
+pub struct BlueprintDefinition {
+    pub id: BlueprintName,
+    pub name: &'static str,
+    pub version: &'static str,
+    pub summary: &'static str,
+    pub description: &'static str,
+    pub fields: &'static [BlueprintField],
+    pub options: &'static [ManagedOption],
+    pub required_tools: &'static [&'static str],
+    render_managed_files: fn(&str) -> Result<GeneratedFiles>,
+    clean_optional_files: fn(&Path, &str) -> Result<()>,
+    optional_cleanup_paths: fn(&str) -> Result<Vec<PathBuf>>,
+}
+
+pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
+    BlueprintDefinition {
+        id: BlueprintName::AnyProject,
+        name: any_project::BLUEPRINT_NAME,
+        version: any_project::BLUEPRINT_VERSION,
+        summary: "managed infrastructure for any repository",
+        description: "any-project - managed infrastructure for any repository",
+        fields: ANY_PROJECT_FIELDS,
+        options: &[
+            ManagedOption::Docs,
+            ManagedOption::Prettier,
+            ManagedOption::Editorconfig,
+            ManagedOption::Markdownlint,
+        ],
+        required_tools: &["uv", "just"],
+        render_managed_files: any_project::render_managed_files_from_pyproject,
+        clean_optional_files: any_project::clean_optional_files_from_pyproject,
+        optional_cleanup_paths: any_project::optional_cleanup_paths_from_pyproject,
+    },
+    BlueprintDefinition {
+        id: BlueprintName::PythonLibrary,
+        name: python_library::BLUEPRINT_NAME,
+        version: python_library::BLUEPRINT_VERSION,
+        summary: "Python package with uv, pytest, Ruff, and CI",
+        description: "python-library - Python package with uv, pytest, Ruff, and CI",
+        fields: PYTHON_LIBRARY_FIELDS,
+        options: &[
+            ManagedOption::Docs,
+            ManagedOption::Codecov,
+            ManagedOption::PypiPublish,
+            ManagedOption::Prettier,
+            ManagedOption::Editorconfig,
+            ManagedOption::Markdownlint,
+        ],
+        required_tools: &["uv", "just"],
+        render_managed_files: python_library::render_managed_files_from_pyproject,
+        clean_optional_files: python_library::clean_optional_files_from_pyproject,
+        optional_cleanup_paths: python_library::optional_cleanup_paths_from_pyproject,
+    },
+    BlueprintDefinition {
+        id: BlueprintName::RustLibrary,
+        name: rust_library::BLUEPRINT_NAME,
+        version: rust_library::BLUEPRINT_VERSION,
+        summary: "Rust library with Cargo, fmt, clippy, and CI",
+        description: "rust-library - Rust library with Cargo, fmt, clippy, and CI",
+        fields: RUST_LIBRARY_FIELDS,
+        options: &[
+            ManagedOption::Docs,
+            ManagedOption::Prettier,
+            ManagedOption::Editorconfig,
+            ManagedOption::Markdownlint,
+        ],
+        required_tools: &["cargo", "uv", "just"],
+        render_managed_files: rust_library::render_managed_files_from_pyproject,
+        clean_optional_files: rust_library::clean_optional_files_from_pyproject,
+        optional_cleanup_paths: rust_library::optional_cleanup_paths_from_pyproject,
+    },
+];
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BlueprintField {
+    pub name: &'static str,
+    pub required: bool,
+    pub default: Option<&'static str>,
+    pub description: &'static str,
+}
+
+impl BlueprintField {
+    pub const fn required(name: &'static str, description: &'static str) -> Self {
+        Self {
+            name,
+            required: true,
+            default: None,
+            description,
+        }
+    }
+
+    pub const fn defaulted(
+        name: &'static str,
+        default: &'static str,
+        description: &'static str,
+    ) -> Self {
+        Self {
+            name,
+            required: false,
+            default: Some(default),
+            description,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ManagedOption {
+    Docs,
+    Prettier,
+    Editorconfig,
+    Markdownlint,
+    Codecov,
+    PypiPublish,
+}
+
+impl ManagedOption {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Docs => "docs",
+            Self::Prettier => ManagedComponent::Prettier.option_name(),
+            Self::Editorconfig => ManagedComponent::Editorconfig.option_name(),
+            Self::Markdownlint => ManagedComponent::Markdownlint.option_name(),
+            Self::Codecov => "codecov",
+            Self::PypiPublish => "pypi-publish",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Docs => "MkDocs documentation site and docs index",
+            Self::Prettier => ManagedComponent::Prettier.description(),
+            Self::Editorconfig => ManagedComponent::Editorconfig.description(),
+            Self::Markdownlint => ManagedComponent::Markdownlint.description(),
+            Self::Codecov => "Codecov coverage upload step in CI",
+            Self::PypiPublish => "Trusted PyPI publishing workflow for releases",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        Self::parse_with_error_code(value, ErrorCode::Input)
+    }
+
+    pub fn parse_with_error_code(value: &str, error_code: ErrorCode) -> Result<Self> {
+        match value {
+            "docs" => Ok(Self::Docs),
+            "prettier" => Ok(Self::Prettier),
+            "editorconfig" => Ok(Self::Editorconfig),
+            "markdownlint" => Ok(Self::Markdownlint),
+            "codecov" => Ok(Self::Codecov),
+            "pypi-publish" => Ok(Self::PypiPublish),
+            other => Err(coded_error(
+                error_code,
+                format!("unsupported managed option '{other}'"),
+            )),
+        }
+    }
+}
+
+pub type ManagedOptionValues = BTreeMap<ManagedOption, bool>;
+
+pub fn validate_managed_options(
+    blueprint: BlueprintName,
+    options: BTreeMap<String, bool>,
+) -> Result<ManagedOptionValues> {
+    validate_managed_options_with_error_code(blueprint, options, ErrorCode::Input, false)
+}
+
+pub fn validate_managed_options_from_metadata(
+    blueprint: BlueprintName,
+    options: BTreeMap<String, bool>,
+) -> Result<ManagedOptionValues> {
+    validate_managed_options_with_error_code(blueprint, options, ErrorCode::Env, false)
+}
+
+fn validate_managed_options_with_error_code(
+    blueprint: BlueprintName,
+    options: BTreeMap<String, bool>,
+    error_code: ErrorCode,
+    fill_missing_defaults: bool,
+) -> Result<ManagedOptionValues> {
+    let mut values = ManagedOptionValues::new();
+
+    for (name, enabled) in options {
+        let option = ManagedOption::parse_with_error_code(&name, error_code)?;
+        if !blueprint.supports_option(option) {
+            return Err(coded_error(
+                error_code,
+                format!(
+                    "option '{}' is not supported by {}",
+                    option.as_str(),
+                    blueprint.as_str()
+                ),
+            ));
+        }
+        values.insert(option, enabled);
+    }
+
+    for option in blueprint.supported_options() {
+        if !values.contains_key(option) {
+            if fill_missing_defaults {
+                values.insert(*option, blueprint.option_default_enabled(*option));
+            } else {
+                return Err(coded_error(
+                    error_code,
+                    format!("missing tool.forge.options.{}", option.as_str()),
+                ));
+            }
+        }
+    }
+
+    Ok(values)
+}
+
+pub fn managed_option_enabled(
+    options: &ManagedOptionValues,
+    option: ManagedOption,
+) -> Result<bool> {
+    options
+        .get(&option)
+        .copied()
+        .with_context(|| format!("missing tool.forge.options.{}", option.as_str()))
+}
+
+pub fn detect_blueprint_from_pyproject(content: &str) -> Result<BlueprintName> {
+    Ok(detect_blueprint_metadata_from_pyproject(content)?.name)
+}
+
+pub fn detect_blueprint_metadata_from_pyproject(content: &str) -> Result<BlueprintMetadata> {
+    let parsed: Value = toml::from_str(content).map_err(|error| {
+        coded_error(
+            ErrorCode::Env,
+            format!("failed to parse pyproject.toml: {error}"),
+        )
+    })?;
+    let forge = parsed
+        .get("tool")
+        .and_then(Value::as_table)
+        .and_then(|tool| tool.get("forge"))
+        .and_then(Value::as_table)
+        .ok_or_else(|| coded_error(ErrorCode::Env, "missing [tool.forge] blueprint metadata"))?;
+
+    let blueprint = forge
+        .get("blueprint")
+        .and_then(Value::as_str)
+        .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint"))?;
+    let name = BlueprintName::from_metadata_with_error_code(blueprint, ErrorCode::Env)?;
+    let version = forge
+        .get("blueprint_version")
+        .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint_version"))?
+        .as_str()
+        .ok_or_else(|| {
+            coded_error(
+                ErrorCode::Env,
+                "tool.forge.blueprint_version must be a string",
+            )
+        })?;
+    validate_blueprint_version_compatibility(name, version)?;
+
+    Ok(BlueprintMetadata {
+        name,
+        version: Some(version.to_string()),
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BlueprintMetadata {
+    pub name: BlueprintName,
+    pub version: Option<String>,
+}
+
+fn validate_blueprint_version_compatibility(blueprint: BlueprintName, version: &str) -> Result<()> {
+    let parsed_version = parse_blueprint_version(version)?;
+    let supported = blueprint.version();
+    let parsed_supported = parse_blueprint_version(supported)?;
+    if parsed_version > parsed_supported {
+        return Err(coded_error(
+            ErrorCode::Env,
+            format!(
+                "tool.forge.blueprint_version {version} for {} is newer than this forge supports ({supported}); upgrade forge before running managed commands",
+                blueprint.as_str()
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn parse_blueprint_version(value: &str) -> Result<(u64, u64, u64)> {
+    let mut parts = value.split('.');
+    let major = parts
+        .next()
+        .ok_or_else(|| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?
+        .parse::<u64>()
+        .map_err(|_| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?;
+    let minor = parts
+        .next()
+        .ok_or_else(|| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?
+        .parse::<u64>()
+        .map_err(|_| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?;
+    let patch = parts
+        .next()
+        .ok_or_else(|| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?
+        .parse::<u64>()
+        .map_err(|_| {
+            coded_error(
+                ErrorCode::Env,
+                format!("invalid blueprint version '{value}'"),
+            )
+        })?;
+    if parts.next().is_some() {
+        return Err(coded_error(
+            ErrorCode::Env,
+            format!("invalid blueprint version '{value}'"),
+        ));
+    }
+
+    Ok((major, minor, patch))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::{CodedError, ErrorCode};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn detects_supported_blueprint_from_metadata() {
+        let metadata = "[tool.forge]\nblueprint = \"any-project\"\nblueprint_version = \"0.1.0\"\n";
+
+        let blueprint =
+            detect_blueprint_from_pyproject(metadata).expect("metadata should be supported");
+
+        assert_eq!(blueprint, BlueprintName::AnyProject);
+    }
+
+    #[test]
+    fn detects_blueprint_version_when_present() {
+        let metadata = "[tool.forge]\nblueprint = \"any-project\"\nblueprint_version = \"0.1.0\"\n";
+
+        let parsed =
+            detect_blueprint_metadata_from_pyproject(metadata).expect("metadata should parse");
+
+        assert_eq!(parsed.name, BlueprintName::AnyProject);
+        assert_eq!(parsed.version.as_deref(), Some("0.1.0"));
+    }
+
+    #[test]
+    fn rejects_missing_blueprint_version_from_metadata() {
+        let metadata = "[tool.forge]\nblueprint = \"python-library\"\n";
+
+        let error = detect_blueprint_metadata_from_pyproject(metadata)
+            .expect_err("missing blueprint version should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("missing tool.forge.blueprint_version")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_blueprint_version_format() {
+        let metadata = "[tool.forge]\nblueprint = \"python-library\"\nblueprint_version = \"1\"\n";
+
+        let error =
+            detect_blueprint_metadata_from_pyproject(metadata).expect_err("invalid version fails");
+
+        assert!(error.to_string().contains("invalid blueprint version '1'"));
+    }
+
+    #[test]
+    fn rejects_newer_blueprint_version_than_supported() {
+        let metadata =
+            "[tool.forge]\nblueprint = \"python-library\"\nblueprint_version = \"9.0.0\"\n";
+
+        let error =
+            detect_blueprint_metadata_from_pyproject(metadata).expect_err("future version fails");
+
+        assert!(error.to_string().contains("newer than this forge supports"));
+        assert!(error.to_string().contains("upgrade forge"));
+    }
+
+    #[test]
+    fn rejects_non_string_blueprint_version() {
+        let metadata = "[tool.forge]\nblueprint = \"python-library\"\nblueprint_version = 1\n";
+
+        let error = detect_blueprint_metadata_from_pyproject(metadata)
+            .expect_err("non-string blueprint_version fails");
+
+        assert!(
+            error
+                .to_string()
+                .contains("tool.forge.blueprint_version must be a string")
+        );
+    }
+
+    #[test]
+    fn registry_has_one_definition_for_each_blueprint() {
+        let registry_ids = BLUEPRINT_REGISTRY
+            .iter()
+            .map(|blueprint| blueprint.id.as_str())
+            .collect::<BTreeSet<_>>();
+        let all_ids = BlueprintName::ALL
+            .iter()
+            .map(|blueprint| blueprint.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(registry_ids, all_ids);
+    }
+
+    #[test]
+    fn definition_lookup_matches_registry_metadata() {
+        for blueprint in BlueprintName::ALL {
+            let definition = blueprint.definition();
+            assert_eq!(definition.id, blueprint);
+            assert_eq!(definition.name, blueprint.as_str());
+        }
+    }
+
+    #[test]
+    fn registry_metadata_names_are_unique_and_resolvable() {
+        let mut names = BTreeSet::new();
+
+        for definition in &BLUEPRINT_REGISTRY {
+            assert!(names.insert(definition.name));
+            assert_eq!(
+                BlueprintName::from_metadata(definition.name).expect("blueprint should resolve"),
+                definition.id
+            );
+            assert!(!definition.fields.is_empty());
+            assert!(!definition.required_tools.is_empty());
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_blueprint_from_metadata() {
+        let metadata = "[tool.forge]\nblueprint = \"web-app\"\n";
+
+        let error = detect_blueprint_from_pyproject(metadata).expect_err("blueprint should fail");
+
+        assert!(error.to_string().contains("unsupported blueprint"));
+    }
+
+    #[test]
+    fn metadata_option_validation_reports_env_error_code() {
+        let options = BTreeMap::from([(String::from("prettier_typo"), true)]);
+        let error = validate_managed_options_from_metadata(BlueprintName::AnyProject, options)
+            .expect_err("unknown metadata option should fail");
+
+        let coded = error
+            .downcast_ref::<CodedError>()
+            .expect("metadata option errors should be typed");
+        assert_eq!(coded.code(), ErrorCode::Env);
+    }
+
+    #[test]
+    fn metadata_option_validation_rejects_missing_supported_options() {
+        let options = BTreeMap::from([(String::from("docs"), false)]);
+
+        let error = validate_managed_options_from_metadata(BlueprintName::AnyProject, options)
+            .expect_err("missing supported options should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("missing tool.forge.options.prettier")
+        );
+    }
+
+    #[test]
+    fn metadata_blueprint_detection_reports_env_error_code() {
+        let error = detect_blueprint_metadata_from_pyproject("[tool.forge]\n")
+            .expect_err("missing blueprint should fail");
+
+        let coded = error
+            .downcast_ref::<CodedError>()
+            .expect("metadata detection errors should be typed");
+        assert_eq!(coded.code(), ErrorCode::Env);
+    }
+}

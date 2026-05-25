@@ -1,4 +1,9 @@
+pub mod blueprints;
+pub mod completions;
+pub mod components;
+pub mod diff;
 pub mod doctor;
+pub mod init;
 pub mod new;
 pub mod self_update;
-pub mod upgrade;
+pub mod update;
