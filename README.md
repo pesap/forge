@@ -1,119 +1,26 @@
 # forge
 
-`forge` is a project generator and managed infrastructure updater. It renders
-managed project infrastructure from blueprints, then reapplies those managed
-artifacts during updates without keeping a separate status file in the target
-repository.
+Scaffold repositories from blueprints and keep their infrastructure up to date.
 
-Current blueprint support:
+[![Crates.io](https://img.shields.io/crates/v/forge-cli.svg)](https://crates.io/crates/forge-cli)
+[![CI](https://github.com/pesap/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-- `any-project`
-- `python-library`
-- `rust-library`
+`forge` generates managed project infrastructure from blueprints, then reapplies
+those managed artifacts during updates. No separate status file needed: it
+reads project metadata from `[tool.forge]` in `pyproject.toml` to drive
+update, drift check, and cleanup.
 
-## Commands
+Current blueprints: `any-project`, `python-library`, `rust-library`.
 
-- `forge new` creates a new project from a blueprint
-- `forge init` adds Forge-managed infrastructure to an existing repository
-- `forge blueprints` lists available blueprints and their intended use
-- `forge components` lists reusable optional components such as Prettier
-- `forge completions` emits shell completion scripts
-- `forge update` updates managed infra files in an existing project
-- `forge self update` updates the `forge` CLI (or prints install-method guidance)
-- `forge doctor` reports local tool status
-
-Running `forge` with no subcommand prints top-level help and quickstart examples
-and exits successfully for first-run discovery.
-
-`forge doctor` exits nonzero when required local tools are missing, while still
-printing every checked tool and detected version so setup problems can be fixed
-in one pass. When required tools are missing, human and JSON output include
-`next_steps` for recovery.
-Use `forge doctor --blueprint python-library`, `rust-library`, or `any-project`
-to check only the tools required for that project type.
-Inside an existing Forge-managed repository, use `forge doctor --path .` to
-detect the blueprint and enabled components from `pyproject.toml`, then check
-only the matching toolchain. Path-scoped doctor checks validate the current
-strict `[tool.forge]` metadata before reporting tool status, so corrupt managed
-metadata fails before environment diagnostics.
-If the path is not yet Forge-managed, doctor points at `forge init --path ...`
-for repository adoption.
-When a scoped doctor check fails, `next_steps` keeps the same `--path` or
-`--blueprint` scope for the rerun command.
-Use `forge doctor --json` to emit the same diagnostics as structured JSON for
-CI or setup scripts.
-Doctor JSON includes top-level `status_code` values `ok` and
-`missing_required`.
-Doctor JSON includes `scope_code` values `global`, `blueprint`, or `path` so
-automation can branch on the diagnostic scope without parsing human output.
-When scoped to a managed project path, doctor JSON also includes
-`blueprint_version`.
-Each tool entry includes stable `status_code` values: `installed`,
-`missing_required`, or `missing_optional`.
-
-Use `forge completions bash`, `zsh`, `fish`, `powershell`, or `elvish` to print
-completion scripts for your shell.
-
-When run interactively, `forge new` prompts for the blueprint and only then asks
-for the fields that blueprint needs, including editable defaults such as license
-and minimum Python version. In `--yes` mode, `--blueprint` is required so
-automation always records an explicit project type, defaulted fields keep their
-documented defaults, and missing required setup flags are reported together
-before any files are written.
-After interactive prompts, Forge shows a setup review summary and asks for
-confirmation before writing files; `--yes`, `--json`, and `--dry-run` bypass
-that confirmation step. The review includes a copyable `forge new ... --yes`
-command so prompt-driven setup and automation use the same flags.
-When stdin is not an interactive terminal, prompt-driven setup fails fast with a
-`--yes` hint so CI and scripts do not hang waiting for input.
-Use `forge new --json --yes ...` to emit a machine-readable creation report with
-a clean JSON stdout stream for scripts. Human and JSON creation reports include
-the selected managed options so setup choices are visible before future
-`forge update` runs.
-Creation JSON includes both `blueprint` and `blueprint_version`.
-`forge new --json` includes `status_code` values `created` or `dry_run`.
-Use `forge new --dry-run ...` to preview generated files without creating the
-destination directory, initializing git, or touching GitHub. If `--github` is
-included, the preview reports the requested repository visibility without
-requiring `gh`.
-Dry-run reports include a copyable `forge new ...` command with the same setup
-flags so the reviewed project can be created directly.
-Add `--diff` to a human dry run to inspect generated text files before creating
-the project.
-For `python-library` and `rust-library`, `--package-name` defaults from
-`--project-name` when omitted.
-
-Use `forge init --path . --blueprint ... --yes` when a repository already has
-source code and should start using Forge-managed infrastructure. `init` writes
-only managed infrastructure and metadata, not starter source files. During
-adoption, differing existing managed paths are reported as conflicts instead of
-being overwritten; use `forge init --dry-run` or `--json` to inspect the plan.
-Interactive `forge init` runs also show a setup review summary and ask for
-confirmation before applying managed infrastructure; `--yes`, `--json`, and
-`--dry-run` bypass that confirmation step. The review includes a copyable
-`forge init ... --yes` command so prompt-driven setup and automation stay aligned.
-The JSON report includes the selected options, planned actions, and
-`next_steps` for conflict recovery, dry-run, and applied initialization flows.
-Initialization JSON includes both `blueprint` and `blueprint_version`.
-`forge init --json` includes `status_code` values `initialized`, `dry_run`, or
-`conflicts`.
-Dry-run reports include a copyable `forge init ...` command with the same setup
-flags so the reviewed plan can be applied directly.
-Successful init reports include `cd ...`, `uv sync --all-groups`, and
-`just verify` next steps so commands run from the adopted repository.
-Add `--diff` to a dry run to inspect text changes for conflicting managed files
-before accepting ownership.
-After reviewing the planned managed files, rerun with `--force` to let Forge
-overwrite those selected infrastructure paths. Conflict reports include a
-copyable `forge init ... --force` command with the original setup flags.
-Repositories that already contain `[tool.forge]` metadata are rejected by
-`forge init`; use `forge update --path .` for managed repositories instead.
-After init succeeds, future changes flow through `forge update --path .`.
+---
 
 ## Quickstart
 
+Create a Python library project:
+
 ```bash
-cargo run -- new \
+forge new \
   --blueprint python-library \
   --path ./demo-lib \
   --project-name demo-lib \
@@ -126,151 +33,347 @@ cargo run -- new \
   --yes
 ```
 
-Then inside generated repo:
+Then inside the generated project:
 
 ```bash
 uv sync --all-groups
 just verify
 ```
 
-Generated Python projects include shared agent instructions in `AGENTS.md`, a
-managed `CLAUDE.md` symlink to those instructions, `uv`/`prek` tooling,
-GitHub Actions, release-please configuration, and a scheduled forge update
-workflow that opens an infrastructure update PR.
-Generated `prek` hooks check Forge-managed infrastructure drift locally with
-`forge update --path . --check`.
-Generated CI workflows use read-only repository token permissions, disable
-persisted checkout credentials, cancel stale runs for the same ref, cache `uv`
-dependencies from `pyproject.toml` and `uv.lock`, enforce that CI does not
-rewrite the lockfile with an explicit `uv lock --check`, use current maintained
-action majors, and use bounded job timeouts. The scheduled Forge update
-workflow serializes update runs and requests write permissions only so it can
-open update PRs. Update PRs refresh `uv.lock` after `forge update --path .` so
-dependency metadata and generated locked CI stay in sync.
-Generated `just verify` recipes and hooks use locked, non-mutating `uv` commands
-for verification steps, while `sync`, `format`, and fix-oriented tasks remain
-allowed to refresh the environment intentionally.
-Optional trusted PyPI publishing uses a dedicated `pypi` GitHub environment and
-job-scoped OIDC permissions. Generated release and publish workflows serialize
-duplicate runs so release PR creation and PyPI publishing do not overlap for the
-same ref or release.
+That is it. Generated projects include managed CI, release-please
+configuration, agent instructions, `prek` hooks, and a scheduled Forge update
+workflow that opens an infrastructure update PR when drift is detected.
 
-Language-agnostic infrastructure projects use `--blueprint any-project`. They
-generate the same managed agent instructions, `uv`/`prek` workflow, CI, and
-scheduled Forge update workflow without creating language-specific package
-source files. They also include MkDocs documentation by default.
+---
 
-Rust library projects use `--blueprint rust-library`. They generate Cargo
-package files, Rust-focused `just` tasks, cargo fmt/clippy hooks, CI, shared
-agent instructions, MkDocs project docs, and the same scheduled Forge update
-workflow.
+## Install
 
-Optional components are registered in Forge and stored in `[tool.forge.options]`
-in `pyproject.toml`.
-Use `forge components` or `forge components --json` to inspect the reusable
-component registry, managed files, hook support, mutating format commands,
-non-mutating check commands, and supported blueprints.
-Use `forge components --blueprint python-library` (or another blueprint) to
-focus on components supported by a specific project type.
-The JSON form is an object with top-level `status_code` (`ok`) and a
-`components` array.
-For example, `forge new --prettier ... --yes` adds managed Prettier config and a
-local `prek` hook for JSON, YAML, and Markdown using a pinned Prettier version.
-`forge new --editorconfig ... --yes` adds a managed `.editorconfig` baseline for
-cross-editor whitespace consistency.
-`just format` applies Prettier when the component is enabled, while generated
-hooks and CI use Prettier check mode so verification does not rewrite files.
-Later `forge update --path .` uses that existing metadata to add, refresh, or
-remove managed component files without a separate status file.
-Boolean creation flags accept both script-friendly values and shorthand forms:
-use `--pypi-publish` or `--pypi-publish=true` to enable trusted PyPI publishing,
-use `--prettier=false` to leave Prettier disabled explicitly in generated
-metadata, and use `--docs=false` or `--codecov=false` to disable components
-that are enabled by default.
-For optional setup booleans, use explicit boolean values (for example
-`--prettier=false` and `--github=false`).
-Creation and init flags are kebab-case.
-When docs are disabled, Forge omits MkDocs files, the MkDocs dependency group,
-and the generated `just docs` recipe.
-Blueprint-specific creation flags are validated before files are written, so
-language-specific options such as `--python-min`, `--package-name`, or
-`--author-name` are rejected when the selected blueprint does not use them.
-For `python-library`, `--python-min` must be a Python 3 `major.minor` value from
-`3.8` through `3.14`; Forge uses it in `.python-version`, packaging metadata,
-and CI. Generated CI never tests Python versions below that configured minimum,
-and includes supported newer Python releases through `3.14`.
-GitHub repository flags are also strict: `--github-owner` and
-`--github-visibility` require `--github`, and visibility defaults to public only
-when repository creation is enabled.
+```bash
+cargo install forge-cli
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/pesap/forge
+cd forge
+cargo build --release
+# target/release/forge is now ready
+```
+
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `forge new` | Create a new project from a blueprint |
+| `forge init` | Adopt Forge-managed infrastructure in an existing repository |
+| `forge update` | Refresh managed infrastructure in a Forge-managed project |
+| `forge blueprints` | List available blueprints and their setup fields |
+| `forge components` | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
+| `forge doctor` | Check local toolchain health |
+| `forge completions` | Emit shell completion scripts (bash, zsh, fish, powershell, elvish) |
+| `forge self update` | Update the forge binary |
+
+Running `forge` with no subcommand prints top-level help and quickstart examples
+for first-run discovery.
+
+---
+
+## Concepts
+
+### Blueprints
+
+A blueprint defines what files a project generates. Each blueprint registers its
+setup fields, managed files, required tools, and optional components in a single
+integration point.
+
+```bash
+# List all blueprints with their fields and defaults
+forge blueprints --json
+```
+
+### Managed infrastructure
+
+Forge writes two kinds of files:
+
+- **Project files** -- starter source code, package metadata, agent instructions.
+  Generated once by `forge new`.
+- **Managed files** -- CI workflows, hook configs, documentation config, editor
+  settings. Regenerated on every `forge update` run, so they stay current with
+  the latest templates.
+
+Managed files are tracked through `[tool.forge]` metadata embedded in
+`pyproject.toml`. No separate status file.
+
+### Optional components
+
+Components are reusable opt-in features like Prettier, EditorConfig, PyPI
+publishing, MkDocs, and Codecov. They are registered in `[tool.forge.options]`
+and can be toggled after project creation.
+
+```bash
+# List components and their supported blueprints
+forge components --json
+
+# Add Prettier to an existing project
+forge update --path . --set prettier=true
+
+# Remove it
+forge update --path . --set prettier=false
+```
+
+---
+
+## Workflows
+
+### Starting a new project
+
+Interactive mode prompts for the blueprint and its fields, shows a review
+summary, then asks for confirmation before writing files.
+
+```bash
+forge new
+```
+
+Non-interactive mode requires `--blueprint` and `--yes`:
+
+```bash
+forge new --blueprint python-library --path ./my-pkg --project-name my-pkg --yes
+```
+
+Other useful flags:
+
+| Flag | Effect |
+|---|---|
+| `--json` | Machine-readable creation report on stdout |
+| `--dry-run` | Preview generated files without creating anything |
+| `--diff` | Include text diffs in human dry-run output |
+| `--github` | Also create a GitHub repository and push |
+
+<details>
+<summary>Blueprint-specific flags and interactive mode</summary>
+
+Python library blueprints accept `--package-name`, `--author-name`,
+`--author-email`, `--license`, `--python-min`, and component flags.
+
+Rust library blueprints accept `--package-name`, `--author-name`,
+`--author-email`, `--license`, and component flags.
+
+`any-project` accepts `--author-name`, `--author-email`, `--license`, and
+component flags.
+
+`--package-name` defaults from `--project-name` when omitted.
+
+`--python-min` accepts values from `3.8` through `3.14`. Generated CI tests the
+configured minimum through `3.14`.
+
+Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
+`--pypi-publish`. Use `--docs=false` to disable MkDocs (enabled by default for
+`any-project` and `rust-library`).
+
+Boolean flags accept script-friendly forms: `--pypi-publish` or
+`--pypi-publish=true`.
+
+GitHub flags: `--github-owner` and `--github-visibility` require `--github`.
+Visibility defaults to public.
+
+In interactive mode, prompts include editable defaults and the review summary
+includes a copyable `forge new ... --yes` command so the same setup can be
+reused in automation. When stdin is not a terminal, prompt-driven setup fails
+fast with a `--yes` hint. Use `--yes`, `--json`, or `--dry-run` to bypass the
+confirmation step.
+
 When `--github` is enabled, Forge runs `uv lock` before the initial commit so
-the pushed repository includes the lockfile required by generated locked CI.
-If dependency locking or GitHub repository creation fails after local
-generation, Forge leaves the local project in place and prints a retry command
-from that project directory.
+the pushed repository includes the lockfile. If GitHub creation fails, the
+local project is left in place.
 
-Use `forge update --path . --dry-run` to preview managed creates, updates,
-relinks, and removals before changing files.
-Use `forge update --path . --yes` to apply managed changes without an
-interactive confirmation prompt.
-In interactive terminals, `forge update` asks for confirmation before applying
-managed changes; use `--yes` to skip the prompt.
-When stdin is not an interactive terminal, apply-mode updates fail fast unless
-`--yes` is passed.
-When apply-mode update finds no managed drift, Forge reports `Project checked`
-and `managed infrastructure is already current`.
-Add `--diff` to human dry-runs, or to `--check`, when you want a text diff of
-managed file creates, updates, and removals before applying an update.
+</details>
+
+### Adopting Forge in an existing repo
+
+```bash
+forge init --path . --blueprint python-library --yes
+```
+
+`forge init` writes only managed infrastructure and metadata, not starter source
+files. Conflicting existing files are reported instead of overwritten.
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Preview what would be written |
+| `--json` | Machine-readable init report |
+| `--diff` | Include text diffs for conflicting files |
+| `--force` | Overwrite conflicting managed paths |
+
+After init succeeds, future changes flow through `forge update --path .`.
+
+Repositories that already have `[tool.forge]` metadata are rejected by `init`;
+use `forge update` instead.
+
+### Keeping infrastructure current
+
+```bash
+# Check for drift (exit code reflects result)
+forge update --path . --check
+
+# Preview changes
+forge update --path . --dry-run --diff
+
+# Apply changes
+forge update --path . --yes
+```
+
+Forge reads `[tool.forge]` from `pyproject.toml`, compares the registered
+managed files against the templates, and writes creates, updates, relinks, or
+removals as needed. Symlink relinks and text file updates go through temporary
+paths before replacing targets.
+
+| Flag | Effect |
+|---|---|
+| `--json` | Machine-readable update report |
+| `--dry-run` | Preview without writing |
+| `--diff` | Include text diffs |
+| `--check` | Exit nonzero on drift (for CI) |
+| `--set key=value` | Enable or disable a managed option |
+| `--yes` | Skip confirmation prompt |
+
+<details>
+<summary>Update behavior details</summary>
+
 Managed text updates and symlink relinks are staged through temporary paths in
 the same directory before replacing the target, so a failed write does not leave
 a truncated file or missing link behind.
-Add `--json` to emit the same update report as structured JSON for automation.
-The JSON report includes the detected blueprint, the project-stored blueprint
-`version`, project-stored blueprint `options`, top-level `status_code`,
-`changes` and `conflicts` counts,
-`next_steps`, and
-per-file actions with stable `reason_code` values for conflicts. Filesystem
-conflicts such as a directory at a managed file path, a non-directory managed
-parent path, or an unreadable managed text file are reported before Forge writes
-any changes, with `next_steps` pointing at conflict recovery.
-`status_code` values are `updated`, `current`, `dry_run`, `out_of_date`, and
-`conflicts`.
-Blueprint and component file paths, including managed symlink targets, must be
-repository-relative and cannot use absolute paths or `..` traversal, so
-generated infrastructure cannot escape the target repository.
-Forge reads only the current strict `[tool.forge]` schema. Unknown metadata is
-rejected.
+
 If `tool.forge.blueprint_version` is newer than the running Forge binary,
-managed commands fail fast and ask you to upgrade Forge before applying changes.
-Use `forge update --path . --check` in CI to fail when managed infrastructure
-has drifted. Drift reports include `forge update --path ...` in `next_steps` so
-CI logs and JSON automation point directly at the repair command.
-Dry-run and check reports preserve any `--set` overrides and include `--yes` in
-their apply command, so previews can be rerun directly after review.
-Use `forge update --path . --set prettier=true` to enable an optional managed
-component after project creation; use `prettier=false` to remove its managed
-files.
-When a `--set` change only affects `[tool.forge.options]`, Forge preserves
-unrelated `pyproject.toml` comments and formatting while changing the selected
-option value.
-Human and JSON update output include `uv lock` as a next step when the planned
-managed changes touch `pyproject.toml`.
-Option names in `--set` use the same kebab-case names shown by
-`forge blueprints`; for example, use `pypi-publish=true`.
-If `[tool.forge.options]` is missing or missing newer supported keys, Forge
-defaults those option values to blueprint defaults during metadata validation
-and writes the canonical full option set on the next successful `forge update`.
-Unknown option keys still fail so typos do not silently change behavior.
-`forge blueprints --json` emits the blueprint registry, setup fields, required
-local tools, supported managed options, each default state, descriptions, and
-canonical create/init/check commands as structured JSON. The JSON form is an
-object with top-level `status_code` (`ok`) and a `blueprints` array.
+managed commands fail fast and ask for an upgrade first.
 
-Blueprints are selected explicitly with `--blueprint`.
+`--set` changes that only touch `[tool.forge.options]` preserve unrelated
+`pyproject.toml` comments and formatting.
 
-Command output is intentionally linear and automation-friendly: completion
-summaries use section headings, `[ok]` status lines, key/value context, and
-copyable next-step commands instead of spinners or terminal-only effects.
-When stdout is an interactive terminal, Forge adds restrained color for scanning;
-redirected output, CI, `TERM=dumb`, and `NO_COLOR` stay plain (`--color never`
-also forces plain output).
-Use `--color auto|always|never` to control color policy explicitly.
+When `--set` adds a managed component, its files are generated. When `--set`
+removes a component, its files are deleted. User-owned files are never touched
+by component cleanup.
+
+</details>
+
+### Diagnostics
+
+```bash
+# Check all required tools
+forge doctor
+
+# Check tools for a specific project type
+forge doctor --blueprint python-library
+
+# Check tools for the current directory's blueprint
+forge doctor --path .
+```
+
+| Flag | Effect |
+|---|---|
+| `--json` | Structured diagnostics for CI or setup scripts |
+| `--blueprint <name>` | Scope to a blueprint's required toolchain |
+| `--path .` | Detect blueprint from `pyproject.toml` and check matching tools |
+
+<details>
+<summary>Doctor output details</summary>
+
+Doctor exits nonzero when required tools are missing, while printing every
+checked tool and detected version. Human and JSON output include `next_steps`
+for recovery.
+
+JSON output includes `status_code` (`ok`, `missing_required`), `scope_code`
+(`global`, `blueprint`, `path`), `blueprint_version` (when path-scoped), and
+per-tool `status_code` (`installed`, `missing_required`, `missing_optional`).
+
+Path-scoped doctor validates strict `[tool.forge]` metadata before checking
+tools, so corrupt metadata fails before environment diagnostics.
+
+If the path is not yet Forge-managed, doctor points at `forge init --path ...`.
+
+</details>
+
+### Shell completions
+
+```bash
+forge completions bash
+forge completions zsh
+forge completions fish
+forge completions powershell
+forge completions elvish
+```
+
+---
+
+## Generated output
+
+All blueprints generate:
+
+- **Agent instructions** -- shared `AGENTS.md` with a managed `CLAUDE.md` symlink
+- **CI** -- GitHub Actions with read-only token permissions, `uv` caching,
+  lockfile verification (`uv lock --check`), bounded timeouts, and cancellation
+  of stale runs on the same ref
+- **Hooks** -- `prek` hooks that check Forge infrastructure drift
+- **Release** -- `release-please` configuration
+- **Scheduled update workflow** -- opens an infrastructure update PR when drift
+  is found (write permissions only, serialized runs)
+
+### Blueprint-specific output
+
+| Blueprint | Generates |
+|---|---|
+| `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional MkDocs, optional PyPI publishing via OIDC |
+| `rust-library` | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional MkDocs |
+| `any-project` | Language-agnostic: the common files above plus MkDocs by default, no package source files |
+
+### Optional components
+
+| Component | What it adds |
+|---|---|
+| Prettier | `.prettierrc`, `prek` hook for JSON/YAML/Markdown formatting |
+| EditorConfig | `.editorconfig` baseline for cross-editor whitespace consistency |
+| MkDocs | Documentation scaffold, `just docs` recipe |
+| Codecov | CI integration for coverage reporting (where supported) |
+| PyPI publishing | Trusted publishing via OIDC, `pypi` GitHub environment, serialized release/publish workflows |
+
+Components enabled at creation time are recorded in `[tool.forge.options]`.
+Toggling them later updates managed files without touching anything user owns.
+
+---
+
+## Output conventions
+
+Forge output is linear and automation-friendly: completion summaries use section
+headings, `[ok]` status lines, key/value context, and copyable next-step
+commands instead of spinners or terminal-only effects.
+
+- Interactive terminals get restrained color for scanning.
+- Redirected output, CI, `TERM=dumb`, and `NO_COLOR` stay plain.
+- `--color auto|always|never` controls color policy explicitly.
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/pesap/forge
+cd forge
+cargo build
+cargo test
+```
+
+Run all quality gates:
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test
+```
+
+---
+
+## License
+
+BSD 3-Clause. See [LICENSE](LICENSE).
