@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
@@ -10,6 +10,7 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::readme;
+use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
     BlueprintName, ManagedOption, managed_option_enabled, validate_managed_options_from_metadata,
@@ -133,56 +134,56 @@ pub fn optional_cleanup_paths_from_pyproject(content: &str) -> Result<Vec<PathBu
 }
 
 fn render_readme(config: &ProjectConfig) -> String {
-    format!(
-        "# {}\n\n{}\n\n## Development\n\n```bash\nuv sync --all-groups\njust hooks-install\njust verify\n```\n\n{}## Forge Metadata\n\nThis project is managed with `forge` blueprint `{}`.\n",
-        config.project_name,
-        config.description,
-        readme::automated_update_section(),
-        BLUEPRINT_NAME
+    #[derive(Serialize)]
+    struct Context<'a> {
+        project_name: &'a str,
+        description: &'a str,
+        automated_update_section: &'a str,
+        blueprint_name: &'a str,
+    }
+
+    template_engine::render_template(
+        "any_project/readme.md.j2",
+        Context {
+            project_name: &config.project_name,
+            description: &config.description,
+            automated_update_section: readme::automated_update_section(),
+            blueprint_name: BLUEPRINT_NAME,
+        },
     )
 }
 
 fn render_gitignore() -> String {
-    ".venv/\n.cache/\n.coverage\ncoverage/\ndist/\nbuild/\nsite/\n.DS_Store\n".to_string()
+    template_engine::render_template("any_project/gitignore.j2", ())
 }
 
 fn render_pyproject(config: &ProjectConfig) -> String {
-    let docs_group = render_docs_dependency_group(config.docs);
-    format!(
-        r#"[project]
-name = {project_name}
-version = "0.1.0"
-description = {description}
-requires-python = ">=3.11"
-dependencies = []
+    #[derive(Serialize)]
+    struct Context<'a> {
+        blueprint_name: &'a str,
+        blueprint_version: &'a str,
+        project_name: String,
+        description: String,
+        docs_group: &'a str,
+        docs: bool,
+        prettier: bool,
+        editorconfig: bool,
+        markdownlint: bool,
+    }
 
-[dependency-groups]
-dev = [
-    "prek>=0.3.5,<0.4.0",
-]
-{docs_group}
-
-[tool.forge]
-blueprint = "{blueprint_name}"
-blueprint_version = "{blueprint_version}"
-project_name = {project_name}
-description = {description}
-
-[tool.forge.options]
-docs = {docs}
-prettier = {prettier}
-editorconfig = {editorconfig}
-markdownlint = {markdownlint}
-"#,
-        blueprint_name = BLUEPRINT_NAME,
-        blueprint_version = BLUEPRINT_VERSION,
-        project_name = toml_value::string_literal(&config.project_name),
-        description = toml_value::string_literal(&config.description),
-        docs_group = docs_group,
-        docs = config.docs,
-        prettier = config.components.is_enabled(ManagedComponent::Prettier),
-        editorconfig = config.components.is_enabled(ManagedComponent::Editorconfig),
-        markdownlint = config.components.is_enabled(ManagedComponent::Markdownlint),
+    template_engine::render_template(
+        "any_project/pyproject.toml.j2",
+        Context {
+            blueprint_name: BLUEPRINT_NAME,
+            blueprint_version: BLUEPRINT_VERSION,
+            project_name: toml_value::string_literal(&config.project_name),
+            description: toml_value::string_literal(&config.description),
+            docs_group: render_docs_dependency_group(config.docs),
+            docs: config.docs,
+            prettier: config.components.is_enabled(ManagedComponent::Prettier),
+            editorconfig: config.components.is_enabled(ManagedComponent::Editorconfig),
+            markdownlint: config.components.is_enabled(ManagedComponent::Markdownlint),
+        },
     )
 }
 
@@ -195,15 +196,22 @@ fn render_docs_dependency_group(enabled: bool) -> &'static str {
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
-    let docs_recipe = if config.docs {
-        "\ndocs:\n    uv run mkdocs serve\n"
-    } else {
-        ""
-    };
-    let format_steps = render_component_format_steps(config);
+    #[derive(Serialize)]
+    struct Context {
+        docs_recipe: &'static str,
+        format_steps: String,
+    }
 
-    format!(
-        "set dotenv-load := false\n\ndefault:\n    @just --list\n\nsync:\n    uv sync --all-groups\n\nhooks-install:\n    uv run prek install\n{docs_recipe}\nformat:\n{format_steps}\nverify:\n    uv lock --check\n    uv run --locked prek run --all-files\n    forge update --path . --check\n"
+    template_engine::render_template(
+        "any_project/justfile.j2",
+        Context {
+            docs_recipe: if config.docs {
+                "\ndocs:\n    uv run mkdocs serve\n"
+            } else {
+                ""
+            },
+            format_steps: render_component_format_steps(config),
+        },
     )
 }
 
@@ -221,42 +229,82 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 }
 
 fn render_precommit_config(config: &ProjectConfig) -> String {
-    let component_hooks = config.components.pre_commit_hooks();
+    #[derive(Serialize)]
+    struct Context<'a> {
+        component_hooks: String,
+        forge_update_check_hook: &'a str,
+        uv_lock_hook: &'a str,
+    }
 
-    format!(
-        "default_install_hook_types:\n  - pre-commit\n  - pre-push\nrepos:\n  - repo: local\n    hooks:\n{component_hooks}      - id: forbid-large-files\n        name: forbid large files\n        entry: bash -c 'find . -type f -size +5M -not -path \"./.git/*\" -not -path \"./.venv/*\" -not -path \"./site/*\" -not -path \"./dist/*\" -not -path \"./build/*\" -print -quit | grep -q . && exit 1 || exit 0'\n        language: system\n        pass_filenames: false\n{}{}",
-        precommit::forge_update_check_hook(),
-        precommit::uv_lock_hook()
+    template_engine::render_template(
+        "any_project/pre-commit-config.yaml.j2",
+        Context {
+            component_hooks: config.components.pre_commit_hooks(),
+            forge_update_check_hook: precommit::forge_update_check_hook(),
+            uv_lock_hook: precommit::uv_lock_hook(),
+        },
     )
 }
 
 fn render_ci_workflow() -> String {
-    format!(
-        "name: CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n{}{}jobs:\n  verify:\n    runs-on: ubuntu-latest\n{}    steps:\n{}      - name: Install Rust\n        uses: dtolnay/rust-toolchain@stable\n{}{}{}{}{}{}",
-        github_actions::cancel_redundant_ci_concurrency(),
-        github_actions::read_only_permissions(),
-        github_actions::job_timeout(),
-        github_actions::read_only_checkout_step(),
-        github_actions::setup_uv_step(),
-        github_actions::install_forge_step(),
-        github_actions::uv_sync_locked_step(),
-        github_actions::uv_lock_check_step(),
-        github_actions::uv_run_locked_step("prek run --all-files"),
-        github_actions::forge_update_check_step()
+    #[derive(Serialize)]
+    struct Context<'a> {
+        cancel_redundant_ci_concurrency: &'a str,
+        read_only_permissions: &'a str,
+        job_timeout: &'a str,
+        read_only_checkout_step: &'a str,
+        setup_uv_step: &'a str,
+        install_forge_step: &'a str,
+        uv_sync_locked_step: &'a str,
+        uv_lock_check_step: &'a str,
+        uv_run_locked_step: String,
+        forge_update_check_step: &'a str,
+    }
+
+    template_engine::render_template(
+        "any_project/ci.yaml.j2",
+        Context {
+            cancel_redundant_ci_concurrency: github_actions::cancel_redundant_ci_concurrency(),
+            read_only_permissions: github_actions::read_only_permissions(),
+            job_timeout: github_actions::job_timeout(),
+            read_only_checkout_step: github_actions::read_only_checkout_step(),
+            setup_uv_step: github_actions::setup_uv_step(),
+            install_forge_step: github_actions::install_forge_step(),
+            uv_sync_locked_step: github_actions::uv_sync_locked_step(),
+            uv_lock_check_step: github_actions::uv_lock_check_step(),
+            uv_run_locked_step: github_actions::uv_run_locked_step("prek run --all-files"),
+            forge_update_check_step: github_actions::forge_update_check_step(),
+        },
     )
 }
 
 fn render_mkdocs(config: &ProjectConfig) -> String {
-    format!(
-        "site_name: {}\ntheme:\n  name: material\nnav:\n  - Home: index.md\n",
-        config.project_name
+    #[derive(Serialize)]
+    struct Context<'a> {
+        project_name: &'a str,
+    }
+
+    template_engine::render_template(
+        "any_project/mkdocs.yml.j2",
+        Context {
+            project_name: &config.project_name,
+        },
     )
 }
 
 fn render_docs_index(config: &ProjectConfig) -> String {
-    format!(
-        "# {}\n\n{}\n\n## Development\n\n```bash\nuv sync --all-groups\njust verify\n```\n",
-        config.project_name, config.description
+    #[derive(Serialize)]
+    struct Context<'a> {
+        project_name: &'a str,
+        description: &'a str,
+    }
+
+    template_engine::render_template(
+        "any_project/docs-index.md.j2",
+        Context {
+            project_name: &config.project_name,
+            description: &config.description,
+        },
     )
 }
 

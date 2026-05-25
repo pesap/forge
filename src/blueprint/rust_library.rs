@@ -10,6 +10,7 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::readme;
+use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
     BlueprintName, ManagedOption, managed_option_enabled, validate_managed_options_from_metadata,
@@ -188,33 +189,26 @@ pub fn optional_cleanup_paths_from_pyproject(content: &str) -> Result<Vec<PathBu
 }
 
 fn render_readme(config: &ProjectConfig) -> String {
-    format!(
-        "# {}\n\n{}\n\n## Development\n\n```bash\nuv sync --all-groups\njust hooks-install\njust verify\n```\n\n{}## Forge Metadata\n\nThis project is managed with `forge` blueprint `{}`.\n",
-        config.project_name,
-        config.description,
-        readme::automated_update_section(),
-        BLUEPRINT_NAME
+    template_engine::render_template(
+        "rust_library/readme.md.j2",
+        serde_json::json!({"project_name": config.project_name, "description": config.description, "automated_update_section": readme::automated_update_section(), "blueprint_name": BLUEPRINT_NAME}),
     )
 }
 
 fn render_license(config: &ProjectConfig) -> String {
-    let year = "2026";
-    let author = author_display_name(config);
-    match config.license.as_str() {
-        "MIT" => format!(
-            "MIT License\n\nCopyright (c) {year} {author}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-        ),
-        "Apache-2.0" => format!(
-            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nCopyright {year} {author}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
-        ),
-        _ => format!(
-            "BSD 3-Clause License\n\nCopyright (c) {year}, {author}\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
-        ),
-    }
+    let template = match config.license.as_str() {
+        "MIT" => "rust_library/mit-license.j2",
+        "Apache-2.0" => "rust_library/apache-license.j2",
+        _ => "rust_library/bsd-license.j2",
+    };
+    template_engine::render_template(
+        template,
+        serde_json::json!({"year": "2026", "author": author_display_name(config)}),
+    )
 }
 
 fn render_gitignore() -> String {
-    "target/\nCargo.lock\n.venv/\n.cache/\n.DS_Store\n".to_string()
+    template_engine::render_template("rust_library/gitignore.j2", ())
 }
 
 fn render_cargo_authors(config: &ProjectConfig) -> String {
@@ -244,62 +238,16 @@ fn author_display_name(config: &ProjectConfig) -> String {
 }
 
 fn render_cargo_toml(config: &ProjectConfig) -> String {
-    format!(
-        "[package]\nname = {}\nversion = \"0.1.0\"\nedition = {}\ndescription = {}\nlicense = {}\nauthors = [{}]\n\n[lib]\nname = {}\npath = \"src/lib.rs\"\n\n[dependencies]\n",
-        toml_value::string_literal(&config.project_name),
-        toml_value::string_literal(&config.rust_edition),
-        toml_value::string_literal(&config.description),
-        toml_value::string_literal(&config.license),
-        render_cargo_authors(config),
-        toml_value::string_literal(&config.crate_name)
+    template_engine::render_template(
+        "rust_library/cargo.toml.j2",
+        serde_json::json!({"project_name": toml_value::string_literal(&config.project_name), "rust_edition": toml_value::string_literal(&config.rust_edition), "description": toml_value::string_literal(&config.description), "license": toml_value::string_literal(&config.license), "cargo_authors": render_cargo_authors(config), "crate_name": toml_value::string_literal(&config.crate_name)}),
     )
 }
 
 fn render_pyproject(config: &ProjectConfig) -> String {
-    let docs_group = render_docs_dependency_group(config.docs);
-    format!(
-        r#"[project]
-name = {project_name}
-version = "0.1.0"
-description = {description}
-requires-python = ">=3.11"
-dependencies = []
-
-[dependency-groups]
-dev = [
-    "prek>=0.3.5,<0.4.0",
-]
-{docs_group}
-
-[tool.forge]
-blueprint = "{blueprint_name}"
-blueprint_version = "{blueprint_version}"
-project_name = {project_name}
-crate_name = {crate_name}
-description = {description}
-{author_name}{author_email}license = {license}
-rust_edition = {rust_edition}
-
-[tool.forge.options]
-docs = {docs}
-prettier = {prettier}
-editorconfig = {editorconfig}
-markdownlint = {markdownlint}
-"#,
-        blueprint_name = BLUEPRINT_NAME,
-        blueprint_version = BLUEPRINT_VERSION,
-        project_name = toml_value::string_literal(&config.project_name),
-        crate_name = toml_value::string_literal(&config.crate_name),
-        description = toml_value::string_literal(&config.description),
-        author_name = render_optional_forge_field("author_name", &config.author_name),
-        author_email = render_optional_forge_field("author_email", &config.author_email),
-        license = toml_value::string_literal(&config.license),
-        rust_edition = toml_value::string_literal(&config.rust_edition),
-        docs_group = docs_group,
-        docs = config.docs,
-        prettier = config.components.is_enabled(ManagedComponent::Prettier),
-        editorconfig = config.components.is_enabled(ManagedComponent::Editorconfig),
-        markdownlint = config.components.is_enabled(ManagedComponent::Markdownlint),
+    template_engine::render_template(
+        "rust_library/pyproject.toml.j2",
+        serde_json::json!({"blueprint_name": BLUEPRINT_NAME, "blueprint_version": BLUEPRINT_VERSION, "project_name": toml_value::string_literal(&config.project_name), "crate_name": toml_value::string_literal(&config.crate_name), "description": toml_value::string_literal(&config.description), "author_name": render_optional_forge_field("author_name", &config.author_name), "author_email": render_optional_forge_field("author_email", &config.author_email), "license": toml_value::string_literal(&config.license), "rust_edition": toml_value::string_literal(&config.rust_edition), "docs_group": render_docs_dependency_group(config.docs), "docs": config.docs, "prettier": config.components.is_enabled(ManagedComponent::Prettier), "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig), "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)}),
     )
 }
 
@@ -312,15 +260,9 @@ fn render_docs_dependency_group(enabled: bool) -> &'static str {
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
-    let docs_recipe = if config.docs {
-        "\ndocs:\n    uv run mkdocs serve\n"
-    } else {
-        ""
-    };
-    let component_format_steps = render_component_format_steps(config);
-
-    format!(
-        "set dotenv-load := false\n\ndefault:\n    @just --list\n\nsync:\n    uv sync --all-groups\n\nhooks-install:\n    uv run prek install\n{docs_recipe}\nformat:\n    cargo fmt --all\n{component_format_steps}\nlint:\n    cargo clippy --workspace --all-targets --all-features -- -D warnings\n\ntest:\n    cargo test\n\nverify:\n    uv lock --check\n    cargo fmt --all --check\n    cargo clippy --workspace --all-targets --all-features -- -D warnings\n    uv run --locked prek run --all-files\n    forge update --path . --check\n    cargo test\n"
+    template_engine::render_template(
+        "rust_library/justfile.j2",
+        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    uv run mkdocs serve\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
     )
 }
 
@@ -334,49 +276,37 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 }
 
 fn render_precommit_config(config: &ProjectConfig) -> String {
-    let component_hooks = config.components.pre_commit_hooks();
-
-    format!(
-        "default_install_hook_types:\n  - pre-commit\n  - pre-push\nrepos:\n  - repo: local\n    hooks:\n      - id: cargo-fmt\n        name: cargo fmt\n        entry: cargo fmt --all --check\n        language: system\n        pass_filenames: false\n      - id: cargo-clippy\n        name: cargo clippy\n        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings\n        language: system\n        pass_filenames: false\n        stages: [pre-push]\n{component_hooks}{}{}",
-        precommit::forge_update_check_hook(),
-        precommit::uv_lock_hook()
+    template_engine::render_template(
+        "rust_library/pre-commit-config.yaml.j2",
+        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "forge_update_check_hook": precommit::forge_update_check_hook(), "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
 fn render_ci_workflow() -> String {
-    format!(
-        "name: CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n{}{}jobs:\n  verify:\n    runs-on: ubuntu-latest\n{}    steps:\n{}      - name: Install Rust\n        uses: dtolnay/rust-toolchain@stable\n{}{}{}{}      - run: cargo fmt --all --check\n      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings\n{}{}      - run: cargo test\n",
-        github_actions::cancel_redundant_ci_concurrency(),
-        github_actions::read_only_permissions(),
-        github_actions::job_timeout(),
-        github_actions::read_only_checkout_step(),
-        github_actions::setup_uv_step(),
-        github_actions::install_forge_step(),
-        github_actions::uv_sync_locked_step(),
-        github_actions::uv_lock_check_step(),
-        github_actions::uv_run_locked_step("prek run --all-files"),
-        github_actions::forge_update_check_step()
+    template_engine::render_template(
+        "rust_library/ci.yaml.j2",
+        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "install_forge_step": github_actions::install_forge_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files"), "forge_update_check_step": github_actions::forge_update_check_step()}),
     )
 }
 
 fn render_lib_rs(config: &ProjectConfig) -> String {
-    format!(
-        "pub fn hello() -> &'static str {{\n    \"hello from {}\"\n}}\n\n#[cfg(test)]\nmod tests {{\n    use crate::hello;\n\n    #[test]\n    fn hello_returns_project_message() {{\n        assert_eq!(hello(), \"hello from {}\");\n    }}\n}}\n",
-        config.crate_name, config.crate_name
+    template_engine::render_template(
+        "rust_library/lib.rs.j2",
+        serde_json::json!({"crate_name": config.crate_name}),
     )
 }
 
 fn render_mkdocs(config: &ProjectConfig) -> String {
-    format!(
-        "site_name: {}\ntheme:\n  name: material\nnav:\n  - Home: index.md\n",
-        config.project_name
+    template_engine::render_template(
+        "rust_library/mkdocs.yml.j2",
+        serde_json::json!({"project_name": config.project_name}),
     )
 }
 
 fn render_docs_index(config: &ProjectConfig) -> String {
-    format!(
-        "# {}\n\n{}\n\n## Development\n\n```bash\nuv sync --all-groups\njust verify\n```\n\n## API Documentation\n\n```bash\ncargo doc --open\n```\n",
-        config.project_name, config.description
+    template_engine::render_template(
+        "rust_library/docs-index.md.j2",
+        serde_json::json!({"project_name": config.project_name, "description": config.description}),
     )
 }
 

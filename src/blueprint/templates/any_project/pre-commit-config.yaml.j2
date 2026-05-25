@@ -1,0 +1,12 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+repos:
+  - repo: local
+    hooks:
+{{ component_hooks }}      - id: forbid-large-files
+        name: forbid large files
+        entry: bash -c 'find . -type f -size +5M -not -path "./.git/*" -not -path "./.venv/*" -not -path "./site/*" -not -path "./dist/*" -not -path "./build/*" -print -quit | grep -q . && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+{{ forge_update_check_hook }}{{ uv_lock_hook }}

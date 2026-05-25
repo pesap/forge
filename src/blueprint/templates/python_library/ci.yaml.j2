@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+{{ cancel_redundant_ci_concurrency }}{{ read_only_permissions }}jobs:
+  test:
+    runs-on: ubuntu-latest
+{{ job_timeout }}    strategy:
+      matrix:
+        python-version: [{{ python_matrix }}]
+    steps:
+{{ read_only_checkout_step }}      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+{{ setup_uv_step }}      - uses: actions/setup-python@v6
+        with:
+          python-version: {% raw %}${{ matrix.python-version }}{% endraw %}
+{{ install_forge_step }}{{ uv_sync_locked_step }}{{ uv_lock_check_step }}{{ ruff_format_step }}{{ ruff_check_step }}{{ prek_step }}{{ forge_update_check_step }}{{ pytest_cov_step }}{{ codecov_step }}      - run: uv build --locked

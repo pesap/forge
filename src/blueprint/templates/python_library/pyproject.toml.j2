@@ -1,0 +1,53 @@
+[project]
+name = {{ project_name }}
+version = "0.1.0"
+description = {{ description }}
+{{ authors }}license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = {{ requires_python }}
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "prek>=0.3.5,<0.4.0",
+    "pytest>=8.4.2,<9.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
+    "ruff>=0.14.0,<0.15.0",
+]
+{{ docs_group }}
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = {{ package_name }}
+module-root = "src"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = [{{ coverage_arg }}, "--cov-report=term-missing:skip-covered"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.forge]
+blueprint = "{{ blueprint_name }}"
+blueprint_version = "{{ blueprint_version }}"
+project_name = {{ project_name }}
+package_name = {{ package_name }}
+description = {{ description }}
+{{ author_name }}{{ author_email }}license = {{ license }}
+python_min = {{ python_min }}
+
+[tool.forge.options]
+docs = {{ docs }}
+codecov = {{ codecov }}
+pypi-publish = {{ pypi_publish }}
+prettier = {{ prettier }}
+editorconfig = {{ editorconfig }}
+markdownlint = {{ markdownlint }}

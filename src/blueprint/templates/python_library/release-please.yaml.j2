@@ -1,0 +1,16 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+{{ serialized_ref_concurrency }}permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+{{ job_timeout }}    steps:
+      - uses: googleapis/release-please-action@v5

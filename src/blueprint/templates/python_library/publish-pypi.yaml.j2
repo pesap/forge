@@ -1,0 +1,20 @@
+name: publish-pypi
+
+on:
+  release:
+    types: [published]
+
+{{ serialized_release_concurrency }}jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/<your-pypi-project-name>
+    permissions:
+      id-token: write
+      contents: read
+{{ job_timeout }}    steps:
+{{ read_only_checkout_step }}{{ setup_uv_step }}      - run: uv build --locked
+      # {{ pypi_publish_notice }}
+      # - name: Publish package distributions to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
