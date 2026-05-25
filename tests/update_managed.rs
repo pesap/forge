@@ -2,6 +2,7 @@ use assert_cmd::Command;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
 
 fn generate_project(project_path: &std::path::Path) {
@@ -59,6 +60,13 @@ fn generate_project_with_markdownlint(project_path: &std::path::Path) {
     cmd.assert().success();
 }
 
+fn canonical_display(path: &Path) -> String {
+    path.canonicalize()
+        .expect("path should be canonicalizable")
+        .display()
+        .to_string()
+}
+
 #[test]
 fn update_missing_pyproject_suggests_init_or_new() {
     let temp = TempDir::new().expect("temp dir should create");
@@ -79,11 +87,11 @@ fn update_missing_pyproject_suggests_init_or_new() {
         .stderr(contains("missing Forge metadata"))
         .stderr(contains(format!(
             "forge init --path '{}'",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stderr(contains(format!(
             "forge new --path '{}'",
-            project_path.display()
+            canonical_display(&project_path)
         )));
 }
 
@@ -140,7 +148,7 @@ fn update_pyproject_without_forge_metadata_suggests_init() {
         .stderr(contains("missing [tool.forge] metadata"))
         .stderr(contains(format!(
             "forge init --path '{}'",
-            project_path.display()
+            canonical_display(&project_path)
         )));
 }
 
@@ -192,7 +200,7 @@ fn update_file_path_explains_repository_directory_requirement() {
         .failure()
         .stderr(contains(format!(
             "repository path is not a directory: {}",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stderr(contains(
             "choose an existing Forge-managed repository directory",
@@ -361,7 +369,7 @@ fn update_noninteractive_error_includes_apply_command_with_overrides() {
         .stderr(contains("interactive confirmation requires a terminal"))
         .stderr(contains(format!(
             "forge update --path '{}' --set prettier=true --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stderr(contains("or pass --json, --dry-run, or --check"))
         .stderr(contains("error_code: FORGE_E_INPUT"));
@@ -1348,7 +1356,7 @@ fn update_dry_run_can_emit_json_report_without_human_output() {
         report["next_steps"],
         serde_json::json!([format!(
             "forge update --path {} --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )])
     );
     assert!(
@@ -1519,7 +1527,7 @@ fn update_check_fails_when_managed_infra_has_drift_without_writing() {
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
             "forge update --path {} --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stderr(contains("managed infrastructure is out of date"))
         .stderr(contains("error_code: FORGE_E_CONFLICT"));
@@ -1576,7 +1584,7 @@ fn update_check_json_reports_changes_before_failing() {
         report["next_steps"],
         serde_json::json!([format!(
             "forge update --path {} --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )])
     );
 
@@ -1619,7 +1627,7 @@ fn update_check_json_quotes_next_step_path_with_spaces() {
         report["next_steps"],
         serde_json::json!([format!(
             "forge update --path '{}' --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )])
     );
 }
@@ -1786,7 +1794,7 @@ fn update_set_dry_run_previews_option_change_without_writing() {
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
             "forge update --path {} --set prettier=true --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stdout(contains("uv lock"))
         .stdout(contains("dry run complete; no files changed"));
@@ -1903,7 +1911,7 @@ fn update_set_dry_run_json_reports_option_change_without_writing() {
         serde_json::json!([
             format!(
                 "forge update --path {} --set prettier=true --yes",
-                project_path.display()
+                canonical_display(&project_path)
             ),
             "uv lock"
         ])
@@ -2032,7 +2040,7 @@ fn update_set_markdownlint_disable_dry_run_previews_option_change_without_writin
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
             "forge update --path {} --set markdownlint=false --yes",
-            project_path.display()
+            canonical_display(&project_path)
         )))
         .stdout(contains("uv lock"))
         .stdout(contains("dry run complete; no files changed"));
@@ -2116,7 +2124,7 @@ fn update_set_markdownlint_disable_dry_run_json_reports_option_change_without_wr
         serde_json::json!([
             format!(
                 "forge update --path {} --set markdownlint=false --yes",
-                project_path.display()
+                canonical_display(&project_path)
             ),
             "uv lock"
         ])

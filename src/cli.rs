@@ -31,6 +31,7 @@ pub enum ColorMode {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// List available project blueprints
+    #[command(alias = "bp")]
     Blueprints(BlueprintsArgs),
     /// List reusable optional components
     Components(ComponentsArgs),

@@ -2,6 +2,7 @@ use assert_cmd::Command;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
 
 fn python_forge_metadata(prettier: bool) -> String {
@@ -39,6 +40,13 @@ author_email = "grace@example.com"
 license = "MIT"
 python_min = "3.12"
 "#
+}
+
+fn canonical_display(path: &Path) -> String {
+    path.canonicalize()
+        .expect("path should be canonicalizable")
+        .display()
+        .to_string()
 }
 
 #[test]
@@ -344,6 +352,19 @@ fn blueprints_lists_available_blueprints() {
             "init: forge init --path . --blueprint python-library --yes ...",
         ))
         .stdout(contains("check: forge update --path . --check"));
+}
+
+#[test]
+fn bp_alias_lists_available_blueprints() {
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+
+    cmd.arg("bp")
+        .assert()
+        .success()
+        .stdout(contains("Available blueprints"))
+        .stdout(contains("any-project"))
+        .stdout(contains("python-library"))
+        .stdout(contains("rust-library"));
 }
 
 #[test]
@@ -759,7 +780,7 @@ fn doctor_can_scope_required_tools_to_a_managed_project_path() {
     .stdout(contains("just: missing"))
     .stdout(contains(format!(
         "forge doctor --path {}",
-        temp.path().display()
+        canonical_display(temp.path())
     )))
     .stdout(predicates::str::contains("cargo: missing").not())
     .stderr(contains("required tools are missing: git, just, uv"));
@@ -795,7 +816,7 @@ fn doctor_json_reports_path_scoped_tool_contract() {
     assert_eq!(report["status_code"], "missing_required");
     assert_eq!(report["blueprint"], "python-library");
     assert_eq!(report["blueprint_version"], "0.1.0");
-    assert_eq!(report["path"], temp.path().display().to_string());
+    assert_eq!(report["path"], canonical_display(temp.path()));
     assert_eq!(
         report["missing_required"],
         serde_json::json!(["git", "just", "uv"])
@@ -804,7 +825,7 @@ fn doctor_json_reports_path_scoped_tool_contract() {
         report["next_steps"],
         serde_json::json!([
             "install missing required tools: git, just, uv",
-            format!("forge doctor --path {}", temp.path().display())
+            format!("forge doctor --path {}", canonical_display(temp.path()))
         ])
     );
     assert!(
@@ -856,7 +877,7 @@ fn doctor_json_quotes_path_scoped_next_step_with_spaces() {
         report["next_steps"],
         serde_json::json!([
             "install missing required tools: git, just, uv",
-            format!("forge doctor --path '{}'", project_path.display())
+            format!("forge doctor --path '{}'", canonical_display(&project_path))
         ])
     );
 }
@@ -949,15 +970,15 @@ fn doctor_path_missing_pyproject_suggests_init_or_new() {
     .failure()
     .stderr(contains(format!(
         "missing Forge metadata at {}/pyproject.toml",
-        project_path.display()
+        canonical_display(&project_path)
     )))
     .stderr(contains(format!(
         "forge init --path '{}'",
-        project_path.display()
+        canonical_display(&project_path)
     )))
     .stderr(contains(format!(
         "forge new --path '{}'",
-        project_path.display()
+        canonical_display(&project_path)
     )));
 }
 
@@ -985,7 +1006,7 @@ fn doctor_json_path_missing_pyproject_keeps_stdout_empty() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains(&format!(
         "missing Forge metadata at {}/pyproject.toml",
-        project_path.display()
+        canonical_display(&project_path)
     )));
 }
 
@@ -1006,7 +1027,7 @@ fn doctor_file_path_explains_repository_directory_requirement() {
     .failure()
     .stderr(contains(format!(
         "repository path is not a directory: {}",
-        project_path.display()
+        canonical_display(&project_path)
     )))
     .stderr(contains(
         "choose an existing Forge-managed repository directory",
@@ -1039,7 +1060,7 @@ fn doctor_json_file_path_keeps_stdout_empty() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains(&format!(
         "repository path is not a directory: {}",
-        project_path.display()
+        canonical_display(&project_path)
     )));
     assert!(stderr.contains("choose an existing Forge-managed repository directory",));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
@@ -1065,7 +1086,7 @@ fn doctor_path_without_forge_metadata_suggests_init() {
     .stderr(contains("missing [tool.forge] metadata"))
     .stderr(contains(format!(
         "forge init --path {}",
-        temp.path().display()
+        canonical_display(temp.path())
     )))
     .stderr(contains("error_code: FORGE_E_ENV"));
 }
