@@ -65,16 +65,16 @@ cargo build --release
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `forge new` | Create a new project from a blueprint |
-| `forge init` | Adopt Forge-managed infrastructure in an existing repository |
-| `forge update` | Refresh managed infrastructure in a Forge-managed project |
-| `forge blueprints` | List available blueprints and their setup fields |
-| `forge components` | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
-| `forge doctor` | Check local toolchain health |
-| `forge completions` | Emit shell completion scripts (bash, zsh, fish, powershell, elvish) |
-| `forge self update` | Update the forge binary |
+| Command             | What it does                                                                      |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `forge new`         | Create a new project from a blueprint                                             |
+| `forge init`        | Adopt Forge-managed infrastructure in an existing repository                      |
+| `forge update`      | Refresh managed infrastructure in a Forge-managed project                         |
+| `forge blueprints`  | List available blueprints and their setup fields                                  |
+| `forge components`  | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
+| `forge doctor`      | Check local toolchain health                                                      |
+| `forge completions` | Emit shell completion scripts (bash, zsh, fish, powershell, elvish)               |
+| `forge self update` | Update the forge binary                                                           |
 
 Running `forge` with no subcommand prints top-level help and quickstart examples
 for first-run discovery.
@@ -145,12 +145,12 @@ forge new --blueprint python-library --path ./my-pkg --project-name my-pkg --yes
 
 Other useful flags:
 
-| Flag | Effect |
-|---|---|
-| `--json` | Machine-readable creation report on stdout |
+| Flag        | Effect                                            |
+| ----------- | ------------------------------------------------- |
+| `--json`    | Machine-readable creation report on stdout        |
 | `--dry-run` | Preview generated files without creating anything |
-| `--diff` | Include text diffs in human dry-run output |
-| `--github` | Also create a GitHub repository and push |
+| `--diff`    | Include text diffs in human dry-run output        |
+| `--github`  | Also create a GitHub repository and push          |
 
 <details>
 <summary>Blueprint-specific flags and interactive mode</summary>
@@ -200,12 +200,12 @@ forge init --path . --blueprint python-library --yes
 `forge init` writes only managed infrastructure and metadata, not starter source
 files. Conflicting existing files are reported instead of overwritten.
 
-| Flag | Effect |
-|---|---|
-| `--dry-run` | Preview what would be written |
-| `--json` | Machine-readable init report |
-| `--diff` | Include text diffs for conflicting files |
-| `--force` | Overwrite conflicting managed paths |
+| Flag        | Effect                                   |
+| ----------- | ---------------------------------------- |
+| `--dry-run` | Preview what would be written            |
+| `--json`    | Machine-readable init report             |
+| `--diff`    | Include text diffs for conflicting files |
+| `--force`   | Overwrite conflicting managed paths      |
 
 After init succeeds, future changes flow through `forge update --path .`.
 
@@ -230,14 +230,14 @@ managed files against the templates, and writes creates, updates, relinks, or
 removals as needed. Symlink relinks and text file updates go through temporary
 paths before replacing targets.
 
-| Flag | Effect |
-|---|---|
-| `--json` | Machine-readable update report |
-| `--dry-run` | Preview without writing |
-| `--diff` | Include text diffs |
-| `--check` | Exit nonzero on drift (for CI) |
+| Flag              | Effect                             |
+| ----------------- | ---------------------------------- |
+| `--json`          | Machine-readable update report     |
+| `--dry-run`       | Preview without writing            |
+| `--diff`          | Include text diffs                 |
+| `--check`         | Exit nonzero on drift (for CI)     |
 | `--set key=value` | Enable or disable a managed option |
-| `--yes` | Skip confirmation prompt |
+| `--yes`           | Skip confirmation prompt           |
 
 <details>
 <summary>Update behavior details</summary>
@@ -271,11 +271,11 @@ forge doctor --blueprint python-library
 forge doctor --path .
 ```
 
-| Flag | Effect |
-|---|---|
-| `--json` | Structured diagnostics for CI or setup scripts |
-| `--blueprint <name>` | Scope to a blueprint's required toolchain |
-| `--path .` | Detect blueprint from `pyproject.toml` and check matching tools |
+| Flag                 | Effect                                                          |
+| -------------------- | --------------------------------------------------------------- |
+| `--json`             | Structured diagnostics for CI or setup scripts                  |
+| `--blueprint <name>` | Scope to a blueprint's required toolchain                       |
+| `--path .`           | Detect blueprint from `pyproject.toml` and check matching tools |
 
 <details>
 <summary>Doctor output details</summary>
@@ -322,20 +322,20 @@ All blueprints generate:
 
 ### Blueprint-specific output
 
-| Blueprint | Generates |
-|---|---|
+| Blueprint        | Generates                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional MkDocs, optional PyPI publishing via OIDC |
-| `rust-library` | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional MkDocs |
-| `any-project` | Language-agnostic: the common files above plus MkDocs by default, no package source files |
+| `rust-library`   | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional MkDocs                                                                        |
+| `any-project`    | Language-agnostic: the common files above plus MkDocs by default, no package source files                                                      |
 
 ### Optional components
 
-| Component | What it adds |
-|---|---|
-| Prettier | `.prettierrc`, `prek` hook for JSON/YAML/Markdown formatting |
-| EditorConfig | `.editorconfig` baseline for cross-editor whitespace consistency |
-| MkDocs | Documentation scaffold, `just docs` recipe |
-| Codecov | CI integration for coverage reporting (where supported) |
+| Component       | What it adds                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| Prettier        | `.prettierrc`, `prek` hook for JSON/YAML/Markdown formatting                                 |
+| EditorConfig    | `.editorconfig` baseline for cross-editor whitespace consistency                             |
+| MkDocs          | Documentation scaffold, `just docs` recipe                                                   |
+| Codecov         | CI integration for coverage reporting (where supported)                                      |
 | PyPI publishing | Trusted publishing via OIDC, `pypi` GitHub environment, serialized release/publish workflows |
 
 Components enabled at creation time are recorded in `[tool.forge.options]`.
