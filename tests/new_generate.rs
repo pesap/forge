@@ -1934,7 +1934,7 @@ fn new_generates_language_agnostic_infra_project() {
     assert!(ci.contains("forge update --path . --check"));
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
-    assert!(precommit.contains(r#"-not -path "./.venv/*""#));
+    assert!(precommit.contains("id: check-added-large-files"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(justfile.contains("uv run --locked prek run --all-files"));

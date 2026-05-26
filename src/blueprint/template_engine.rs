@@ -20,6 +20,13 @@ fn build_environment() -> Environment<'static> {
 
     environment
         .add_template(
+            "shared/_pre_commit_header.yaml.j2",
+            include_str!("templates/shared/_pre_commit_header.yaml.j2"),
+        )
+        .expect("template should parse");
+
+    environment
+        .add_template(
             "any_project/readme.md.j2",
             include_str!("templates/any_project/readme.md.j2"),
         )
