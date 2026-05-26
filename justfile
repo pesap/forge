@@ -3,6 +3,9 @@ set dotenv-load := false
 default:
     @just --list
 
+hooks-install:
+    uv run prek install
+
 demo-clean:
     rm -rf demo-pylib demo-rustlib demo-anyproject
 
