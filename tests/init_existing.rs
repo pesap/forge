@@ -277,7 +277,8 @@ fn init_accepts_explicit_false_for_prettier_component() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("[tool.forge.overrides]"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }

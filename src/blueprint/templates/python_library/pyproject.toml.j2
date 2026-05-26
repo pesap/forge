@@ -44,12 +44,4 @@ package_name = {{ package_name }}
 description = {{ description }}
 {{ author_name }}{{ author_email }}license = {{ license }}
 python_min = {{ python_min }}
-
-[tool.forge.options]
-docs = {{ docs }}
-codecov = {{ codecov }}
-pypi-publish = {{ pypi_publish }}
-python-rules = {{ python_rules }}
-prettier = {{ prettier }}
-editorconfig = {{ editorconfig }}
-markdownlint = {{ markdownlint }}
+{{ forge_overrides }}

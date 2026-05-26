@@ -104,7 +104,7 @@ Additional rules:
   user-provided metadata with string replacement.
 - `config_from_pyproject()` must return validated blueprint configs so update
   and cleanup paths cannot use corrupt metadata.
-- Store managed feature toggles under `[tool.forge.options]`.
+- Store managed feature deviations under `[tool.forge.overrides]`; omitted values use blueprint defaults.
 - Keep update behavior driven by generated metadata in the target repository; do
   not introduce a separate Forge status file.
 - When adding blueprints, update tests and docs in the same change.

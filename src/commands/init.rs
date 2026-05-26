@@ -784,7 +784,7 @@ author_email = "ada@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
+[tool.forge.overrides]
 docs = false
 codecov = false
 pypi-publish = true

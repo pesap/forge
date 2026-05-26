@@ -95,8 +95,8 @@ fn new_generates_python_project_with_metadata() {
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
     assert!(ci.contains("permissions:\n  contents: read\n\njobs:"));
-    assert!(ci.contains("actions/checkout@v6"));
-    assert!(ci.contains("actions/setup-python@v6"));
+    assert!(ci.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
+    assert!(ci.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
     assert!(ci.contains("cargo install --git https://github.com/pesap/forge --locked forge"));
     assert!(ci.contains("uv lock --check"));
     assert!(ci.contains("uv run --locked ruff format --check ."));
@@ -1304,7 +1304,7 @@ fn new_accepts_explicit_false_for_prettier_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }

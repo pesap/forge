@@ -15,9 +15,4 @@ blueprint = "{{ blueprint_name }}"
 blueprint_version = "{{ blueprint_version }}"
 project_name = {{ project_name }}
 description = {{ description }}
-
-[tool.forge.options]
-docs = {{ docs }}
-prettier = {{ prettier }}
-editorconfig = {{ editorconfig }}
-markdownlint = {{ markdownlint }}
+{{ forge_overrides }}

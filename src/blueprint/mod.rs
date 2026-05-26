@@ -334,6 +334,36 @@ pub fn validate_managed_options_from_metadata(
     validate_managed_options_with_error_code(blueprint, options, ErrorCode::Env, false)
 }
 
+pub fn validate_managed_overrides_from_metadata(
+    blueprint: BlueprintName,
+    overrides: BTreeMap<String, bool>,
+) -> Result<ManagedOptionValues> {
+    validate_managed_options_with_error_code(blueprint, overrides, ErrorCode::Env, true)
+}
+
+pub fn render_forge_overrides_table(
+    blueprint: BlueprintName,
+    options: &[(ManagedOption, bool)],
+) -> String {
+    let overrides = options
+        .iter()
+        .filter(|(option, enabled)| blueprint.option_default_enabled(*option) != *enabled)
+        .map(|(option, enabled)| {
+            format!(
+                "{} = {}\n",
+                option.as_str(),
+                if *enabled { "true" } else { "false" }
+            )
+        })
+        .collect::<String>();
+
+    if overrides.is_empty() {
+        String::new()
+    } else {
+        format!("\n[tool.forge.overrides]\n{overrides}")
+    }
+}
+
 fn validate_managed_options_with_error_code(
     blueprint: BlueprintName,
     options: BTreeMap<String, bool>,

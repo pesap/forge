@@ -13,7 +13,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, ManagedOption, managed_option_enabled, validate_managed_options_from_metadata,
+    BlueprintName, ManagedOption, managed_option_enabled, render_forge_overrides_table,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "python-library";
@@ -341,13 +342,27 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "author_email": render_optional_forge_field("author_email", &config.author_email),
             "license": toml_value::string_literal(&config.license),
             "python_min": toml_value::string_literal(&config.python_min),
-            "docs": config.docs,
-            "codecov": config.codecov,
-            "pypi_publish": config.pypi_publish,
-            "python_rules": config.python_rules,
-            "prettier": config.components.is_enabled(ManagedComponent::Prettier),
-            "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig),
-            "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)
+            "forge_overrides": render_forge_overrides_table(
+                BlueprintName::PythonLibrary,
+                &[
+                    (ManagedOption::Docs, config.docs),
+                    (ManagedOption::Codecov, config.codecov),
+                    (ManagedOption::PypiPublish, config.pypi_publish),
+                    (ManagedOption::PythonRules, config.python_rules),
+                    (
+                        ManagedOption::Prettier,
+                        config.components.is_enabled(ManagedComponent::Prettier),
+                    ),
+                    (
+                        ManagedOption::Editorconfig,
+                        config.components.is_enabled(ManagedComponent::Editorconfig),
+                    ),
+                    (
+                        ManagedOption::Markdownlint,
+                        config.components.is_enabled(ManagedComponent::Markdownlint),
+                    ),
+                ],
+            )
         }),
     )
 }
@@ -520,7 +535,8 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     python_min: String,
-    options: Option<BTreeMap<String, bool>>,
+    #[serde(alias = "options")]
+    overrides: Option<BTreeMap<String, bool>>,
 }
 
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
@@ -539,11 +555,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let mut options = forge
-        .options
-        .context("missing [tool.forge.options] metadata")?;
-    options.entry("python-rules".to_string()).or_insert(true);
-    let options = validate_managed_options_from_metadata(BlueprintName::PythonLibrary, options)?;
+    let overrides = forge.overrides.unwrap_or_default();
+    let options =
+        validate_managed_overrides_from_metadata(BlueprintName::PythonLibrary, overrides)?;
 
     let config = ProjectConfig {
         project_name: forge.project_name,
@@ -690,7 +704,7 @@ mod tests {
         assert!(workflow.contains(&github_actions::uv_run_locked_step(
             "pytest --cov --cov-report=xml"
         )));
-        assert!(workflow.contains("actions/setup-python@v6"));
+        assert!(workflow.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
         assert!(workflow.contains("# - name: Upload coverage to Codecov"));
         assert!(workflow.contains(CODECOV_NOTICE));
         assert!(workflow.contains("run: uv build --locked"));
@@ -858,11 +872,8 @@ author_email = "test@example.com"
 license = "MIT"
 python_min = "3.11\n3.12"
 
-[tool.forge.options]
-docs = true
+[tool.forge.overrides]
 codecov = false
-pypi-publish = false
-python-rules = true
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -886,11 +897,7 @@ license = "MIT"
 python_min = "3.12"
 unknown_option = true
 
-[tool.forge.options]
-docs = true
-codecov = true
-pypi-publish = false
-python-rules = true
+[tool.forge.overrides]
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -902,7 +909,7 @@ markdownlint = false
     }
 
     #[test]
-    fn config_from_pyproject_rejects_missing_supported_options() {
+    fn config_from_pyproject_defaults_missing_overrides() {
         let metadata = r#"[tool.forge]
 blueprint = "python-library"
 project_name = "grid-tools"
@@ -913,19 +920,18 @@ author_email = "ada@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
-docs = true
-codecov = true
-pypi-publish = false
+[tool.forge.overrides]
+prettier = true
 "#;
 
-        let error =
-            config_from_pyproject(metadata).expect_err("missing supported options should fail");
-        assert!(
-            error
-                .to_string()
-                .contains("missing tool.forge.options.prettier")
-        );
+        let config =
+            config_from_pyproject(metadata).expect("missing overrides should use defaults");
+
+        assert!(config.docs);
+        assert!(config.codecov);
+        assert!(!config.pypi_publish);
+        assert!(config.python_rules);
+        assert!(config.components.is_enabled(ManagedComponent::Prettier));
     }
 
     #[test]
@@ -986,7 +992,11 @@ pypi-publish = false
         let publish_pypi = render_publish_pypi();
 
         assert!(release_please.contains(github_actions::job_timeout()));
-        assert!(release_please.contains("googleapis/release-please-action@v5"));
+        assert!(
+            release_please.contains(
+                "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
+            )
+        );
         assert!(publish_pypi.contains(github_actions::job_timeout()));
         assert!(publish_pypi.contains(github_actions::read_only_checkout_step()));
         assert!(publish_pypi.contains("enable-cache: true"));

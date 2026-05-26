@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::blueprint::components::ManagedComponent;
 use crate::blueprint::{
     BLUEPRINT_REGISTRY, BlueprintName, detect_blueprint_metadata_from_pyproject,
-    managed_option_enabled, validate_managed_options_from_metadata,
+    managed_option_enabled, validate_managed_overrides_from_metadata,
 };
 use crate::cli::DoctorArgs;
 use crate::errors::{ErrorCode, coded_error};
@@ -424,23 +424,23 @@ fn enabled_components_from_pyproject(
 ) -> Result<Vec<ManagedComponent>> {
     let parsed: toml::Value =
         toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
-    let options = parsed
+    let overrides = parsed
         .get("tool")
         .and_then(toml::Value::as_table)
         .and_then(|tool| tool.get("forge"))
         .and_then(toml::Value::as_table)
-        .and_then(|forge| forge.get("options"))
+        .and_then(|forge| forge.get("overrides").or_else(|| forge.get("options")))
         .and_then(toml::Value::as_table);
     let mut values = std::collections::BTreeMap::new();
-    if let Some(options) = options {
-        for (name, value) in options {
+    if let Some(overrides) = overrides {
+        for (name, value) in overrides {
             let enabled = value
                 .as_bool()
-                .with_context(|| format!("tool.forge.options.{name} must be a boolean"))?;
+                .with_context(|| format!("tool.forge.overrides.{name} must be a boolean"))?;
             values.insert(name.clone(), enabled);
         }
     }
-    let options = validate_managed_options_from_metadata(blueprint, values)?;
+    let options = validate_managed_overrides_from_metadata(blueprint, values)?;
 
     let mut enabled_components = Vec::new();
     for component in ManagedComponent::ALL {
@@ -532,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn doctor_scope_rejects_missing_options_table() {
+    fn doctor_scope_defaults_missing_overrides_table() {
         let temp = TempDir::new().expect("temp dir should create");
         std::fs::write(
             temp.path().join("pyproject.toml"),
@@ -540,13 +540,10 @@ mod tests {
         )
         .expect("pyproject should write");
 
-        let error = DoctorScope::resolve(None, Some(temp.path().to_path_buf()))
-            .expect_err("scope should fail");
-        assert!(
-            error
-                .to_string()
-                .contains("failed to validate Forge metadata")
-        );
+        let scope = DoctorScope::resolve(None, Some(temp.path().to_path_buf()))
+            .expect("scope should resolve with blueprint defaults");
+
+        assert_eq!(scope.enabled_components, Vec::<ManagedComponent>::new());
     }
 
     fn python_forge_metadata(prettier: bool) -> String {
@@ -562,14 +559,8 @@ author_email = "grace@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
-docs = true
-codecov = true
-pypi-publish = false
-python-rules = true
+[tool.forge.overrides]
 prettier = {prettier}
-editorconfig = false
-markdownlint = false
 "#
         )
     }

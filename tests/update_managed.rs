@@ -396,24 +396,10 @@ fn update_apply_without_yes_allows_noop_in_noninteractive_mode() {
 }
 
 #[test]
-fn update_rejects_metadata_without_options_table() {
+fn update_defaults_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
     update.args([
@@ -422,34 +408,14 @@ fn update_rejects_metadata_without_options_table() {
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
-        .failure()
-        .stdout(predicates::str::is_empty())
-        .stderr(contains("failed to validate Forge metadata at"))
-        .stderr(contains("missing tool.forge.options.docs"))
-        .stderr(contains("error_code: FORGE_E_ENV"));
+    update.assert().success();
 }
 
 #[test]
-fn update_set_rejects_missing_options_table() {
+fn update_set_creates_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
     update.args([
@@ -460,33 +426,19 @@ fn update_set_rejects_missing_options_table() {
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
-        .failure()
-        .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.options.docs"))
-        .stderr(contains("error_code: FORGE_E_ENV"));
+    update.assert().success();
+
+    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+        .expect("pyproject should be readable");
+    assert!(pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("prettier = true"));
 }
 
 #[test]
-fn update_check_rejects_missing_options_table() {
+fn update_check_defaults_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
     update.args([
@@ -495,124 +447,7 @@ fn update_check_rejects_missing_options_table() {
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
-        .failure()
-        .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.options.docs"))
-        .stderr(contains("error_code: FORGE_E_ENV"));
-}
-
-#[test]
-fn update_dry_run_rejects_missing_options_table() {
-    let temp = TempDir::new().expect("temp dir should create");
-    let project_path = temp.path().join("ops-tools");
-    generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
-
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
-        "--dry-run",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-    ]);
-    update
-        .assert()
-        .failure()
-        .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.options.docs"))
-        .stderr(contains("error_code: FORGE_E_ENV"));
-}
-
-#[test]
-fn update_check_json_rejects_missing_options_table() {
-    let temp = TempDir::new().expect("temp dir should create");
-    let project_path = temp.path().join("ops-tools");
-    generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
-
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
-        "--check",
-        "--json",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-    ]);
-
-    let output = update.output().expect("update should run");
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(stdout.is_empty());
-
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.options.docs"));
-    assert!(stderr.contains("error_code: FORGE_E_ENV"));
-}
-
-#[test]
-fn update_dry_run_json_rejects_missing_options_table() {
-    let temp = TempDir::new().expect("temp dir should create");
-    let project_path = temp.path().join("ops-tools");
-    generate_project(&project_path);
-
-    let pyproject_path = project_path.join("pyproject.toml");
-    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]
-        .as_table_mut()
-        .expect("tool.forge should be a table")
-        .remove("options");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
-
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
-        "--dry-run",
-        "--json",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-    ]);
-
-    let output = update.output().expect("update should run");
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(stdout.is_empty());
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.options.docs"));
-    assert!(stderr.contains("error_code: FORGE_E_ENV"));
+    update.assert().success();
 }
 
 #[test]
@@ -939,10 +774,16 @@ fn update_rejects_unknown_forge_option_fields() {
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
     let mut pyproject_value: toml::Value =
         toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]["options"]
+    pyproject_value["tool"]["forge"]
         .as_table_mut()
-        .expect("tool.forge.options should be a table")
-        .insert("codcov".to_string(), toml::Value::Boolean(true));
+        .expect("tool.forge should be a table")
+        .insert(
+            "overrides".to_string(),
+            toml::Value::Table(toml::Table::from_iter([(
+                "codcov".to_string(),
+                toml::Value::Boolean(true),
+            )])),
+        );
     fs::write(
         &pyproject_path,
         toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
@@ -964,24 +805,15 @@ fn update_rejects_unknown_forge_option_fields() {
 }
 
 #[test]
-fn update_rejects_missing_supported_option_keys() {
+fn update_accepts_legacy_sparse_options_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
     let pyproject_path = project_path.join("pyproject.toml");
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
-    let mut pyproject_value: toml::Value =
-        toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]["options"]
-        .as_table_mut()
-        .expect("tool.forge.options should be a table")
-        .remove("prettier");
-    fs::write(
-        &pyproject_path,
-        toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
-    )
-    .expect("pyproject should be writable");
+    let pyproject = pyproject.replace("[tool.forge.overrides]", "[tool.forge.options]");
+    fs::write(&pyproject_path, pyproject).expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
     update.args([
@@ -990,12 +822,7 @@ fn update_rejects_missing_supported_option_keys() {
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
-        .failure()
-        .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.options.prettier"))
-        .stderr(contains("error_code: FORGE_E_ENV"));
+    update.assert().success();
 }
 
 #[test]
@@ -1745,12 +1572,9 @@ fn update_set_preserves_pyproject_comments_and_unmanaged_formatting() {
 
     let pyproject_path = project_path.join("pyproject.toml");
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
-    let pyproject = pyproject
-        .replace("[project]\n", "# user project comment\n[project]\n")
-        .replace(
-            "prettier = false\n",
-            "prettier = false # keep local option note\n",
-        );
+    let pyproject = pyproject.replace("[project]\n", "# user project comment\n[project]\n");
+    let pyproject =
+        format!("{pyproject}\n[tool.forge.overrides]\nprettier = false # keep local option note\n");
     fs::write(&pyproject_path, pyproject).expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
@@ -1801,7 +1625,7 @@ fn update_set_dry_run_previews_option_change_without_writing() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }
@@ -1861,7 +1685,7 @@ fn update_set_check_reports_option_change_without_writing() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }
@@ -1919,7 +1743,7 @@ fn update_set_dry_run_json_reports_option_change_without_writing() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }
@@ -1972,7 +1796,7 @@ fn update_set_can_disable_prettier_component_without_leaving_files() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
@@ -2004,7 +1828,7 @@ fn update_set_can_disable_markdownlint_component_without_leaving_files() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = false"));
+    assert!(!pyproject.contains("markdownlint = true"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
@@ -2251,7 +2075,7 @@ fn update_set_can_disable_python_pypi_publish_workflow() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("pypi-publish = false"));
+    assert!(!pyproject.contains("pypi-publish = true"));
     assert!(
         !project_path
             .join(".github/workflows/publish-pypi.yaml")
@@ -2325,7 +2149,7 @@ fn update_set_rejects_duplicate_option_overrides() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }
@@ -2352,7 +2176,7 @@ fn update_set_rejects_whitespace_padded_option_overrides() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = false"));
+    assert!(!pyproject.contains("prettier = true"));
 }
 
 #[test]
@@ -2693,7 +2517,7 @@ fn update_set_can_disable_markdownlint_for_language_agnostic_project() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = false"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(!project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -2927,7 +2751,7 @@ fn update_set_can_disable_markdownlint_for_rust_library_project() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = false"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(!project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -3213,7 +3037,7 @@ fn update_set_can_enable_rust_docs() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("docs = true"));
+    assert!(!pyproject.contains("docs = false"));
     assert!(!pyproject.contains("mkdocs-material"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");

@@ -13,7 +13,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, ManagedOption, managed_option_enabled, validate_managed_options_from_metadata,
+    BlueprintName, ManagedOption, managed_option_enabled, render_forge_overrides_table,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "rust-library";
@@ -261,7 +262,37 @@ fn render_cargo_toml(config: &ProjectConfig) -> String {
 fn render_pyproject(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/pyproject.toml.j2",
-        serde_json::json!({"blueprint_name": BLUEPRINT_NAME, "blueprint_version": BLUEPRINT_VERSION, "project_name": toml_value::string_literal(&config.project_name), "crate_name": toml_value::string_literal(&config.crate_name), "description": toml_value::string_literal(&config.description), "author_name": render_optional_forge_field("author_name", &config.author_name), "author_email": render_optional_forge_field("author_email", &config.author_email), "license": toml_value::string_literal(&config.license), "rust_edition": toml_value::string_literal(&config.rust_edition), "docs_group": render_docs_dependency_group(config.docs), "docs": config.docs, "rust_rules": config.rust_rules, "prettier": config.components.is_enabled(ManagedComponent::Prettier), "editorconfig": config.components.is_enabled(ManagedComponent::Editorconfig), "markdownlint": config.components.is_enabled(ManagedComponent::Markdownlint)}),
+        serde_json::json!({
+            "blueprint_name": BLUEPRINT_NAME,
+            "blueprint_version": BLUEPRINT_VERSION,
+            "project_name": toml_value::string_literal(&config.project_name),
+            "crate_name": toml_value::string_literal(&config.crate_name),
+            "description": toml_value::string_literal(&config.description),
+            "author_name": render_optional_forge_field("author_name", &config.author_name),
+            "author_email": render_optional_forge_field("author_email", &config.author_email),
+            "license": toml_value::string_literal(&config.license),
+            "rust_edition": toml_value::string_literal(&config.rust_edition),
+            "docs_group": render_docs_dependency_group(config.docs),
+            "forge_overrides": render_forge_overrides_table(
+                BlueprintName::RustLibrary,
+                &[
+                    (ManagedOption::Docs, config.docs),
+                    (ManagedOption::RustRules, config.rust_rules),
+                    (
+                        ManagedOption::Prettier,
+                        config.components.is_enabled(ManagedComponent::Prettier),
+                    ),
+                    (
+                        ManagedOption::Editorconfig,
+                        config.components.is_enabled(ManagedComponent::Editorconfig),
+                    ),
+                    (
+                        ManagedOption::Markdownlint,
+                        config.components.is_enabled(ManagedComponent::Markdownlint),
+                    ),
+                ],
+            )
+        }),
     )
 }
 
@@ -351,7 +382,8 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     rust_edition: String,
-    options: Option<BTreeMap<String, bool>>,
+    #[serde(alias = "options")]
+    overrides: Option<BTreeMap<String, bool>>,
 }
 
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
@@ -370,11 +402,8 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let mut options = forge
-        .options
-        .context("missing [tool.forge.options] metadata")?;
-    options.entry("rust-rules".to_string()).or_insert(true);
-    let options = validate_managed_options_from_metadata(BlueprintName::RustLibrary, options)?;
+    let overrides = forge.overrides.unwrap_or_default();
+    let options = validate_managed_overrides_from_metadata(BlueprintName::RustLibrary, overrides)?;
 
     let config = ProjectConfig {
         project_name: forge.project_name,
@@ -498,12 +527,7 @@ author_email = "test@example.com"
 license = "MIT"
 rust_edition = "2024"
 
-[tool.forge.options]
-docs = true
-rust-rules = true
-prettier = false
-editorconfig = false
-markdownlint = false
+[tool.forge.overrides]
 "#;
 
         let error = config_from_pyproject(metadata).expect_err("invalid metadata should fail");
@@ -523,12 +547,7 @@ author_email = "test@example.com"
 license = "MIT"
 rust_edition = "2024"
 
-[tool.forge.options]
-docs = true
-rust-rules = true
-prettier = false
-editorconfig = false
-markdownlint = false
+[tool.forge.overrides]
 prettier_typo = true
 "#;
 
@@ -542,7 +561,7 @@ prettier_typo = true
     }
 
     #[test]
-    fn config_from_pyproject_rejects_missing_supported_options() {
+    fn config_from_pyproject_defaults_missing_overrides() {
         let metadata = r#"[tool.forge]
 blueprint = "rust-library"
 project_name = "test-rs"
@@ -553,16 +572,16 @@ author_email = "test@example.com"
 license = "MIT"
 rust_edition = "2024"
 
-[tool.forge.options]
-docs = true
+[tool.forge.overrides]
+prettier = true
 "#;
 
-        let error =
-            config_from_pyproject(metadata).expect_err("missing supported options should fail");
-        assert!(
-            error
-                .to_string()
-                .contains("missing tool.forge.options.prettier")
-        );
+        let config =
+            config_from_pyproject(metadata).expect("missing overrides should use defaults");
+
+        assert!(config.docs);
+        assert!(config.rust_rules);
+        assert!(config.components.is_enabled(ManagedComponent::Prettier));
+        assert!(!config.components.is_enabled(ManagedComponent::Editorconfig));
     }
 }

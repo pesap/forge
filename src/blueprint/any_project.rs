@@ -13,7 +13,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, ManagedOption, managed_option_enabled, validate_managed_options_from_metadata,
+    BlueprintName, ManagedOption, managed_option_enabled, render_forge_overrides_table,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "any-project";
@@ -178,10 +179,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
         project_name: String,
         description: String,
         docs_group: &'a str,
-        docs: bool,
-        prettier: bool,
-        editorconfig: bool,
-        markdownlint: bool,
+        forge_overrides: String,
     }
 
     template_engine::render_template(
@@ -192,10 +190,24 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             project_name: toml_value::string_literal(&config.project_name),
             description: toml_value::string_literal(&config.description),
             docs_group: render_docs_dependency_group(config.docs),
-            docs: config.docs,
-            prettier: config.components.is_enabled(ManagedComponent::Prettier),
-            editorconfig: config.components.is_enabled(ManagedComponent::Editorconfig),
-            markdownlint: config.components.is_enabled(ManagedComponent::Markdownlint),
+            forge_overrides: render_forge_overrides_table(
+                BlueprintName::AnyProject,
+                &[
+                    (ManagedOption::Docs, config.docs),
+                    (
+                        ManagedOption::Prettier,
+                        config.components.is_enabled(ManagedComponent::Prettier),
+                    ),
+                    (
+                        ManagedOption::Editorconfig,
+                        config.components.is_enabled(ManagedComponent::Editorconfig),
+                    ),
+                    (
+                        ManagedOption::Markdownlint,
+                        config.components.is_enabled(ManagedComponent::Markdownlint),
+                    ),
+                ],
+            ),
         },
     )
 }
@@ -341,7 +353,8 @@ struct ForgeSection {
     _blueprint_version: Option<String>,
     project_name: String,
     description: String,
-    options: Option<BTreeMap<String, bool>>,
+    #[serde(alias = "options")]
+    overrides: Option<BTreeMap<String, bool>>,
 }
 
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
@@ -360,10 +373,8 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         );
     }
 
-    let options = forge
-        .options
-        .context("missing [tool.forge.options] metadata")?;
-    let options = validate_managed_options_from_metadata(BlueprintName::AnyProject, options)?;
+    let overrides = forge.overrides.unwrap_or_default();
+    let options = validate_managed_overrides_from_metadata(BlueprintName::AnyProject, overrides)?;
 
     let config = ProjectConfig {
         project_name: forge.project_name,
@@ -467,8 +478,7 @@ blueprint = "any-project"
 project_name = ".hidden"
 description = "A test project"
 
-[tool.forge.options]
-docs = true
+[tool.forge.overrides]
 prettier = false
 editorconfig = false
 markdownlint = false
@@ -486,11 +496,7 @@ blueprint = "any-project"
 project_name = "repo-infra"
 description = "A test project"
 
-[tool.forge.options]
-docs = true
-prettier = false
-editorconfig = false
-markdownlint = false
+[tool.forge.overrides]
 prettier_typo = true
 "#;
 
@@ -504,22 +510,21 @@ prettier_typo = true
     }
 
     #[test]
-    fn config_from_pyproject_rejects_missing_supported_options() {
+    fn config_from_pyproject_defaults_missing_overrides() {
         let metadata = r#"[tool.forge]
 blueprint = "any-project"
 project_name = "repo-infra"
 description = "A test project"
 
-[tool.forge.options]
-docs = true
+[tool.forge.overrides]
+prettier = true
 "#;
 
-        let error =
-            config_from_pyproject(metadata).expect_err("missing supported options should fail");
-        assert!(
-            error
-                .to_string()
-                .contains("missing tool.forge.options.prettier")
-        );
+        let config =
+            config_from_pyproject(metadata).expect("missing overrides should use defaults");
+
+        assert!(config.docs);
+        assert!(config.components.is_enabled(ManagedComponent::Prettier));
+        assert!(!config.components.is_enabled(ManagedComponent::Editorconfig));
     }
 }

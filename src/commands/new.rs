@@ -482,7 +482,12 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
         .and_then(Value::as_table)?
         .get("forge")
         .and_then(Value::as_table)?;
-    let options = forge.get("options").and_then(Value::as_table)?;
+    let empty_options = toml::Table::new();
+    let options = forge
+        .get("overrides")
+        .or_else(|| forge.get("options"))
+        .and_then(Value::as_table)
+        .unwrap_or(&empty_options);
 
     let mut resolved = args.clone();
     resolved.project_name = forge
@@ -2195,7 +2200,7 @@ author_email = "ada@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
+[tool.forge.overrides]
 docs = false
 codecov = false
 pypi-publish = true

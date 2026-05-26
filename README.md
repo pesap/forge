@@ -108,8 +108,8 @@ Managed files are tracked through `[tool.forge]` metadata embedded in
 ### Optional components
 
 Components are reusable opt-in features like Prettier, EditorConfig, PyPI
-publishing, MkDocs, and Codecov. They are registered in `[tool.forge.options]`
-and can be toggled after project creation.
+publishing, MkDocs, and Codecov. Forge uses sensible blueprint defaults and
+records only explicit deviations in `[tool.forge.overrides]`.
 
 ```bash
 # List components and their supported blueprints
@@ -251,7 +251,7 @@ a truncated file or missing link behind.
 If `tool.forge.blueprint_version` is newer than the running Forge binary,
 managed commands fail fast and ask for an upgrade first.
 
-`--set` changes that only touch `[tool.forge.options]` preserve unrelated
+`--set` changes that only touch `[tool.forge.overrides]` preserve unrelated
 `pyproject.toml` comments and formatting.
 
 When `--set` adds a managed component, its files are generated. When `--set`
@@ -340,8 +340,9 @@ All blueprints generate:
 | Codecov         | CI integration for coverage reporting (where supported)                                      |
 | PyPI publishing | Trusted publishing via OIDC, `pypi` GitHub environment, serialized release/publish workflows |
 
-Components enabled at creation time are recorded in `[tool.forge.options]`.
-Toggling them later updates managed files without touching anything user owns.
+Only component choices that differ from blueprint defaults are recorded in
+`[tool.forge.overrides]`. Toggling them later updates managed files without
+touching anything user owns.
 
 ---
 

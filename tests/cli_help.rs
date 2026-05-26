@@ -18,14 +18,8 @@ author_email = "grace@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
-docs = true
-codecov = true
-pypi-publish = false
-python-rules = true
+[tool.forge.overrides]
 prettier = {prettier}
-editorconfig = false
-markdownlint = false
 "#
     )
 }

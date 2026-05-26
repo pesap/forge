@@ -15,7 +15,7 @@ use crate::blueprint::files::{
 use crate::blueprint::{
     BlueprintMetadata, BlueprintName, ManagedOption, ManagedOptionValues,
     detect_blueprint_metadata_from_pyproject, managed_option_enabled,
-    validate_managed_options_from_metadata,
+    validate_managed_overrides_from_metadata,
 };
 use crate::cli::UpdateArgs;
 use crate::commands::diff;
@@ -36,7 +36,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     ensure_forge_metadata_for_update(&root, &pyproject)?;
     let metadata = detect_blueprint_metadata_from_pyproject(&pyproject).with_context(|| {
         format!(
-            "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and all required [tool.forge.options] keys",
+            "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and valid [tool.forge.overrides] keys",
             root.display()
         )
     })?;
@@ -49,7 +49,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     let pyproject = apply_option_overrides(&pyproject, blueprint, &args.set)?;
     let options = selected_options_from_pyproject(&pyproject, blueprint).with_context(|| {
         format!(
-            "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and all required [tool.forge.options] keys",
+            "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and valid [tool.forge.overrides] keys",
             root.display()
         )
     })?;
@@ -457,7 +457,7 @@ fn preserve_pyproject_format_if_equivalent(
     Ok(())
 }
 
-fn forge_options_table(value: &Value) -> Result<Option<&toml::Table>> {
+fn forge_overrides_table(value: &Value) -> Result<Option<&toml::Table>> {
     let root = value
         .as_table()
         .context("pyproject.toml root must be a table")?;
@@ -472,30 +472,31 @@ fn forge_options_table(value: &Value) -> Result<Option<&toml::Table>> {
         .as_table()
         .context("pyproject.toml [tool.forge] must be a table")?;
 
-    let Some(options) = forge.get("options") else {
-        return Ok(None);
-    };
+    let overrides = forge.get("overrides").or_else(|| forge.get("options"));
 
-    options
-        .as_table()
-        .context("pyproject.toml [tool.forge.options] must be a table")
-        .map(Some)
+    match overrides {
+        Some(overrides) => overrides
+            .as_table()
+            .context("pyproject.toml [tool.forge.overrides] must be a table")
+            .map(Some),
+        None => Ok(None),
+    }
 }
 
 fn forge_option_values(value: &Value, blueprint: BlueprintName) -> Result<ManagedOptionValues> {
-    let options = forge_options_table(value)?;
+    let overrides = forge_overrides_table(value)?;
     let mut values = BTreeMap::new();
 
-    if let Some(options) = options {
-        for (name, value) in options {
+    if let Some(overrides) = overrides {
+        for (name, value) in overrides {
             let enabled = value
                 .as_bool()
-                .with_context(|| format!("tool.forge.options.{name} must be a boolean"))?;
+                .with_context(|| format!("tool.forge.overrides.{name} must be a boolean"))?;
             values.insert(name.clone(), enabled);
         }
     }
 
-    validate_managed_options_from_metadata(blueprint, values)
+    validate_managed_overrides_from_metadata(blueprint, values)
 }
 
 fn apply_option_overrides_to_text(
@@ -506,7 +507,12 @@ fn apply_option_overrides_to_text(
         .split_inclusive('\n')
         .map(str::to_string)
         .collect();
-    let Some((table_start, mut table_end)) = table_range(pyproject, "tool.forge.options") else {
+    let table_name = if table_range(pyproject, "tool.forge.overrides").is_some() {
+        "tool.forge.overrides"
+    } else {
+        "tool.forge.options"
+    };
+    let Some((table_start, mut table_end)) = table_range(pyproject, table_name) else {
         return append_option_table(pyproject, overrides);
     };
 
@@ -538,7 +544,7 @@ fn append_option_table(pyproject: &str, overrides: &[(ManagedOption, bool)]) -> 
     if !output.ends_with('\n') {
         output.push('\n');
     }
-    output.push_str("\n[tool.forge.options]\n");
+    output.push_str("\n[tool.forge.overrides]\n");
     for (option, value) in overrides {
         output.push_str(option.as_str());
         output.push_str(" = ");
@@ -1081,11 +1087,7 @@ author_email = "grace@example.com"
 license = "MIT"
 python_min = "3.12"
 
-[tool.forge.options]
-docs = true
-codecov = true
-pypi-publish = false
-python-rules = true
+[tool.forge.overrides]
 prettier = false
 editorconfig = false
 markdownlint = false
