@@ -6,6 +6,8 @@ default:
 hooks-install:
     uv run prek install
 
+setup: hooks-install
+
 demo-clean:
     rm -rf demo-pylib demo-rustlib demo-anyproject
 
