@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -121,19 +122,7 @@ impl BlueprintName {
     }
 
     pub fn from_metadata_with_error_code(value: &str, error_code: ErrorCode) -> Result<Self> {
-        let name = blueprint_spec_name(value);
-        BLUEPRINT_REGISTRY
-            .iter()
-            .find(|blueprint| blueprint.name == name)
-            .map(|blueprint| blueprint.id)
-            .ok_or_else(|| coded_error(error_code, format!("unsupported blueprint '{name}'")))
-    }
-
-    /// Parse `"python-library>=0.1.0"` into (BlueprintName, Some("0.1.0")) or `"python-library"` into (BlueprintName, None).
-    pub fn parse_spec(value: &str) -> Result<(Self, Option<&str>)> {
-        let name = Self::from_metadata(value)?;
-        let version = blueprint_spec_version(value);
-        Ok((name, version))
+        Ok(BlueprintSpec::parse(value, error_code)?.name)
     }
 
     pub fn render_managed_files_from_pyproject(self, content: &str) -> Result<GeneratedFiles> {
@@ -443,21 +432,19 @@ pub fn detect_blueprint_metadata_from_pyproject(content: &str) -> Result<Bluepri
         .get("blueprint")
         .and_then(Value::as_str)
         .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint"))?;
-    let (name, spec_version) = BlueprintName::parse_spec(blueprint)?;
+    let spec = BlueprintSpec::parse(blueprint, ErrorCode::Env)?;
 
-    // Read version from the spec first (new format), fall back to blueprint_version key (legacy).
-    let version = spec_version
-        .or_else(|| {
-            forge
-                .get("blueprint_version")
-                .and_then(Value::as_str)
-        })
+    // Read version: spec first, then legacy blueprint_version key.
+    let version = spec
+        .version
+        .map(|v| v.to_string())
+        .or_else(|| forge.get("blueprint_version").and_then(Value::as_str).map(str::to_string))
         .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint version; use 'blueprint = \"name>=version\"' or add blueprint_version"))?;
-    validate_blueprint_version_compatibility(name, version)?;
+    validate_blueprint_version_compatibility(spec.name, &version)?;
 
     Ok(BlueprintMetadata {
-        name,
-        version: Some(version.to_string()),
+        name: spec.name,
+        version: Some(version),
     })
 }
 
@@ -468,94 +455,109 @@ pub struct BlueprintMetadata {
 }
 
 fn validate_blueprint_version_compatibility(blueprint: BlueprintName, version: &str) -> Result<()> {
-    let parsed_version = parse_blueprint_version(version)?;
-    let supported = blueprint.version();
-    let parsed_supported = parse_blueprint_version(supported)?;
-    if parsed_version > parsed_supported {
+    let parsed = BlueprintVersion::parse(version, ErrorCode::Env)?;
+    let supported = BlueprintVersion::parse(blueprint.version(), ErrorCode::Internal)?;
+    if parsed > supported {
         return Err(coded_error(
             ErrorCode::Env,
             format!(
-                "tool.forge.blueprint_version {version} for {} is newer than this forge supports ({supported}); upgrade forge before running managed commands",
+                "blueprint version {version} for {} is newer than this forge supports ({supported}); upgrade forge before running managed commands",
                 blueprint.as_str()
             ),
         ));
     }
-
     Ok(())
 }
 
-/// Extract bare blueprint name from a spec like "python-library>=0.1.0".
-fn blueprint_spec_name(value: &str) -> &str {
-    value
-        .split_once(">=")
-        .or_else(|| value.split_once("=="))
-        .map_or(value, |(name, _)| name)
-        .trim()
+/// Parsed blueprint specification like "python-library>=0.1.0".
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BlueprintSpec {
+    pub name: BlueprintName,
+    pub version: Option<BlueprintVersion>,
 }
 
-/// Extract version from a spec like "python-library>=0.1.0", or None if bare name.
-fn blueprint_spec_version(value: &str) -> Option<&str> {
-    value
-        .split_once(">=")
-        .or_else(|| value.split_once("=="))
-        .map(|(_, version)| version.trim())
-}
+impl BlueprintSpec {
+    /// Parse "python-library>=0.1.0", "python-library==0.1.0", or bare "python-library".
+    pub fn parse(raw: &str, error_code: ErrorCode) -> Result<Self> {
+        let (name_str, version_str) = raw
+            .split_once(">=")
+            .or_else(|| raw.split_once("=="))
+            .map(|(name, version)| (name, Some(version)))
+            .unwrap_or((raw, None));
 
-fn parse_blueprint_version(value: &str) -> Result<(u64, u64, u64)> {
-    let mut parts = value.split('.');
-    let major = parts
-        .next()
-        .ok_or_else(|| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?
-        .parse::<u64>()
-        .map_err(|_| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?;
-    let minor = parts
-        .next()
-        .ok_or_else(|| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?
-        .parse::<u64>()
-        .map_err(|_| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?;
-    let patch = parts
-        .next()
-        .ok_or_else(|| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?
-        .parse::<u64>()
-        .map_err(|_| {
-            coded_error(
-                ErrorCode::Env,
-                format!("invalid blueprint version '{value}'"),
-            )
-        })?;
-    if parts.next().is_some() {
-        return Err(coded_error(
-            ErrorCode::Env,
-            format!("invalid blueprint version '{value}'"),
-        ));
+        let name = BLUEPRINT_REGISTRY
+            .iter()
+            .find(|bp| bp.name == name_str.trim())
+            .map(|bp| bp.id)
+            .ok_or_else(|| {
+                coded_error(error_code, format!("unsupported blueprint '{name_str}'"))
+            })?;
+
+        let version = version_str
+            .map(|v| BlueprintVersion::parse(v.trim(), error_code))
+            .transpose()?;
+
+        Ok(Self { name, version })
     }
 
-    Ok((major, minor, patch))
+    /// Format as "python-library>=0.1.0".
+    pub fn to_spec_string(&self) -> String {
+        match &self.version {
+            Some(v) => format!("{}>={}", self.name.as_str(), v),
+            None => self.name.as_str().to_string(),
+        }
+    }
+}
+
+/// Semantic version for blueprint compatibility checks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct BlueprintVersion {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+}
+
+impl BlueprintVersion {
+    /// Parse "X.Y.Z" into a BlueprintVersion.
+    pub fn parse(value: &str, error_code: ErrorCode) -> Result<Self> {
+        let mut parts = value.split('.');
+        let major = next_part(&mut parts, value, error_code)?;
+        let minor = next_part(&mut parts, value, error_code)?;
+        let patch = next_part(&mut parts, value, error_code)?;
+        if parts.next().is_some() {
+            return Err(coded_error(
+                error_code,
+                format!("invalid blueprint version '{value}'"),
+            ));
+        }
+        Ok(Self {
+            major,
+            minor,
+            patch,
+        })
+    }
+
+    pub fn as_str(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl fmt::Display for BlueprintVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+fn next_part(
+    parts: &mut dyn Iterator<Item = &str>,
+    value: &str,
+    error_code: ErrorCode,
+) -> Result<u64> {
+    parts
+        .next()
+        .ok_or_else(|| coded_error(error_code, format!("invalid blueprint version '{value}'")))?
+        .parse::<u64>()
+        .map_err(|_| coded_error(error_code, format!("invalid blueprint version '{value}'")))
 }
 
 #[cfg(test)]

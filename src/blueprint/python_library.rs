@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::errors::ErrorCode;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
@@ -13,8 +14,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, ManagedOption, managed_option_enabled, render_forge_overrides_table,
-    validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, ManagedOption, managed_option_enabled,
+    render_forge_overrides_table, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "python-library";
@@ -547,12 +548,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         .and_then(|tool| tool.forge)
         .context("missing [tool.forge] metadata")?;
 
-    let blueprint_name = forge
-        .blueprint
-        .split_once('>')
-        .or_else(|| forge.blueprint.split_once('='))
-        .map_or(forge.blueprint.as_str(), |(name, _)| name);
-    if blueprint_name != BLUEPRINT_NAME {
+    let spec = BlueprintSpec::parse(&forge.blueprint, ErrorCode::Env)
+        .with_context(|| format!("expected blueprint '{}'", BLUEPRINT_NAME))?;
+    if spec.name.as_str() != BLUEPRINT_NAME {
         bail!(
             "unsupported blueprint '{}' (expected '{}')",
             forge.blueprint,
