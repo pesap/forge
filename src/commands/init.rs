@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::blueprint::files::{
-    GeneratedFiles, ManagedFileAction, ManagedFileConflict, managed_file_path,
-    plan_generated_files, write_generated_file,
+    GeneratedFiles, ManagedFileAction, ManagedFileConflict, count_changes, count_conflicts,
+    plan_generated_files, write_generated_files,
 };
 use crate::blueprint::{BlueprintName, detect_blueprint_metadata_from_pyproject};
 use crate::cli::{GithubVisibility, InitArgs, NewArgs};
@@ -19,7 +19,7 @@ use crate::ui;
 pub fn run(args: InitArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
     new::ensure_interactive_setup_allowed(args.yes, args.json, args.dry_run, stdin_is_terminal)?;
-    validate_diff_mode(args.diff, args.dry_run)?;
+    crate::commands::validate_diff_mode(args.diff, args.dry_run, false)?;
     ensure_existing_directory(&args.path)?;
     ensure_not_already_managed(&args.path)?;
 
@@ -110,7 +110,7 @@ pub fn run(args: InitArgs) -> Result<()> {
     }
 
     if !args.dry_run {
-        write_project_files(&args.path, project.files)?;
+        write_generated_files(&args.path, project.files)?;
     }
 
     if !args.json {
@@ -131,14 +131,6 @@ pub fn run(args: InitArgs) -> Result<()> {
         );
         ui::info("managed update", "forge update --path .");
         print_next_steps(&args, blueprint, conflicts, args.dry_run);
-    }
-
-    Ok(())
-}
-
-fn validate_diff_mode(diff: bool, dry_run: bool) -> Result<()> {
-    if diff && !dry_run {
-        return Err(coded_error(ErrorCode::Input, "--diff requires --dry-run"));
     }
 
     Ok(())
@@ -285,18 +277,6 @@ fn print_next_steps(args: &InitArgs, blueprint: BlueprintName, conflicts: usize,
     }
 }
 
-fn write_project_files(destination: &Path, files: GeneratedFiles) -> Result<()> {
-    for (relative_path, generated_file) in files {
-        let path = managed_file_path(destination, &relative_path)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        write_generated_file(&path, &generated_file)?;
-    }
-    Ok(())
-}
-
 fn print_json_report(
     args: &InitArgs,
     path: &Path,
@@ -428,13 +408,13 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName, force: bool) -> Strin
         blueprint.as_str().to_string(),
     ];
 
-    push_option(&mut parts, "--project-name", args.project_name.as_deref());
-    push_option(&mut parts, "--package-name", args.package_name.as_deref());
-    push_option(&mut parts, "--description", args.description.as_deref());
-    push_option(&mut parts, "--author-name", args.author_name.as_deref());
-    push_option(&mut parts, "--author-email", args.author_email.as_deref());
-    push_option(&mut parts, "--license", args.license.as_deref());
-    push_option(&mut parts, "--python-min", args.python_min.as_deref());
+    new::push_option(&mut parts, "--project-name", args.project_name.as_deref());
+    new::push_option(&mut parts, "--package-name", args.package_name.as_deref());
+    new::push_option(&mut parts, "--description", args.description.as_deref());
+    new::push_option(&mut parts, "--author-name", args.author_name.as_deref());
+    new::push_option(&mut parts, "--author-email", args.author_email.as_deref());
+    new::push_option(&mut parts, "--license", args.license.as_deref());
+    new::push_option(&mut parts, "--python-min", args.python_min.as_deref());
 
     new::push_managed_option_flags(
         &mut parts,
@@ -456,28 +436,6 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName, force: bool) -> Strin
     }
 
     parts.join(" ")
-}
-
-fn push_option(parts: &mut Vec<String>, name: &str, value: Option<&str>) {
-    let Some(value) = value else {
-        return;
-    };
-    parts.push(name.to_string());
-    parts.push(ui::shell_arg(value));
-}
-
-fn count_changes(actions: &[ManagedFileAction]) -> usize {
-    actions
-        .iter()
-        .filter(|action| action.changes_filesystem())
-        .count()
-}
-
-fn count_conflicts(actions: &[ManagedFileAction]) -> usize {
-    actions
-        .iter()
-        .filter(|action| action.blocks_update())
-        .count()
 }
 
 fn init_status_code(dry_run: bool, conflicts: usize) -> &'static str {

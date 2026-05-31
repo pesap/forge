@@ -261,6 +261,32 @@ pub fn write_generated_file(path: &Path, generated_file: &GeneratedFile) -> Resu
     }
 }
 
+pub fn count_changes(actions: &[ManagedFileAction]) -> usize {
+    actions
+        .iter()
+        .filter(|action| action.changes_filesystem())
+        .count()
+}
+
+pub fn count_conflicts(actions: &[ManagedFileAction]) -> usize {
+    actions
+        .iter()
+        .filter(|action| action.blocks_update())
+        .count()
+}
+
+pub fn write_generated_files(root: &Path, files: GeneratedFiles) -> Result<()> {
+    for (relative_path, generated_file) in files {
+        let path = managed_file_path(root, &relative_path)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        write_generated_file(&path, &generated_file)?;
+    }
+    Ok(())
+}
+
 fn write_text_file_atomically(path: &Path, content: &str) -> Result<()> {
     let temp_path = temp_path_for(path)?;
     let write_result = (|| -> Result<()> {
