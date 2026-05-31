@@ -548,15 +548,11 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         .and_then(|tool| tool.forge)
         .context("missing [tool.forge] metadata")?;
 
-    let spec = BlueprintSpec::parse(&forge.blueprint, ErrorCode::Env)
-        .with_context(|| format!("expected blueprint '{}'", BLUEPRINT_NAME))?;
-    if spec.name.as_str() != BLUEPRINT_NAME {
-        bail!(
-            "unsupported blueprint '{}' (expected '{}')",
-            forge.blueprint,
-            BLUEPRINT_NAME
-        );
-    }
+    BlueprintSpec::parse_for(
+        BlueprintName::PythonLibrary,
+        &forge.blueprint,
+        ErrorCode::Env,
+    )?;
 
     let overrides = forge.overrides.unwrap_or_default();
     let options =

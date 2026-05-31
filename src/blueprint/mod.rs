@@ -477,7 +477,7 @@ pub struct BlueprintSpec {
 }
 
 impl BlueprintSpec {
-    /// Parse "python-library>=0.1.0", "python-library==0.1.0", or bare "python-library".
+    /// Parse "python-library>=0.1.0".
     pub fn parse(raw: &str, error_code: ErrorCode) -> Result<Self> {
         let (name_str, version_str) = raw
             .split_once(">=")
@@ -500,12 +500,20 @@ impl BlueprintSpec {
         Ok(Self { name, version })
     }
 
-    /// Format as "python-library>=0.1.0".
-    pub fn to_spec_string(&self) -> String {
-        match &self.version {
-            Some(v) => format!("{}>={}", self.name.as_str(), v),
-            None => self.name.as_str().to_string(),
+    /// Parse and validate the blueprint type matches `expected`.
+    pub fn parse_for(expected: BlueprintName, raw: &str, error_code: ErrorCode) -> Result<Self> {
+        let spec = Self::parse(raw, error_code)?;
+        if spec.name != expected {
+            return Err(coded_error(
+                error_code,
+                format!(
+                    "unsupported blueprint '{}' (expected '{}')",
+                    raw,
+                    expected.as_str()
+                ),
+            ));
         }
+        Ok(spec)
     }
 }
 
@@ -518,7 +526,7 @@ pub struct BlueprintVersion {
 }
 
 impl BlueprintVersion {
-    /// Parse "X.Y.Z" into a BlueprintVersion.
+    /// Parse "X.Y.Z" version string.
     pub fn parse(value: &str, error_code: ErrorCode) -> Result<Self> {
         let mut parts = value.split('.');
         let major = next_part(&mut parts, value, error_code)?;
@@ -535,10 +543,6 @@ impl BlueprintVersion {
             minor,
             patch,
         })
-    }
-
-    pub fn as_str(&self) -> String {
-        self.to_string()
     }
 }
 
