@@ -1171,7 +1171,7 @@ fn doctor_path_rejects_missing_version_and_options_metadata() {
     .failure()
     .stdout(predicates::str::is_empty())
     .stderr(contains("failed to detect Forge blueprint"))
-    .stderr(contains("missing tool.forge.blueprint_version"))
+    .stderr(contains("missing tool.forge.blueprint version"))
     .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
@@ -1202,7 +1202,7 @@ fn doctor_json_path_rejects_missing_version_and_options_metadata() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("failed to detect Forge blueprint"));
-    assert!(stderr.contains("missing tool.forge.blueprint_version"));
+    assert!(stderr.contains("missing tool.forge.blueprint version"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 

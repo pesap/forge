@@ -463,7 +463,10 @@ fn update_rejects_missing_blueprint_version_metadata() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     fs::write(
         &pyproject_path,
         toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
@@ -482,7 +485,7 @@ fn update_rejects_missing_blueprint_version_metadata() {
         .failure()
         .stdout(predicates::str::is_empty())
         .stderr(contains("failed to validate Forge metadata at"))
-        .stderr(contains("missing tool.forge.blueprint_version"))
+        .stderr(contains("missing tool.forge.blueprint version"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
@@ -499,7 +502,10 @@ fn update_check_rejects_missing_blueprint_version() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     fs::write(
         &pyproject_path,
         toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
@@ -517,7 +523,7 @@ fn update_check_rejects_missing_blueprint_version() {
         .assert()
         .failure()
         .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.blueprint_version"))
+        .stderr(contains("missing tool.forge.blueprint version"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
@@ -534,7 +540,10 @@ fn update_check_json_rejects_missing_blueprint_version() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     fs::write(
         &pyproject_path,
         toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),
@@ -554,7 +563,7 @@ fn update_check_json_rejects_missing_blueprint_version() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.blueprint_version"));
+    assert!(stderr.contains("missing tool.forge.blueprint version"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
@@ -571,7 +580,10 @@ fn update_set_rejects_missing_version_and_options_metadata() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
@@ -595,7 +607,7 @@ fn update_set_rejects_missing_version_and_options_metadata() {
         .assert()
         .failure()
         .stdout(predicates::str::is_empty())
-        .stderr(contains("missing tool.forge.blueprint_version"))
+        .stderr(contains("missing tool.forge.blueprint version"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
@@ -612,7 +624,10 @@ fn update_json_rejects_missing_version_and_options_metadata() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
@@ -639,7 +654,7 @@ fn update_json_rejects_missing_version_and_options_metadata() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.blueprint_version"));
+    assert!(stderr.contains("missing tool.forge.blueprint version"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
@@ -656,7 +671,10 @@ fn update_check_json_rejects_missing_version_and_options_metadata() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
@@ -683,7 +701,7 @@ fn update_check_json_rejects_missing_version_and_options_metadata() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.blueprint_version"));
+    assert!(stderr.contains("missing tool.forge.blueprint version"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
@@ -700,7 +718,10 @@ fn update_dry_run_json_rejects_missing_version_and_options_metadata() {
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
-        .remove("blueprint_version");
+        .insert(
+            "blueprint".to_string(),
+            toml::Value::String("python-library".to_string()),
+        );
     pyproject_value["tool"]["forge"]
         .as_table_mut()
         .expect("tool.forge should be a table")
@@ -726,7 +747,7 @@ fn update_dry_run_json_rejects_missing_version_and_options_metadata() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("missing tool.forge.blueprint_version"));
+    assert!(stderr.contains("missing tool.forge.blueprint version"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
@@ -872,8 +893,12 @@ fn update_rejects_newer_blueprint_version_than_supported() {
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should be readable");
     let mut pyproject_value: toml::Value =
         toml::from_str(&pyproject).expect("pyproject should parse as TOML");
-    pyproject_value["tool"]["forge"]["blueprint_version"] =
-        toml::Value::String("9.0.0".to_string());
+    if let Some(toml::Value::String(blueprint)) = pyproject_value["tool"]["forge"]
+        .as_table_mut()
+        .and_then(|f| f.get_mut("blueprint"))
+    {
+        *blueprint = "python-library>=9.0.0".to_string();
+    }
     fs::write(
         &pyproject_path,
         toml::to_string_pretty(&pyproject_value).expect("pyproject should serialize"),

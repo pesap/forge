@@ -80,7 +80,7 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("blueprint = \"python-library\""));
+    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
     assert!(pyproject.contains("python_min = \"3.12\""));
     assert!(project_path.join(".github/workflows/ci.yaml").exists());
     assert!(project_path.join("justfile").exists());
@@ -155,7 +155,7 @@ fn init_adds_managed_infrastructure_to_existing_rust_repo() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("blueprint = \"rust-library\""));
+    assert!(pyproject.contains("blueprint = \"rust-library>=0.1.0\""));
     assert!(project_path.join(".github/workflows/ci.yaml").exists());
     assert!(project_path.join("justfile").exists());
     assert_eq!(
@@ -218,7 +218,7 @@ fn init_adds_managed_infrastructure_to_existing_any_project_repo() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("blueprint = \"any-project\""));
+    assert!(pyproject.contains("blueprint = \"any-project>=0.1.0\""));
     assert!(pyproject.contains("prettier = true"));
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join("docs/package.json").exists());
@@ -558,7 +558,7 @@ fn init_rejects_corrupt_existing_forge_metadata() {
 
     cmd.assert()
         .failure()
-        .stderr(contains("missing tool.forge.blueprint_version"))
+        .stderr(contains("missing tool.forge.blueprint version"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 
     let pyproject_after =
@@ -844,7 +844,7 @@ fn init_force_overwrites_existing_managed_files_after_explicit_review() {
     assert!(readme.contains("Forge Metadata"));
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("blueprint = \"any-project\""));
+    assert!(pyproject.contains("blueprint = \"any-project>=0.1.0\""));
 }
 
 #[test]

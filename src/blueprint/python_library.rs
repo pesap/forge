@@ -547,7 +547,12 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         .and_then(|tool| tool.forge)
         .context("missing [tool.forge] metadata")?;
 
-    if forge.blueprint != BLUEPRINT_NAME {
+    let blueprint_name = forge
+        .blueprint
+        .split_once('>')
+        .or_else(|| forge.blueprint.split_once('='))
+        .map_or(forge.blueprint.as_str(), |(name, _)| name);
+    if blueprint_name != BLUEPRINT_NAME {
         bail!(
             "unsupported blueprint '{}' (expected '{}')",
             forge.blueprint,
@@ -1053,7 +1058,7 @@ prettier = true
 
         // Verify forge metadata is embedded
         assert!(pyproject.contains("[tool.forge]"));
-        assert!(pyproject.contains("blueprint = \"python-library\""));
+        assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
         assert!(pyproject.contains("project_name = \"meta-test\""));
     }
 }

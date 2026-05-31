@@ -121,11 +121,19 @@ impl BlueprintName {
     }
 
     pub fn from_metadata_with_error_code(value: &str, error_code: ErrorCode) -> Result<Self> {
+        let name = blueprint_spec_name(value);
         BLUEPRINT_REGISTRY
             .iter()
-            .find(|blueprint| blueprint.name == value)
+            .find(|blueprint| blueprint.name == name)
             .map(|blueprint| blueprint.id)
-            .ok_or_else(|| coded_error(error_code, format!("unsupported blueprint '{value}'")))
+            .ok_or_else(|| coded_error(error_code, format!("unsupported blueprint '{name}'")))
+    }
+
+    /// Parse `"python-library>=0.1.0"` into (BlueprintName, Some("0.1.0")) or `"python-library"` into (BlueprintName, None).
+    pub fn parse_spec(value: &str) -> Result<(Self, Option<&str>)> {
+        let name = Self::from_metadata(value)?;
+        let version = blueprint_spec_version(value);
+        Ok((name, version))
     }
 
     pub fn render_managed_files_from_pyproject(self, content: &str) -> Result<GeneratedFiles> {
@@ -435,17 +443,16 @@ pub fn detect_blueprint_metadata_from_pyproject(content: &str) -> Result<Bluepri
         .get("blueprint")
         .and_then(Value::as_str)
         .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint"))?;
-    let name = BlueprintName::from_metadata_with_error_code(blueprint, ErrorCode::Env)?;
-    let version = forge
-        .get("blueprint_version")
-        .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint_version"))?
-        .as_str()
-        .ok_or_else(|| {
-            coded_error(
-                ErrorCode::Env,
-                "tool.forge.blueprint_version must be a string",
-            )
-        })?;
+    let (name, spec_version) = BlueprintName::parse_spec(blueprint)?;
+
+    // Read version from the spec first (new format), fall back to blueprint_version key (legacy).
+    let version = spec_version
+        .or_else(|| {
+            forge
+                .get("blueprint_version")
+                .and_then(Value::as_str)
+        })
+        .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint version; use 'blueprint = \"name>=version\"' or add blueprint_version"))?;
     validate_blueprint_version_compatibility(name, version)?;
 
     Ok(BlueprintMetadata {
@@ -475,6 +482,23 @@ fn validate_blueprint_version_compatibility(blueprint: BlueprintName, version: &
     }
 
     Ok(())
+}
+
+/// Extract bare blueprint name from a spec like "python-library>=0.1.0".
+fn blueprint_spec_name(value: &str) -> &str {
+    value
+        .split_once(">=")
+        .or_else(|| value.split_once("=="))
+        .map_or(value, |(name, _)| name)
+        .trim()
+}
+
+/// Extract version from a spec like "python-library>=0.1.0", or None if bare name.
+fn blueprint_spec_version(value: &str) -> Option<&str> {
+    value
+        .split_once(">=")
+        .or_else(|| value.split_once("=="))
+        .map(|(_, version)| version.trim())
 }
 
 fn parse_blueprint_version(value: &str) -> Result<(u64, u64, u64)> {
@@ -570,7 +594,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("missing tool.forge.blueprint_version")
+                .contains("missing tool.forge.blueprint version")
         );
     }
 
@@ -598,6 +622,7 @@ mod tests {
 
     #[test]
     fn rejects_non_string_blueprint_version() {
+        // Legacy blueprint_version as integer is rejected because Value::as_str returns None.
         let metadata = "[tool.forge]\nblueprint = \"python-library\"\nblueprint_version = 1\n";
 
         let error = detect_blueprint_metadata_from_pyproject(metadata)
@@ -606,7 +631,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("tool.forge.blueprint_version must be a string")
+                .contains("missing tool.forge.blueprint version")
         );
     }
 
