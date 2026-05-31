@@ -9,8 +9,8 @@ use serde::Serialize;
 use toml::Value;
 
 use crate::blueprint::files::{
-    GeneratedFile, GeneratedFiles, ManagedFileAction, ManagedFileConflict, managed_file_path,
-    plan_generated_files, write_generated_file,
+    GeneratedFile, GeneratedFiles, ManagedFileAction, ManagedFileConflict, count_changes,
+    count_conflicts, managed_file_path, plan_generated_files, write_generated_files,
 };
 use crate::blueprint::{
     BlueprintMetadata, BlueprintName, ManagedOption, ManagedOptionValues,
@@ -25,7 +25,7 @@ use crate::ui;
 
 pub fn run(args: UpdateArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
-    validate_diff_mode(args.diff, args.dry_run, args.check)?;
+    crate::commands::validate_diff_mode(args.diff, args.dry_run, args.check)?;
     let root = args
         .path
         .canonicalize()
@@ -150,7 +150,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     }
 
     if !read_only {
-        apply_managed_files(&root, managed_files)?;
+        write_generated_files(&root, managed_files)?;
         clean_optional_files_for_blueprint(blueprint, &root, &pyproject)?;
     }
 
@@ -263,17 +263,6 @@ fn ensure_forge_metadata_for_update(root: &Path, pyproject: &str) -> Result<()> 
                 "missing [tool.forge] metadata; use `forge init --path {}` to adopt this repository before running update",
                 ui::shell_arg(root.display().to_string())
             ),
-        ));
-    }
-
-    Ok(())
-}
-
-fn validate_diff_mode(diff: bool, dry_run: bool, check: bool) -> Result<()> {
-    if diff && !(dry_run || check) {
-        return Err(coded_error(
-            ErrorCode::Input,
-            "--diff requires --dry-run or --check",
         ));
     }
 
@@ -604,6 +593,8 @@ fn replace_boolean_assignment_value(line: &str, value: bool) -> String {
     format!("{before_equals}={leading_whitespace}{value}{suffix}")
 }
 
+use crate::commands::new::SelectedOption;
+
 fn selected_options_from_pyproject(
     pyproject: &str,
     blueprint: BlueprintName,
@@ -625,15 +616,7 @@ fn selected_options_from_pyproject(
 }
 
 fn format_selected_options(options: &[SelectedOption]) -> String {
-    let selected_options = options
-        .iter()
-        .map(|option| crate::commands::new::SelectedOption {
-            name: option.name,
-            enabled: option.enabled,
-        })
-        .collect::<Vec<_>>();
-
-    crate::commands::new::format_selected_options(&selected_options)
+    crate::commands::new::format_selected_options(options)
 }
 
 fn parse_option_override(value: &str) -> Result<(&str, bool)> {
@@ -667,18 +650,6 @@ fn parse_option_override(value: &str) -> Result<(&str, bool)> {
     };
 
     Ok((key, enabled))
-}
-
-fn apply_managed_files(root: &Path, managed_files: GeneratedFiles) -> Result<()> {
-    for (relative_path, generated_file) in managed_files {
-        let full_path = managed_file_path(root, &relative_path)?;
-        if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        write_generated_file(&full_path, &generated_file)?;
-    }
-    Ok(())
 }
 
 fn clean_optional_files_for_blueprint(
@@ -767,15 +738,7 @@ fn required_tools_summary_for_options(
     blueprint: BlueprintName,
     options: &[SelectedOption],
 ) -> String {
-    let selected_options = options
-        .iter()
-        .map(|option| crate::commands::new::SelectedOption {
-            name: option.name,
-            enabled: option.enabled,
-        })
-        .collect::<Vec<_>>();
-
-    crate::commands::new::required_tools_summary_for_options(blueprint, &selected_options)
+    crate::commands::new::required_tools_summary_for_options(blueprint, options)
 }
 
 fn print_next_steps(
@@ -924,26 +887,6 @@ fn update_status_code(
     "updated"
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct SelectedOption {
-    name: &'static str,
-    enabled: bool,
-}
-
-fn count_changes(actions: &[ManagedFileAction]) -> usize {
-    actions
-        .iter()
-        .filter(|action| action.changes_filesystem())
-        .count()
-}
-
-fn count_conflicts(actions: &[ManagedFileAction]) -> usize {
-    actions
-        .iter()
-        .filter(|action| action.blocks_update())
-        .count()
-}
-
 #[derive(Serialize)]
 struct UpdateAction<'a> {
     action: &'a str,
@@ -1059,12 +1002,12 @@ mod tests {
 
     use crate::blueprint::BlueprintName;
     use crate::blueprint::files::{ManagedFileAction, ManagedFileConflict};
+    use crate::commands::new::SelectedOption;
     use crate::commands::update::{
-        NonInteractiveApplyGuardInput, SelectedOption, action_breakdown,
-        cleanup_action_for_optional_path, cleanup_actions_for_blueprint,
-        ensure_noninteractive_apply_allowed, required_tools_summary_for_options,
-        should_confirm_update, update_command, update_result_section_title, update_review_summary,
-        update_status_code,
+        NonInteractiveApplyGuardInput, action_breakdown, cleanup_action_for_optional_path,
+        cleanup_actions_for_blueprint, ensure_noninteractive_apply_allowed,
+        required_tools_summary_for_options, should_confirm_update, update_command,
+        update_result_section_title, update_review_summary, update_status_code,
     };
     use tempfile::TempDir;
 

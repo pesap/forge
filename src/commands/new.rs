@@ -10,9 +10,7 @@ use toml::Value;
 
 use crate::blueprint::any_project;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
-use crate::blueprint::files::{
-    GeneratedFiles, managed_file_path, plan_generated_files, write_generated_file,
-};
+use crate::blueprint::files::{GeneratedFiles, plan_generated_files, write_generated_files};
 use crate::blueprint::python_library;
 use crate::blueprint::rust_library;
 use crate::blueprint::{BlueprintName, ManagedOption, ManagedOptionValues, managed_option_enabled};
@@ -27,7 +25,7 @@ const DEFAULT_PYTHON_MIN: &str = "3.11";
 pub fn run(args: NewArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
     ensure_interactive_setup_allowed(args.yes, args.json, args.dry_run, stdin_is_terminal)?;
-    validate_diff_mode(args.diff, args.dry_run)?;
+    crate::commands::validate_diff_mode(args.diff, args.dry_run, false)?;
     let blueprint = select_blueprint(args.blueprint, args.yes)?;
     validate_explicit_options(blueprint, &args)?;
     validate_required_fields_for_yes(blueprint, &args)?;
@@ -118,7 +116,7 @@ pub fn run(args: NewArgs) -> Result<()> {
         .keys()
         .map(|path| path.display().to_string())
         .collect();
-    write_project_files(&destination, project.files)?;
+    write_generated_files(&destination, project.files)?;
     if lock_dependencies_before_push(&destination, args.github, args.json)? {
         file_paths.push("uv.lock".to_string());
         file_paths.sort();
@@ -233,12 +231,21 @@ pub(crate) fn should_confirm_interactive_setup(
     !assume_yes && !json && !dry_run
 }
 
-fn validate_diff_mode(diff: bool, dry_run: bool) -> Result<()> {
-    if diff && !dry_run {
-        return Err(coded_error(ErrorCode::Input, "--diff requires --dry-run"));
-    }
-
-    Ok(())
+macro_rules! render_blueprint_arm {
+    ($args:expr, $blueprint:expr, $scope:expr, $gather:ident, $options_fn:ident, $render_project:path, $render_managed:path) => {{
+        let config = $gather($args)?;
+        config.validate()?;
+        let options = $options_fn(&config);
+        let files = match $scope {
+            RenderScope::Project => $render_project(&config),
+            RenderScope::ManagedInfrastructure => $render_managed(&config),
+        };
+        Ok(ProjectRender {
+            project_name: config.project_name.clone(),
+            options: selected_options_from_values($blueprint, &options)?,
+            files,
+        })
+    }};
 }
 
 pub(crate) fn render_blueprint(
@@ -247,48 +254,33 @@ pub(crate) fn render_blueprint(
     scope: RenderScope,
 ) -> Result<ProjectRender> {
     match blueprint {
-        BlueprintName::AnyProject => {
-            let config = gather_any_project_config(args)?;
-            config.validate()?;
-            let options = any_project_managed_option_values(&config);
-            let files = match scope {
-                RenderScope::Project => any_project::render_project_files(&config),
-                RenderScope::ManagedInfrastructure => any_project::render_managed_files(&config),
-            };
-            Ok(ProjectRender {
-                project_name: config.project_name.clone(),
-                options: selected_options_from_values(blueprint, &options)?,
-                files,
-            })
-        }
-        BlueprintName::PythonLibrary => {
-            let config = gather_python_library_config(args)?;
-            config.validate()?;
-            let options = python_library_managed_option_values(&config);
-            let files = match scope {
-                RenderScope::Project => python_library::render_project_files(&config),
-                RenderScope::ManagedInfrastructure => python_library::render_managed_files(&config),
-            };
-            Ok(ProjectRender {
-                project_name: config.project_name.clone(),
-                options: selected_options_from_values(blueprint, &options)?,
-                files,
-            })
-        }
-        BlueprintName::RustLibrary => {
-            let config = gather_rust_library_config(args)?;
-            config.validate()?;
-            let options = rust_library_managed_option_values(&config);
-            let files = match scope {
-                RenderScope::Project => rust_library::render_project_files(&config),
-                RenderScope::ManagedInfrastructure => rust_library::render_managed_files(&config),
-            };
-            Ok(ProjectRender {
-                project_name: config.project_name.clone(),
-                options: selected_options_from_values(blueprint, &options)?,
-                files,
-            })
-        }
+        BlueprintName::AnyProject => render_blueprint_arm!(
+            args,
+            blueprint,
+            scope,
+            gather_any_project_config,
+            any_project_managed_option_values,
+            any_project::render_project_files,
+            any_project::render_managed_files
+        ),
+        BlueprintName::PythonLibrary => render_blueprint_arm!(
+            args,
+            blueprint,
+            scope,
+            gather_python_library_config,
+            python_library_managed_option_values,
+            python_library::render_project_files,
+            python_library::render_managed_files
+        ),
+        BlueprintName::RustLibrary => render_blueprint_arm!(
+            args,
+            blueprint,
+            scope,
+            gather_rust_library_config,
+            rust_library_managed_option_values,
+            rust_library::render_project_files,
+            rust_library::render_managed_files
+        ),
     }
 }
 
@@ -306,21 +298,25 @@ fn selected_options_from_values(
         .collect()
 }
 
-fn any_project_managed_option_values(config: &any_project::ProjectConfig) -> ManagedOptionValues {
-    let mut values = ManagedOptionValues::new();
-    values.insert(ManagedOption::Docs, config.docs);
+fn insert_component_options(values: &mut ManagedOptionValues, components: &ComponentSelection) {
     values.insert(
         ManagedOption::Prettier,
-        config.components.is_enabled(ManagedComponent::Prettier),
+        components.is_enabled(ManagedComponent::Prettier),
     );
     values.insert(
         ManagedOption::Editorconfig,
-        config.components.is_enabled(ManagedComponent::Editorconfig),
+        components.is_enabled(ManagedComponent::Editorconfig),
     );
     values.insert(
         ManagedOption::Markdownlint,
-        config.components.is_enabled(ManagedComponent::Markdownlint),
+        components.is_enabled(ManagedComponent::Markdownlint),
     );
+}
+
+fn any_project_managed_option_values(config: &any_project::ProjectConfig) -> ManagedOptionValues {
+    let mut values = ManagedOptionValues::new();
+    values.insert(ManagedOption::Docs, config.docs);
+    insert_component_options(&mut values, &config.components);
     values
 }
 
@@ -332,18 +328,7 @@ fn python_library_managed_option_values(
     values.insert(ManagedOption::Codecov, config.codecov);
     values.insert(ManagedOption::PypiPublish, config.pypi_publish);
     values.insert(ManagedOption::PythonRules, config.python_rules);
-    values.insert(
-        ManagedOption::Prettier,
-        config.components.is_enabled(ManagedComponent::Prettier),
-    );
-    values.insert(
-        ManagedOption::Editorconfig,
-        config.components.is_enabled(ManagedComponent::Editorconfig),
-    );
-    values.insert(
-        ManagedOption::Markdownlint,
-        config.components.is_enabled(ManagedComponent::Markdownlint),
-    );
+    insert_component_options(&mut values, &config.components);
     values
 }
 
@@ -351,18 +336,7 @@ fn rust_library_managed_option_values(config: &rust_library::ProjectConfig) -> M
     let mut values = ManagedOptionValues::new();
     values.insert(ManagedOption::Docs, config.docs);
     values.insert(ManagedOption::RustRules, config.rust_rules);
-    values.insert(
-        ManagedOption::Prettier,
-        config.components.is_enabled(ManagedComponent::Prettier),
-    );
-    values.insert(
-        ManagedOption::Editorconfig,
-        config.components.is_enabled(ManagedComponent::Editorconfig),
-    );
-    values.insert(
-        ManagedOption::Markdownlint,
-        config.components.is_enabled(ManagedComponent::Markdownlint),
-    );
+    insert_component_options(&mut values, &config.components);
     values
 }
 
@@ -644,7 +618,7 @@ fn selected_option_enabled(options: &[SelectedOption], option_name: &str) -> boo
         .is_some_and(|option| option.enabled)
 }
 
-fn push_option(parts: &mut Vec<String>, name: &str, value: Option<&str>) {
+pub(crate) fn push_option(parts: &mut Vec<String>, name: &str, value: Option<&str>) {
     let Some(value) = value else {
         return;
     };
@@ -1321,18 +1295,6 @@ fn validate_destination_is_available(path: &Path) -> Result<()> {
 fn ensure_destination_directory_exists(path: &Path) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create destination {}", path.display()))?;
-    Ok(())
-}
-
-fn write_project_files(destination: &Path, files: GeneratedFiles) -> Result<()> {
-    for (relative_path, generated_file) in files {
-        let path = managed_file_path(destination, &relative_path)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-        write_generated_file(&path, &generated_file)?;
-    }
     Ok(())
 }
 
