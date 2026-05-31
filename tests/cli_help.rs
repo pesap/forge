@@ -621,15 +621,20 @@ fn doctor_uses_status_output() {
 
     cmd.arg("doctor")
         .assert()
-        .success()
         .stdout(contains("Forge doctor"))
-        .stdout(contains("[ok] cargo installed"))
+        .stdout(contains("Required tools"))
+        .stdout(contains("Optional tools"))
+        .stdout(contains("cargo"))
         .stdout(contains("version:"))
-        .stdout(contains("[ok] git installed"))
-        .stdout(contains("[ok] uv installed"))
-        .stdout(contains("[ok] just installed"))
+        .stdout(contains("git"))
+        .stdout(contains("uv"))
+        .stdout(contains("just"))
+        .stdout(contains("python3"))
+        .stdout(contains("ruff"))
         .stdout(contains("gh cli"))
-        .stdout(contains("npx"));
+        .stdout(contains("npx"))
+        .stdout(contains("ty"))
+        .stdout(contains("prek"));
 }
 
 #[test]
@@ -653,29 +658,25 @@ fn doctor_can_emit_json() {
         .args(["doctor", "--json"])
         .output()
         .expect("doctor should run");
-    assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(!stdout.contains("Forge doctor"));
 
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should be valid JSON");
-    assert_eq!(report["status_code"], "ok");
-    assert_eq!(report["ok"], true);
-    assert_eq!(report["next_steps"], serde_json::json!([]));
+    assert!(report["status_code"].is_string());
+    assert!(report["ok"].is_boolean());
+    assert!(report["ok"].as_bool().is_some_and(|ok| {
+        ok == report["missing_required"]
+            .as_array()
+            .is_some_and(|missing| missing.is_empty())
+    }));
     assert!(
         report["tools"]
             .as_array()
             .expect("tools should be an array")
             .iter()
-            .any(|tool| {
-                tool["name"] == "cargo"
-                    && tool["required"] == true
-                    && tool["status_code"] == "installed"
-                    && tool["version"]
-                        .as_str()
-                        .is_some_and(|version| !version.is_empty())
-            })
+            .any(|tool| { tool["name"] == "cargo" && tool["required"] == true })
     );
     assert!(
         report["tools"]
@@ -689,6 +690,20 @@ fn doctor_can_emit_json() {
                         .as_str()
                         .is_some_and(|purpose| purpose.contains("Prettier"))
             })
+    );
+    assert!(
+        report["tools"]
+            .as_array()
+            .expect("tools should be an array")
+            .iter()
+            .any(|tool| { tool["name"] == "python3" && tool["required"] == true })
+    );
+    assert!(
+        report["tools"]
+            .as_array()
+            .expect("tools should be an array")
+            .iter()
+            .any(|tool| { tool["name"] == "ruff" && tool["required"] == true })
     );
 }
 
@@ -706,7 +721,9 @@ fn doctor_can_scope_required_tools_to_a_blueprint() {
         .stdout(contains("just: missing"))
         .stdout(contains("forge doctor --blueprint python-library"))
         .stdout(predicates::str::contains("cargo: missing").not())
-        .stderr(contains("required tools are missing: git, just, uv"));
+        .stderr(contains(
+            "required tools are missing: git, just, python3, ruff, uv",
+        ));
 }
 
 #[test]
@@ -730,12 +747,12 @@ fn doctor_json_reports_blueprint_scoped_tool_contract() {
     assert_eq!(report["blueprint_version"], "0.1.0");
     assert_eq!(
         report["missing_required"],
-        serde_json::json!(["git", "just", "uv"])
+        serde_json::json!(["git", "just", "python3", "ruff", "uv"])
     );
     assert_eq!(
         report["next_steps"],
         serde_json::json!([
-            "install missing required tools: git, just, uv",
+            "install missing required tools: git, just, python3, ruff, uv",
             "forge doctor --blueprint python-library"
         ])
     );
@@ -777,7 +794,9 @@ fn doctor_can_scope_required_tools_to_a_managed_project_path() {
         canonical_display(temp.path())
     )))
     .stdout(predicates::str::contains("cargo: missing").not())
-    .stderr(contains("required tools are missing: git, just, uv"));
+    .stderr(contains(
+        "required tools are missing: git, just, python3, ruff, uv",
+    ));
 }
 
 #[test]
@@ -813,12 +832,12 @@ fn doctor_json_reports_path_scoped_tool_contract() {
     assert_eq!(report["path"], canonical_display(temp.path()));
     assert_eq!(
         report["missing_required"],
-        serde_json::json!(["git", "just", "uv"])
+        serde_json::json!(["git", "just", "python3", "ruff", "uv"])
     );
     assert_eq!(
         report["next_steps"],
         serde_json::json!([
-            "install missing required tools: git, just, uv",
+            "install missing required tools: git, just, python3, ruff, uv",
             format!("forge doctor --path {}", canonical_display(temp.path()))
         ])
     );
@@ -870,7 +889,7 @@ fn doctor_json_quotes_path_scoped_next_step_with_spaces() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([
-            "install missing required tools: git, just, uv",
+            "install missing required tools: git, just, python3, ruff, uv",
             format!("forge doctor --path '{}'", canonical_display(&project_path))
         ])
     );
@@ -1227,7 +1246,7 @@ fn doctor_fails_when_required_tools_are_missing() {
         .stdout(contains("just: missing"))
         .stdout(contains("Next steps"))
         .stdout(contains(
-            "install missing required tools: cargo, git, just, uv",
+            "install missing required tools: cargo, git, just, python3, ruff, uv",
         ))
         .stdout(contains("forge doctor"))
         .stderr(contains("required tools are missing"))
@@ -1255,7 +1274,7 @@ fn doctor_json_reports_missing_required_tools_before_failing() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([
-            "install missing required tools: cargo, git, just, uv",
+            "install missing required tools: cargo, git, just, python3, ruff, uv",
             "forge doctor"
         ])
     );

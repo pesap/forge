@@ -192,6 +192,8 @@ fn build_report(scope: &DoctorScope) -> DoctorReport {
         "gh",
         "create and push GitHub repositories",
     ));
+    tools.push(check_optional_tool("ty", "run Python type checking"));
+    tools.push(check_optional_tool("prek", "run git hook automation"));
     tools.extend(
         component_tool_requirements(scope)
             .into_iter()
@@ -229,19 +231,22 @@ fn print_human_report(report: &DoctorReport) {
         ui::info("path", path);
     }
 
-    for tool in &report.tools {
-        if tool.installed {
-            ui::success(format!("{} installed", tool.label));
-            if let Some(version) = &tool.version {
-                ui::info("version", version);
-            }
-        } else if tool.required {
-            ui::info(tool.label, format!("missing; needed to {}", tool.purpose));
-        } else {
-            ui::info(
-                tool.label,
-                format!("missing (optional unless you need to {})", tool.purpose),
-            );
+    let (required_tools, optional_tools): (Vec<_>, Vec<_>) =
+        report.tools.iter().partition(|tool| tool.required);
+
+    if !required_tools.is_empty() {
+        println!();
+        println!("Required tools");
+        for tool in &required_tools {
+            print_tool_status(tool);
+        }
+    }
+
+    if !optional_tools.is_empty() {
+        println!();
+        println!("Optional tools");
+        for tool in &optional_tools {
+            print_tool_status(tool);
         }
     }
 
@@ -270,16 +275,28 @@ fn next_steps_for_missing_required(missing_required: &[&str], scope: &DoctorScop
 fn required_tool_requirements(blueprint: Option<BlueprintName>) -> Vec<&'static str> {
     let mut tools = vec!["git"];
     match blueprint {
-        Some(blueprint) => tools.extend(blueprint.definition().required_tools.iter().copied()),
-        None => tools.extend(
-            BLUEPRINT_REGISTRY
-                .iter()
-                .flat_map(|blueprint| blueprint.required_tools.iter().copied()),
-        ),
+        Some(blueprint) => {
+            tools.extend(blueprint.definition().required_tools.iter().copied());
+            extend_python_toolchain(&mut tools, blueprint);
+        }
+        None => {
+            tools.extend(
+                BLUEPRINT_REGISTRY
+                    .iter()
+                    .flat_map(|blueprint| blueprint.required_tools.iter().copied()),
+            );
+            tools.extend(["python3", "ruff"]);
+        }
     }
     tools.sort_unstable();
     tools.dedup();
     tools
+}
+
+fn extend_python_toolchain(tools: &mut Vec<&'static str>, blueprint: BlueprintName) {
+    if matches!(blueprint, BlueprintName::PythonLibrary) {
+        tools.extend(["python3", "ruff"]);
+    }
 }
 
 fn required_tool_purpose(tool: &str) -> &'static str {
@@ -287,8 +304,26 @@ fn required_tool_purpose(tool: &str) -> &'static str {
         "cargo" => "build and install forge, and run Rust blueprint tasks",
         "git" => "initialize generated repositories",
         "just" => "run generated project tasks",
+        "python3" => "run Python package toolchain",
+        "ruff" => "lint and format Python code",
         "uv" => "sync generated project dependencies",
         _ => "run generated project tasks",
+    }
+}
+
+fn print_tool_status(tool: &ToolStatus) {
+    if tool.installed {
+        ui::success(format!("{} installed", tool.label));
+        if let Some(version) = &tool.version {
+            ui::info("  version", version);
+        }
+    } else if tool.required {
+        ui::info(tool.label, format!("missing; needed to {}", tool.purpose));
+    } else {
+        ui::info(
+            tool.label,
+            format!("missing (optional unless you need to {})", tool.purpose),
+        );
     }
 }
 
@@ -321,12 +356,15 @@ fn check_optional_tool(name: &'static str, purpose: &'static str) -> ToolStatus 
 }
 
 fn component_tool_requirements(scope: &DoctorScope) -> Vec<&'static str> {
-    scope
+    let mut tools: Vec<_> = scope
         .enabled_components
         .iter()
         .copied()
         .flat_map(|component| component.required_tools().iter().copied())
-        .collect()
+        .collect();
+    tools.sort_unstable();
+    tools.dedup();
+    tools
 }
 
 fn component_tool_purpose(tool: &str) -> &'static str {
@@ -459,7 +497,9 @@ mod tests {
     use crate::blueprint::BLUEPRINT_REGISTRY;
     use crate::blueprint::BlueprintName;
     use crate::blueprint::components::ManagedComponent;
-    use crate::commands::doctor::{DoctorScope, required_tool_requirements};
+    use crate::commands::doctor::{
+        DoctorScope, component_tool_requirements, required_tool_requirements,
+    };
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -469,6 +509,8 @@ mod tests {
 
         assert!(tools.contains(&"cargo"));
         assert!(tools.contains(&"git"));
+        assert!(tools.contains(&"python3"));
+        assert!(tools.contains(&"ruff"));
         for blueprint in &BLUEPRINT_REGISTRY {
             for required_tool in blueprint.required_tools {
                 assert!(tools.contains(required_tool));
@@ -477,10 +519,32 @@ mod tests {
     }
 
     #[test]
+    fn python_toolchain_not_checked_for_rust_library() {
+        let tools = required_tool_requirements(Some(BlueprintName::RustLibrary));
+
+        assert!(!tools.contains(&"python3"));
+        assert!(!tools.contains(&"ruff"));
+    }
+
+    #[test]
+    fn component_tool_requirements_deduplicates() {
+        let scope = DoctorScope {
+            blueprint: None,
+            blueprint_version: None,
+            path: None,
+            enabled_components: ManagedComponent::ALL.to_vec(),
+        };
+        let tools = component_tool_requirements(&scope);
+
+        let npx_count = tools.iter().filter(|t| **t == "npx").count();
+        assert_eq!(npx_count, 1, "npx should appear at most once");
+    }
+
+    #[test]
     fn required_tools_can_be_scoped_to_one_blueprint() {
         let tools = required_tool_requirements(Some(BlueprintName::PythonLibrary));
 
-        assert_eq!(tools, vec!["git", "just", "uv"]);
+        assert_eq!(tools, vec!["git", "just", "python3", "ruff", "uv"]);
         assert!(!tools.contains(&"cargo"));
     }
 
