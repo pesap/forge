@@ -60,8 +60,8 @@ fn new_generates_python_project_with_metadata() {
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
     assert!(pyproject.contains("[tool.forge]"));
-    assert!(pyproject.contains("blueprint = \"python-library\""));
-    assert!(pyproject.contains("blueprint_version = \"0.1.0\""));
+    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
+    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
     assert!(pyproject.contains("project_name = \"grid-tools\""));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
@@ -1920,7 +1920,7 @@ fn new_generates_language_agnostic_infra_project() {
         .expect("pyproject.toml should be generated");
     assert!(pyproject.contains("[project]"));
     assert!(pyproject.contains("requires-python = \">=3.11\""));
-    assert!(pyproject.contains("blueprint = \"any-project\""));
+    assert!(pyproject.contains("blueprint = \"any-project>=0.1.0\""));
     assert!(pyproject.contains("prettier = true"));
 
     assert!(project_path.join("AGENTS.md").exists());
@@ -1998,7 +1998,7 @@ fn new_generates_rust_library_project() {
         .expect("pyproject.toml should be generated");
     assert!(forge_metadata.contains("[project]"));
     assert!(forge_metadata.contains("requires-python = \">=3.11\""));
-    assert!(forge_metadata.contains("blueprint = \"rust-library\""));
+    assert!(forge_metadata.contains("blueprint = \"rust-library>=0.1.0\""));
     assert!(forge_metadata.contains("crate_name = \"grid_rs\""));
 
     let cargo_toml =

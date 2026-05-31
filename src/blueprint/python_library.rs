@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::errors::ErrorCode;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
@@ -13,8 +14,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, ManagedOption, managed_option_enabled, render_forge_overrides_table,
-    validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, ManagedOption, managed_option_enabled,
+    render_forge_overrides_table, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "python-library";
@@ -547,13 +548,11 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         .and_then(|tool| tool.forge)
         .context("missing [tool.forge] metadata")?;
 
-    if forge.blueprint != BLUEPRINT_NAME {
-        bail!(
-            "unsupported blueprint '{}' (expected '{}')",
-            forge.blueprint,
-            BLUEPRINT_NAME
-        );
-    }
+    BlueprintSpec::parse_for(
+        BlueprintName::PythonLibrary,
+        &forge.blueprint,
+        ErrorCode::Env,
+    )?;
 
     let overrides = forge.overrides.unwrap_or_default();
     let options =
@@ -1053,7 +1052,7 @@ prettier = true
 
         // Verify forge metadata is embedded
         assert!(pyproject.contains("[tool.forge]"));
-        assert!(pyproject.contains("blueprint = \"python-library\""));
+        assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
         assert!(pyproject.contains("project_name = \"meta-test\""));
     }
 }
