@@ -445,7 +445,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "forge_update_check_step": github_actions::forge_update_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@v6\n", CODECOV_NOTICE)}
+            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n", CODECOV_NOTICE)}
         }),
     )
 }
@@ -489,9 +489,11 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
         serde_json::json!({
             "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
             "job_timeout": github_actions::job_timeout(),
-            "pypi_publish_block": if config.pypi_publish {
+            "pypi_publish_job_block": if config.pypi_publish {
                 format!(
-                    "      - uses: astral-sh/setup-uv@v6\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@release/v1\n",
+                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ needs.release-please.outputs.release_tag }}}}\n          persist-credentials: false\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n",
+                    config.project_name,
+                    github_actions::job_timeout(),
                     PYPI_PUBLISH_NOTICE
                 )
             } else {
@@ -1027,9 +1029,7 @@ prettier = true
 
     #[test]
     fn release_workflows_use_job_timeouts() {
-        let mut config = test_config(true);
-        config.pypi_publish = true;
-        let release_please = render_release_please_workflow(&config);
+        let release_please = render_release_please_workflow(&test_config(true));
 
         assert!(release_please.contains(github_actions::job_timeout()));
         assert!(
@@ -1037,10 +1037,18 @@ prettier = true
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
             )
         );
-        assert!(release_please.contains("actions/checkout@v4"));
-        assert!(release_please.contains("uv build --locked"));
-        assert!(release_please.contains(PYPI_PUBLISH_NOTICE));
-        assert!(release_please.contains("# - name: Publish package distributions to PyPI"));
+        assert!(!release_please.contains("publish is handled"));
+
+        let mut with_publish = test_config(true);
+        with_publish.pypi_publish = true;
+        let release_please_with_publish = render_release_please_workflow(&with_publish);
+        assert!(release_please_with_publish.contains("publish-pypi:"));
+        assert!(release_please_with_publish.contains("needs: release-please"));
+        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created"));
+        assert!(release_please_with_publish.contains("    environment:\n      name: pypi\n"));
+        assert!(release_please_with_publish.contains("url: https://pypi.org/p/test-project"));
+        assert!(release_please_with_publish.contains("uv build --locked"));
+        assert!(release_please_with_publish.contains(PYPI_PUBLISH_NOTICE));
     }
 
     #[test]

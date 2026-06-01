@@ -13,9 +13,10 @@ on:
 jobs:
   release-please:
     runs-on: ubuntu-latest
-{{ job_timeout }}    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-{{ pypi_publish_block }}
+{{ job_timeout }}    outputs:
+      release_created: {% raw %}${{ steps.release.outputs.release_created }}{% endraw %}
+      release_tag: {% raw %}${{ steps.release.outputs.tag_name }}{% endraw %}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+{{ pypi_publish_job_block }}
