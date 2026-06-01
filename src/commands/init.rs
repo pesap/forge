@@ -547,7 +547,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge init --path '/tmp/my repo' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --force --yes"
+            "forge init --path '/tmp/my repo' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --force --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));

@@ -46,10 +46,6 @@ fn generated_python_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/release-please.yaml"),
         &["name", "on", "jobs"],
     );
-    assert_yaml_file(
-        project_path.join(".github/workflows/publish-pypi.yaml"),
-        &["name", "on", "jobs"],
-    );
     assert_json_file(
         project_path.join("docs/package.json"),
         &["name", "scripts", "dependencies"],

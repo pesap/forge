@@ -315,10 +315,9 @@ fn update_refreshes_managed_infra() {
     assert!(!just_after.contains("BROKEN"));
     assert!(just_after.contains("verify"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
-    assert!(ci_after.contains("uv run --locked ruff format --check ."));
-    assert!(ci_after.contains("uv lock --check"));
-    assert!(ci_after.contains("uv run --locked ruff check ."));
-    assert!(ci_after.contains("forge update --path . --check"));
+    assert!(ci_after.contains("uv sync --all-groups --locked"));
+    assert!(ci_after.contains("uv run --locked pytest --cov --cov-report=xml"));
+    assert!(ci_after.contains("uv run --locked prek run --all-files"));
 }
 
 #[test]
@@ -1140,7 +1139,7 @@ fn update_json_reports_conflicts_before_failing() {
     assert_eq!(report["conflicts"], 1);
     assert_eq!(
         report["infrastructure"],
-        "pyproject.toml, justfile, prek hooks, AGENTS.md, CLAUDE.md link, docs, github actions (3)"
+        "pyproject.toml, justfile, prek hooks, AGENTS.md, CLAUDE.md link, docs, github actions (5)"
     );
     assert_eq!(report["action_counts"]["conflict"], 1);
     assert_eq!(
@@ -1547,7 +1546,7 @@ fn update_set_can_enable_editorconfig_component() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("editorconfig = true"));
+    assert!(!pyproject.contains("editorconfig = false"));
     assert!(project_path.join(".editorconfig").exists());
 }
 
@@ -1598,8 +1597,10 @@ fn update_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     let pyproject_path = project_path.join("pyproject.toml");
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
     let pyproject = pyproject.replace("[project]\n", "# user project comment\n[project]\n");
-    let pyproject =
-        format!("{pyproject}\n[tool.forge.overrides]\nprettier = false # keep local option note\n");
+    let pyproject = pyproject.replace(
+        "editorconfig = false",
+        "editorconfig = false\nprettier = false # keep local option note",
+    );
     fs::write(&pyproject_path, pyproject).expect("pyproject should be writable");
 
     let mut update = Command::cargo_bin("forge").expect("forge binary should build");
@@ -2003,25 +2004,25 @@ fn update_set_can_enable_python_pypi_publish_workflow() {
     update
         .assert()
         .success()
-        .stdout(contains("create  .github/workflows/publish-pypi.yaml"));
+        .stdout(contains("update  .github/workflows/release-please.yaml"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("pypi-publish = true"));
 
     let publish_workflow =
-        fs::read_to_string(project_path.join(".github/workflows/publish-pypi.yaml"))
-            .expect("publish workflow should exist");
+        fs::read_to_string(project_path.join(".github/workflows/release-please.yaml"))
+            .expect("release-please workflow should exist");
     assert!(publish_workflow.contains(
         "# Register this workflow as a trusted publisher in PyPI before uncommenting the publish step."
     ));
     assert!(publish_workflow.contains("# - name: Publish package distributions to PyPI"));
-    assert!(publish_workflow.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
     assert!(publish_workflow.contains(
-        "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"
+        "#   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b"
     ));
+    assert!(publish_workflow.contains("publish-pypi:"));
     assert!(publish_workflow.contains("    environment:\n      name: pypi\n"));
-    assert!(publish_workflow.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
+    assert!(publish_workflow.contains("      url: https://pypi.org/p/ops-tools\n"));
     assert!(
         publish_workflow
             .contains("    permissions:\n      id-token: write\n      contents: read\n")
@@ -2096,16 +2097,15 @@ fn update_set_can_disable_python_pypi_publish_workflow() {
     update
         .assert()
         .success()
-        .stdout(contains("remove  .github/workflows/publish-pypi.yaml"));
+        .stdout(contains("update  .github/workflows/release-please.yaml"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(!pyproject.contains("pypi-publish = true"));
-    assert!(
-        !project_path
-            .join(".github/workflows/publish-pypi.yaml")
-            .exists()
-    );
+    let release_please =
+        fs::read_to_string(project_path.join(".github/workflows/release-please.yaml"))
+            .expect("release-please workflow should exist");
+    assert!(!release_please.contains("publish-pypi:"));
 }
 
 #[test]

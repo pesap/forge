@@ -592,7 +592,10 @@ mod tests {
             .expect("scope should resolve");
 
         assert_eq!(scope.blueprint_version.as_deref(), Some("0.1.0"));
-        assert_eq!(scope.enabled_components, vec![ManagedComponent::Prettier]);
+        assert_eq!(
+            scope.enabled_components,
+            vec![ManagedComponent::Prettier, ManagedComponent::Editorconfig]
+        );
     }
 
     #[test]
@@ -607,7 +610,10 @@ mod tests {
         let scope = DoctorScope::resolve(None, Some(temp.path().to_path_buf()))
             .expect("scope should resolve with blueprint defaults");
 
-        assert_eq!(scope.enabled_components, Vec::<ManagedComponent>::new());
+        assert_eq!(
+            scope.enabled_components,
+            vec![ManagedComponent::Editorconfig]
+        );
     }
 
     fn python_forge_metadata(prettier: bool) -> String {

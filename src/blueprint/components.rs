@@ -219,11 +219,17 @@ fn render_prettier_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".prettierrc.json"),
-        GeneratedFile::text(template_engine::render_template("shared/prettierrc.json.j2", ())),
+        GeneratedFile::text(template_engine::render_template(
+            "shared/prettierrc.json.j2",
+            (),
+        )),
     );
     files.insert(
         PathBuf::from(".prettierignore"),
-        GeneratedFile::text(template_engine::render_template("shared/prettierignore.j2", ())),
+        GeneratedFile::text(template_engine::render_template(
+            "shared/prettierignore.j2",
+            (),
+        )),
     );
     files
 }
@@ -232,7 +238,10 @@ fn render_editorconfig_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".editorconfig"),
-        GeneratedFile::text(template_engine::render_template("shared/editorconfig.j2", ())),
+        GeneratedFile::text(template_engine::render_template(
+            "shared/editorconfig.j2",
+            (),
+        )),
     );
     files
 }
@@ -241,7 +250,10 @@ fn render_markdownlint_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".markdownlint.jsonc"),
-        GeneratedFile::text(template_engine::render_template("shared/markdownlint.jsonc.j2", ())),
+        GeneratedFile::text(template_engine::render_template(
+            "shared/markdownlint.jsonc.j2",
+            (),
+        )),
     );
     files
 }
