@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    exclude-paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release.yaml"
 
   - package-ecosystem: cargo
     directory: /
