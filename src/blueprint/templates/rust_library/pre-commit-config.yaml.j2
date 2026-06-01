@@ -1,0 +1,13 @@
+{% include "shared/_pre_commit_header.yaml.j2" %}
+{% if rust_rules %}      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --check
+        language: system
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+{% endif %}{{ component_hooks }}{{ uv_lock_hook }}
