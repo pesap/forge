@@ -45,7 +45,6 @@ repos:
     hooks:
       - id: zizmor
         args: [--pedantic]
-        always_run: true
 
   # Taplo moved to a pinned remote hook for consistency with other shared tooling hooks.
   - repo: https://github.com/ComPWA/taplo-pre-commit
@@ -78,17 +77,25 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
-      - id: ci-prek
-        name: ci prek
-        entry: prek run --all-files
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-
       - id: ci-cargo-test
         name: ci cargo test
-        entry: cargo test
+        entry: env -u GIT_DIR -u GIT_WORK_TREE cargo test
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: commitizen-branch
+        name: commitizen check branch
+        entry: >-
+          bash -c 'range="origin/main..HEAD";
+          if [ -n "$PRE_COMMIT_FROM_REF" ] && [ -n "$PRE_COMMIT_TO_REF" ]
+          && git rev-parse --verify "$PRE_COMMIT_FROM_REF" >/dev/null 2>&1
+          && git rev-parse --verify "$PRE_COMMIT_TO_REF" >/dev/null 2>&1; then
+            range="$PRE_COMMIT_FROM_REF..$PRE_COMMIT_TO_REF";
+          fi;
+          count="$(git rev-list --count "$range" 2>/dev/null || echo 0)";
+          if [ "$count" = "0" ]; then echo "No commits to check in $range"; exit 0; fi;
+          cz check --rev-range "$range"'
         language: system
         pass_filenames: false
         stages: [pre-push]
@@ -98,5 +105,3 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
-      - id: commitizen-branch
-        stages: [pre-push]
