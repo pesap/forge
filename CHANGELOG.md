@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0 (2026-06-01)
+
+
+### Miscellaneous
+
+* So it begins.. ([9a98318](https://github.com/pesap/forge/commit/9a98318a70f147b32a906a9970a9225e2130e254))
+
 ## [0.2.0](https://github.com/pesap/forge/compare/v0.1.0...v0.2.0) (2026-06-01)
 
 
