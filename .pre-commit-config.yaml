@@ -1,5 +1,8 @@
 minimum_prek_version: "0.4.1"
 
+exclude:
+  glob: "wix/**"
+
 default_stages:
   - pre-commit
 
