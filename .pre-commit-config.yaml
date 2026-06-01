@@ -44,7 +44,7 @@ repos:
     rev: v1.14.0
     hooks:
       - id: zizmor
-        args: [--pedantic]
+        args: [--pedantic, --config, .github/zizmor.yml]
 
   # Taplo moved to a pinned remote hook for consistency with other shared tooling hooks.
   - repo: https://github.com/ComPWA/taplo-pre-commit
@@ -79,8 +79,8 @@ repos:
         stages: [pre-push]
 
       - id: ci-cargo-test
-        name: ci cargo test
-        entry: env -u GIT_DIR -u GIT_WORK_TREE cargo test
+        name: ci cargo test (fast)
+        entry: env -u GIT_DIR -u GIT_WORK_TREE cargo test --lib
         language: system
         pass_filenames: false
         stages: [pre-push]
