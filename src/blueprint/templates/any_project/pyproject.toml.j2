@@ -1,0 +1,17 @@
+[project]
+name = {{ project_name }}
+version = "0.1.0"
+description = {{ description }}
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "prek>=0.3.5,<0.4.0",
+]
+{{ docs_group }}
+[tool.forge]
+blueprint = "{{ blueprint_name }}>={{ blueprint_version }}"
+project_name = {{ project_name }}
+description = {{ description }}
+{{ forge_overrides }}
