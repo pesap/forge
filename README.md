@@ -1,8 +1,7 @@
 <img src="assets/forge-logo.svg" alt="forge logo" align="left" width="240" />
 <img align="left" width="0" height="190" hspace="10"/>
 
-#### Forge
-
+### Forge
 > Scaffold repositories from blueprints and keep their infrastructure up to date.
 >
 > [![Forge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pesap/forge/main/.github/badges/forge.json)](https://github.com/pesap/forge)
@@ -12,7 +11,6 @@
 > [![CI](https://github.com/pesap/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yml)
 > [![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
 > [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-
 <br/>
 <br/>
 <br/>
