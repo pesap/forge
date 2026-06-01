@@ -1,0 +1,63 @@
+use std::path::PathBuf;
+
+use crate::blueprint::files::{GeneratedFile, GeneratedFiles};
+use crate::blueprint::template_engine;
+
+pub fn render_agent_instructions(_extra_guidance: &[&str]) -> String {
+    template_engine::render_template("shared/agents.md.j2", ())
+}
+
+pub fn render_agent_files(extra_guidance: &[&str]) -> GeneratedFiles {
+    let mut files = GeneratedFiles::new();
+    files.insert(
+        PathBuf::from("AGENTS.md"),
+        GeneratedFile::text(render_agent_instructions(extra_guidance)),
+    );
+    files.insert(
+        PathBuf::from("CLAUDE.md"),
+        GeneratedFile::symlink(PathBuf::from("AGENTS.md")),
+    );
+    files
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::blueprint::agents::{render_agent_files, render_agent_instructions};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn agent_instructions_include_shared_safety_guidance() {
+        let instructions = render_agent_instructions(&[]);
+
+        assert!(instructions.contains("# AGENTS"));
+        assert!(instructions.contains("MUST FOLLOW TDD"));
+        assert!(instructions.contains("MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC"));
+        assert!(instructions.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
+    }
+
+    #[test]
+    fn agent_instructions_include_requested_rules() {
+        let instructions = render_agent_instructions(&[]);
+
+        assert!(instructions.contains("DO NOT ASSUME THE USER IS CORRECT"));
+        assert!(instructions.contains("BE DIRECT AND OBJECTIVE"));
+    }
+
+    #[test]
+    fn agent_files_include_shared_instructions_and_claude_symlink() {
+        let files = render_agent_files(&[]);
+
+        assert!(
+            files
+                .get(&PathBuf::from("AGENTS.md"))
+                .and_then(|file| file.as_text())
+                .is_some_and(|content| content.contains("# AGENTS"))
+        );
+        assert_eq!(
+            files
+                .get(&PathBuf::from("CLAUDE.md"))
+                .and_then(|file| file.symlink_target()),
+            Some(Path::new("AGENTS.md"))
+        );
+    }
+}
