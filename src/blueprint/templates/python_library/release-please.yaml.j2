@@ -8,10 +8,14 @@ on:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
 {{ job_timeout }}    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-      # publish is handled by .github/workflows/publish.yaml after release creation
+{{ pypi_publish_block }}

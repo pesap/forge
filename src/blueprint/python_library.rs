@@ -193,7 +193,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(".github/workflows/release-please.yaml"),
-        GeneratedFile::text(render_release_please_workflow()),
+        GeneratedFile::text(render_release_please_workflow(config)),
     );
     files.insert(
         PathBuf::from(".github/workflows/workflow-quality.yaml"),
@@ -211,13 +211,6 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         PathBuf::from(".release-please-manifest.json"),
         GeneratedFile::text(render_release_please_manifest()),
     );
-
-    if config.pypi_publish {
-        files.insert(
-            PathBuf::from(".github/workflows/publish.yaml"),
-            GeneratedFile::text(render_publish_pypi()),
-        );
-    }
 
     if config.docs {
         files.insert(
@@ -274,9 +267,8 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
         );
     }
 
-    if !config.pypi_publish {
-        files.push(PathBuf::from(".github/workflows/publish.yaml"));
-    }
+    files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
+    files.push(PathBuf::from(".github/workflows/publish.yaml"));
 
     files.extend(config.components.disabled_file_paths());
     files
@@ -491,10 +483,21 @@ fn render_docs_pages_workflow() -> String {
     template_engine::render_template("python_library/docs-pages.yaml.j2", ())
 }
 
-fn render_release_please_workflow() -> String {
+fn render_release_please_workflow(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/release-please.yaml.j2",
-        serde_json::json!({"serialized_ref_concurrency": github_actions::serialized_ref_concurrency(), "job_timeout": github_actions::job_timeout()}),
+        serde_json::json!({
+            "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
+            "job_timeout": github_actions::job_timeout(),
+            "pypi_publish_block": if config.pypi_publish {
+                format!(
+                    "      - uses: astral-sh/setup-uv@v6\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@release/v1\n",
+                    PYPI_PUBLISH_NOTICE
+                )
+            } else {
+                String::new()
+            }
+        }),
     )
 }
 
@@ -504,13 +507,6 @@ fn render_release_please_config() -> String {
 
 fn render_release_please_manifest() -> String {
     template_engine::render_template("python_library/release-please-manifest.json.j2", ())
-}
-
-fn render_publish_pypi() -> String {
-    template_engine::render_template(
-        "python_library/publish-pypi.yaml.j2",
-        serde_json::json!({"serialized_release_concurrency": github_actions::serialized_release_concurrency(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "pypi_publish_notice": PYPI_PUBLISH_NOTICE}),
-    )
 }
 
 fn render_docs_package_json(config: &ProjectConfig) -> String {
@@ -1031,8 +1027,9 @@ prettier = true
 
     #[test]
     fn release_workflows_use_job_timeouts() {
-        let release_please = render_release_please_workflow();
-        let publish_pypi = render_publish_pypi();
+        let mut config = test_config(true);
+        config.pypi_publish = true;
+        let release_please = render_release_please_workflow(&config);
 
         assert!(release_please.contains(github_actions::job_timeout()));
         assert!(
@@ -1040,35 +1037,17 @@ prettier = true
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
             )
         );
-        assert!(publish_pypi.contains(github_actions::job_timeout()));
-        assert!(publish_pypi.contains(github_actions::read_only_checkout_step()));
-        assert!(publish_pypi.contains("enable-cache: true"));
-        assert!(publish_pypi.contains("run: uv build --locked"));
-        assert!(publish_pypi.contains(PYPI_PUBLISH_NOTICE));
-        assert!(publish_pypi.contains("# - name: Publish package distributions to PyPI"));
-        assert!(publish_pypi.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
+        assert!(release_please.contains("actions/checkout@v4"));
+        assert!(release_please.contains("uv build --locked"));
+        assert!(release_please.contains(PYPI_PUBLISH_NOTICE));
+        assert!(release_please.contains("# - name: Publish package distributions to PyPI"));
     }
 
     #[test]
     fn release_workflows_serialize_duplicate_runs() {
-        let release_please = render_release_please_workflow();
-        let publish_pypi = render_publish_pypi();
+        let release_please = render_release_please_workflow(&test_config(true));
 
         assert!(release_please.contains("concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: false\n\npermissions:"));
-        assert!(publish_pypi.contains("concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"));
-    }
-
-    #[test]
-    fn publish_pypi_workflow_uses_dedicated_environment_and_job_permissions() {
-        let publish_pypi = render_publish_pypi();
-
-        assert!(publish_pypi.contains("    environment:\n      name: pypi\n"));
-        assert!(publish_pypi.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
-        assert!(
-            publish_pypi
-                .contains("    permissions:\n      id-token: write\n      contents: read\n")
-        );
-        assert!(!publish_pypi.contains("\npermissions:\n  id-token: write\n"));
     }
 
     #[test]
