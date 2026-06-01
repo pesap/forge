@@ -1,0 +1,13 @@
+pub fn hello() -> &'static str {
+    "hello from {{ crate_name }}"
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::hello;
+
+    #[test]
+    fn hello_returns_project_message() {
+        assert_eq!(hello(), "hello from {{ crate_name }}");
+    }
+}
