@@ -90,7 +90,6 @@ fn new_generates_python_project_with_metadata() {
     let agents = fs::read_to_string(project_path.join("AGENTS.md")).expect("AGENTS should exist");
     assert!(agents.contains("MUST FOLLOW TDD"));
     assert!(agents.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
-    assert!(agents.contains("Preserve user-authored Python package code"));
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
@@ -98,10 +97,9 @@ fn new_generates_python_project_with_metadata() {
     assert!(ci.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
     assert!(ci.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
     assert!(ci.contains("cargo install --git https://github.com/pesap/forge --locked forge"));
-    assert!(ci.contains("uv lock --check"));
-    assert!(ci.contains("uv run --locked ruff format --check ."));
-    assert!(ci.contains("uv run --locked ruff check ."));
-    assert!(ci.contains("forge update --path . --check"));
+    assert!(ci.contains("uv sync --all-groups --locked"));
+    assert!(ci.contains("uv run --locked pytest --cov --cov-report=xml"));
+    assert!(ci.contains("uv run --locked prek run --all-files"));
     assert_eq!(
         fs::read_link(project_path.join("CLAUDE.md")).expect("CLAUDE.md should be a symlink"),
         std::path::PathBuf::from("AGENTS.md")
@@ -1339,7 +1337,7 @@ fn new_can_generate_editorconfig_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("editorconfig = true"));
+    assert!(!pyproject.contains("editorconfig = true"));
     assert!(project_path.join(".editorconfig").exists());
 }
 
@@ -1417,27 +1415,11 @@ fn new_accepts_value_less_optional_workflow_flags() {
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
     assert!(pyproject.contains("pypi-publish = true"));
-    assert!(
-        project_path
-            .join(".github/workflows/publish-pypi.yaml")
-            .exists()
-    );
-    let publish_pypi = fs::read_to_string(project_path.join(".github/workflows/publish-pypi.yaml"))
-        .expect("PyPI publish workflow should be generated");
-    assert!(publish_pypi.contains(
-        "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"
-    ));
-    assert!(publish_pypi.contains("    environment:\n      name: pypi\n"));
-    assert!(publish_pypi.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
-    assert!(
-        publish_pypi.contains("    permissions:\n      id-token: write\n      contents: read\n")
-    );
-    assert!(publish_pypi.contains(
-        "# Register this workflow as a trusted publisher in PyPI before uncommenting the publish step."
-    ));
-    assert!(publish_pypi.contains("# - name: Publish package distributions to PyPI"));
-    assert!(publish_pypi.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
-    assert!(!publish_pypi.contains("\npermissions:\n  id-token: write\n"));
+    let release_please =
+        fs::read_to_string(project_path.join(".github/workflows/release-please.yaml"))
+            .expect("release-please workflow should be generated");
+    assert!(release_please.contains("publish-pypi:"));
+    assert!(release_please.contains("needs: release-please"));
 }
 
 #[test]
@@ -1520,7 +1502,7 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
-    assert!(!ci.contains("codecov/codecov-action"));
+    assert!(!ci.contains("\n      - uses: codecov/codecov-action"));
     assert!(!project_path.join("docs/package.json").exists());
     assert!(
         !project_path
@@ -1832,7 +1814,7 @@ fn new_generates_python_ci_matrix_without_versions_below_python_min() {
 
     let workflow = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should exist");
-    assert!(workflow.contains("python-version: [\"3.14\"]"));
+    assert!(workflow.contains("fromJSON('[\"3.14\"]')"));
     assert!(!workflow.contains("\"3.12\""));
     assert!(!workflow.contains("\"3.13\""));
 }

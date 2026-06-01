@@ -925,9 +925,8 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min: python_min.unwrap_or_else(|| DEFAULT_PYTHON_MIN.to_string()),
-        gitignore_profile: gitignore_profile.unwrap_or_else(|| {
-            "python,macos,visualstudiocode,jetbrains,node".to_string()
-        }),
+        gitignore_profile: gitignore_profile
+            .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs,
         codecov,
         pypi_publish,

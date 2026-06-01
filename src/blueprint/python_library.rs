@@ -605,7 +605,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         author_email: forge.author_email,
         license: forge.license,
         python_min: forge.python_min,
-        gitignore_profile: forge.gitignore_profile.unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
+        gitignore_profile: forge
+            .gitignore_profile
+            .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
@@ -1042,7 +1044,10 @@ prettier = true
         assert!(release_please_with_publish.contains("publish-pypi:"));
         assert!(release_please_with_publish.contains("needs: release-please"));
         assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')"));
-        assert!(release_please_with_publish.contains("release_tag input is required when publish_pypi=true"));
+        assert!(
+            release_please_with_publish
+                .contains("release_tag input is required when publish_pypi=true")
+        );
         assert!(release_please_with_publish.contains("steps.publish_ref.outputs.ref"));
         assert!(release_please_with_publish.contains("concurrency:\n      group: pypi-publish-"));
         assert!(release_please_with_publish.contains("    environment:\n      name: pypi\n"));
@@ -1050,7 +1055,9 @@ prettier = true
         assert!(release_please_with_publish.contains("uv build --locked"));
         assert!(release_please_with_publish.contains("uv publish --dry-run"));
         assert!(release_please_with_publish.contains(PYPI_PUBLISH_NOTICE));
-        assert!(release_please_with_publish.contains("# - name: Publish package distributions to PyPI"));
+        assert!(
+            release_please_with_publish.contains("# - name: Publish package distributions to PyPI")
+        );
     }
 
     #[test]
