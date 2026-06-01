@@ -1,9 +1,9 @@
 pub fn install_forge_step() -> &'static str {
-    "      - name: Install forge\n        run: cargo install --git https://github.com/pesap/forge --locked forge\n"
+    include_str!("templates/shared/install-forge-step.yaml.j2")
 }
 
 pub fn setup_uv_step() -> &'static str {
-    "      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n"
+    include_str!("templates/shared/setup-uv-step.yaml.j2")
 }
 
 pub fn uv_sync_locked_step() -> &'static str {
@@ -19,7 +19,7 @@ pub fn uv_run_locked_step(command: &str) -> String {
 }
 
 pub fn read_only_checkout_step() -> &'static str {
-    "      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2\n        with:\n          persist-credentials: false\n"
+    include_str!("templates/shared/read-only-checkout-step.yaml.j2")
 }
 
 pub fn forge_update_check_step() -> &'static str {
