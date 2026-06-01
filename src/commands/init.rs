@@ -154,6 +154,7 @@ fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
         prettier: args.prettier,
         editorconfig: args.editorconfig,
         markdownlint: args.markdownlint,
+        no_git_history: false,
         github: false,
         github_owner: None,
         github_visibility: None::<GithubVisibility>,

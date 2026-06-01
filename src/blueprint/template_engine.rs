@@ -29,6 +29,13 @@ fn build_environment() -> Environment<'static> {
 
     templates!(environment,
         "shared/_pre_commit_header.yaml.j2" => "templates/shared/_pre_commit_header.yaml.j2",
+        "shared/agents.md.j2" => "templates/shared/agents.md.j2",
+        "shared/prettierrc.json.j2" => "templates/shared/prettierrc.json.j2",
+        "shared/prettierignore.j2" => "templates/shared/prettierignore.j2",
+        "shared/editorconfig.j2" => "templates/shared/editorconfig.j2",
+        "shared/markdownlint.jsonc.j2" => "templates/shared/markdownlint.jsonc.j2",
+        "shared/forge-update.yaml.j2" => "templates/shared/forge-update.yaml.j2",
+        "shared/py.typed.j2" => "templates/shared/py.typed.j2",
         "any_project/readme.md.j2" => "templates/any_project/readme.md.j2",
         "any_project/gitignore.j2" => "templates/any_project/gitignore.j2",
         "any_project/pyproject.toml.j2" => "templates/any_project/pyproject.toml.j2",

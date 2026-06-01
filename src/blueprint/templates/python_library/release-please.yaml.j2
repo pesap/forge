@@ -3,6 +3,17 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Run publish-pypi fallback"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Existing release tag to publish (required when publish_pypi=true)"
+        required: false
+        type: string
 
 {{ serialized_ref_concurrency }}permissions:
   contents: write

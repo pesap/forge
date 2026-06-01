@@ -293,6 +293,9 @@ pub struct NewArgs {
         default_value_t = false
     )]
     pub markdownlint: bool,
+    /// Skip git repository initialization to avoid creating local git history.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_git_history: bool,
     /// Create and push the GitHub repository after generation
     #[arg(
         long,

@@ -121,7 +121,9 @@ pub fn run(args: NewArgs) -> Result<()> {
         file_paths.push("uv.lock".to_string());
         file_paths.sort();
     }
-    initialize_git_repository(&destination, args.github, args.json)?;
+    if !args.no_git_history {
+        initialize_git_repository(&destination, args.github, args.json)?;
+    }
 
     if args.github {
         create_github_repo(
@@ -544,6 +546,9 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
             markdownlint: args.markdownlint,
         },
     );
+    if args.no_git_history {
+        parts.push("--no-git-history".to_string());
+    }
     if args.github {
         parts.push("--github".to_string());
     }
@@ -1158,6 +1163,13 @@ fn pypi_publish_enabled(args: &NewArgs) -> bool {
 }
 
 pub(crate) fn validate_explicit_options(blueprint: BlueprintName, args: &NewArgs) -> Result<()> {
+    if args.no_git_history && args.github {
+        return Err(coded_error(
+            ErrorCode::Input,
+            "option 'no-git-history' is not compatible with --github",
+        ));
+    }
+
     if !args.github {
         reject_if_requires("github-owner", args.github_owner.is_some(), "--github")?;
         reject_if_requires(
@@ -1688,6 +1700,7 @@ mod tests {
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            no_git_history: false,
             github: true,
             github_owner: Some("example-org".to_string()),
             github_visibility: Some(GithubVisibility::Private),
@@ -1705,7 +1718,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge new --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
+            "forge new --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -1780,6 +1793,7 @@ mod tests {
             prettier: true,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1878,6 +1892,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1919,6 +1934,7 @@ mod tests {
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1963,6 +1979,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -2059,6 +2076,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -2164,6 +2182,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,

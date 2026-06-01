@@ -520,6 +520,6 @@ prettier = true
 
         assert!(config.docs);
         assert!(config.components.is_enabled(ManagedComponent::Prettier));
-        assert!(!config.components.is_enabled(ManagedComponent::Editorconfig));
+        assert!(config.components.is_enabled(ManagedComponent::Editorconfig));
     }
 }

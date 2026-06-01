@@ -28,6 +28,7 @@ forge new \
   --description "Demo package" \
   --license BSD-3-Clause \
   --python-min 3.11 \
+  --no-git-history \
   --yes
 ```
 

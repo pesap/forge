@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles};
+use crate::blueprint::template_engine;
 use crate::blueprint::{ManagedOption, ManagedOptionValues, managed_option_enabled};
 
 const PRETTIER_CLEANUP_PATHS: &[&str] = &[".prettierrc.json", ".prettierignore"];
@@ -218,13 +219,11 @@ fn render_prettier_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".prettierrc.json"),
-        GeneratedFile::text(
-            "{\n  \"printWidth\": 100,\n  \"proseWrap\": \"always\",\n  \"singleQuote\": false\n}\n",
-        ),
+        GeneratedFile::text(template_engine::render_template("shared/prettierrc.json.j2", ())),
     );
     files.insert(
         PathBuf::from(".prettierignore"),
-        GeneratedFile::text("dist/\nbuild/\nsite/\n.venv/\n.coverage\nuv.lock\n"),
+        GeneratedFile::text(template_engine::render_template("shared/prettierignore.j2", ())),
     );
     files
 }
@@ -233,9 +232,7 @@ fn render_editorconfig_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".editorconfig"),
-        GeneratedFile::text(
-            "root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\ninsert_final_newline = true\ntrim_trailing_whitespace = true\nindent_style = space\nindent_size = 4\n\n[*.{md,markdown}]\ntrim_trailing_whitespace = false\n",
-        ),
+        GeneratedFile::text(template_engine::render_template("shared/editorconfig.j2", ())),
     );
     files
 }
@@ -244,9 +241,7 @@ fn render_markdownlint_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from(".markdownlint.jsonc"),
-        GeneratedFile::text(
-            "{\n  \"default\": true,\n  \"MD013\": false,\n  \"MD033\": false,\n  \"MD041\": false\n}\n",
-        ),
+        GeneratedFile::text(template_engine::render_template("shared/markdownlint.jsonc.j2", ())),
     );
     files
 }

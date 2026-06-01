@@ -116,6 +116,7 @@ impl BlueprintName {
         matches!(
             (self, option),
             (_, ManagedOption::Docs)
+                | (_, ManagedOption::Editorconfig)
                 | (Self::PythonLibrary, ManagedOption::Codecov)
                 | (Self::PythonLibrary, ManagedOption::PythonRules)
                 | (Self::RustLibrary, ManagedOption::RustRules)

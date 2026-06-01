@@ -118,7 +118,7 @@ pub fn render_project_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(format!("src/{}/py.typed", config.package_name)),
-        GeneratedFile::text("\n"),
+        GeneratedFile::text(template_engine::render_template("shared/py.typed.j2", ())),
     );
     files.insert(
         PathBuf::from(format!("tests/test_{}.py", config.package_name)),
@@ -143,10 +143,6 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     files.insert(
         PathBuf::from("README.md"),
         GeneratedFile::text(render_readme(config)),
-    );
-    files.insert(
-        PathBuf::from("LICENSE"),
-        GeneratedFile::text(render_license(config)),
     );
     files.insert(
         PathBuf::from("LICENSE.txt"),
@@ -491,10 +487,11 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
             "job_timeout": github_actions::job_timeout(),
             "pypi_publish_job_block": if config.pypi_publish {
                 format!(
-                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ needs.release-please.outputs.release_tag }}}}\n          persist-credentials: false\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n",
+                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')\n    concurrency:\n      group: pypi-publish-${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\n      cancel-in-progress: false\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - id: publish_ref\n        run: |\n          if [ \"${{{{ github.event_name }}}}\" = \"workflow_dispatch\" ] && [ \"${{{{ github.event.inputs.publish_pypi }}}}\" = \"true\" ] && [ -z \"${{{{ github.event.inputs.release_tag }}}}\" ]; then\n            echo \"release_tag input is required when publish_pypi=true\" >&2\n            exit 1\n          fi\n          REF=\"${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\"\n          if [ -z \"$REF\" ]; then\n            echo \"No release tag resolved for publish step\" >&2\n            exit 1\n          fi\n          echo \"ref=$REF\" >> \"$GITHUB_OUTPUT\"\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ steps.publish_ref.outputs.ref }}}}\n          persist-credentials: false\n      - name: Verify release tag exists\n        run: git rev-parse --verify \"refs/tags/${{{{ steps.publish_ref.outputs.ref }}}}\"\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      - run: uv publish --dry-run\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n      - name: Publish summary\n        run: |\n          echo \"### PyPI publish fallback dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- project: {}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- tag: ${{{{ steps.publish_ref.outputs.ref }}}}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- mode: uv publish --dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- to enable real publish: uncomment the trusted publishing step in this workflow\" >> \"$GITHUB_STEP_SUMMARY\"\n",
                     config.project_name,
                     github_actions::job_timeout(),
-                    PYPI_PUBLISH_NOTICE
+                    PYPI_PUBLISH_NOTICE,
+                    config.project_name
                 )
             } else {
                 String::new()
@@ -1005,7 +1002,7 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
-        assert!(files.contains_key(&PathBuf::from("LICENSE")));
+        assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
         assert_eq!(
             files
                 .get(&PathBuf::from("CLAUDE.md"))
@@ -1044,11 +1041,16 @@ prettier = true
         let release_please_with_publish = render_release_please_workflow(&with_publish);
         assert!(release_please_with_publish.contains("publish-pypi:"));
         assert!(release_please_with_publish.contains("needs: release-please"));
-        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created"));
+        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')"));
+        assert!(release_please_with_publish.contains("release_tag input is required when publish_pypi=true"));
+        assert!(release_please_with_publish.contains("steps.publish_ref.outputs.ref"));
+        assert!(release_please_with_publish.contains("concurrency:\n      group: pypi-publish-"));
         assert!(release_please_with_publish.contains("    environment:\n      name: pypi\n"));
         assert!(release_please_with_publish.contains("url: https://pypi.org/p/test-project"));
         assert!(release_please_with_publish.contains("uv build --locked"));
+        assert!(release_please_with_publish.contains("uv publish --dry-run"));
         assert!(release_please_with_publish.contains(PYPI_PUBLISH_NOTICE));
+        assert!(release_please_with_publish.contains("# - name: Publish package distributions to PyPI"));
     }
 
     #[test]
