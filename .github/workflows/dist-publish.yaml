@@ -1,0 +1,67 @@
+name: Dist Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for manual runs)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dist-publish:
+    name: dist publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required to create/update GitHub Releases
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Install cargo-dist
+        shell: bash
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh
+
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "value=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [ -n "$RELEASE_TAG" ]; then
+            echo "value=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release artifacts
+        env:
+          DIST_TAG: ${{ steps.tag.outputs.value }}
+        run: cargo dist build --tag "$DIST_TAG" --artifacts=all
+
+      - name: Upload artifacts to GitHub Release
+        env:
+          DIST_TAG: ${{ steps.tag.outputs.value }}
+        run: cargo dist host --tag "$DIST_TAG" --steps=upload --steps=release

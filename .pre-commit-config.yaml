@@ -40,20 +40,23 @@ repos:
       - id: check-hooks-apply
       - id: check-useless-excludes
 
-  - repo: local
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.14.0
+    hooks:
+      - id: zizmor
+        args: [--pedantic]
+        always_run: true
+
+  # Taplo moved to a pinned remote hook for consistency with other shared tooling hooks.
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
     hooks:
       - id: taplo-format
-        name: taplo format
-        entry: uvx --from taplo==0.9.3 taplo fmt
-        language: system
-        types_or: [toml]
-
       - id: taplo-lint
-        name: taplo lint
-        entry: uvx --from taplo==0.9.3 taplo check
-        language: system
-        types_or: [toml]
 
+  # Project-specific hooks stay local; generic/shared checks should prefer pinned remote repos.
+  - repo: local
+    hooks:
       - id: prettier
         name: prettier
         entry: prettier --write --ignore-unknown
@@ -61,15 +64,33 @@ repos:
         additional_dependencies: ["prettier@3.8.3"]
         types_or: [yaml, json, markdown]
 
-      - id: commitizen-branch
-        name: commitizen check branch
-        entry: >-
-          bash -c 'range="origin/main..HEAD"; commit_count="$(git rev-list --count "$range")";
-          if [ "$commit_count" = "0" ]; then echo "No commits to check in $range"; exit 0; fi;
-          uvx --from commitizen==4.16.2 cz check --rev-range "$range"'
+      - id: ci-cargo-fmt
+        name: ci cargo fmt
+        entry: cargo fmt --all --check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ci-cargo-clippy
+        name: ci cargo clippy
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ci-prek
+        name: ci prek
+        entry: prek run --all-files
         language: system
         pass_filenames: false
         always_run: true
+        stages: [pre-push]
+
+      - id: ci-cargo-test
+        name: ci cargo test
+        entry: cargo test
+        language: system
+        pass_filenames: false
         stages: [pre-push]
 
   - repo: https://github.com/commitizen-tools/commitizen
@@ -77,3 +98,5 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+      - id: commitizen-branch
+        stages: [pre-push]
