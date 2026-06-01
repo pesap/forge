@@ -15,7 +15,6 @@ concurrency:
 jobs:
   release-please:
     name: release please
-    if: "${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: write # required to create release PRs and tags
@@ -25,3 +24,27 @@ jobs:
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/release-please-manifest.json
+          skip-github-release: true
+
+  dispatch-dist-release:
+    name: dispatch dist release
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    permissions:
+      actions: write # required to dispatch the generated cargo-dist workflow
+      contents: read # required to read Cargo.toml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Dispatch cargo-dist release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)"
+          if [ -z "$version" ]; then
+            echo "Could not read package version from Cargo.toml" >&2
+            exit 1
+          fi
+          gh workflow run v-release.yml --ref main --field tag="v${version}"

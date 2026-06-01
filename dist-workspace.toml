@@ -15,6 +15,9 @@ targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "aarch64-pc-wind
 pr-run-mode = "skip"
 # A prefix git tags must include for dist to care about them
 tag-namespace = "v"
+# Trigger generated release workflow via workflow_dispatch so release automation
+# can start cargo-dist with the repository GITHUB_TOKEN.
+dispatch-releases = true
 # Where to host releases
 hosting = "github"
 # Whether to install an updater program

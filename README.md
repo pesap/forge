@@ -8,7 +8,7 @@
 > [![Managed by humans](https://img.shields.io/badge/managed%20by-humans-1f6feb)](https://github.com/pesap/forge)
 > [![Managed with uv](https://img.shields.io/badge/managed%20with-uv-7c3aed.svg)](https://docs.astral.sh/uv/)
 > [![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
-> [![CI](https://github.com/pesap/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yml)
+> [![CI](https://github.com/pesap/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yaml)
 > [![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
 > [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 <br/>
