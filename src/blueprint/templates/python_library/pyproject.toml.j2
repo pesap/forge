@@ -1,0 +1,55 @@
+[project]
+name = {{ project_name }}
+version = "0.1.0"
+description = {{ description }}
+{{ authors }}license = { file = "LICENSE.txt" }
+readme = "README.md"
+requires-python = {{ requires_python }}
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "prek>=0.4.1,<0.5.0",
+    "pytest>=9.0.0,<10.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
+    "pytest-xdist>=3.2.0,<4.0.0",
+    "pytest-env<=0.8.0",
+    "pytest-xdg>=0.2.0,<1.0.0",
+    "ruff>=0.14.0,<0.15.0",
+    "ty>=0.0.1,<0.1.0",
+]
+build = [
+    "build>=1.2.2,<2.0.0",
+]
+{{ docs_group }}
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = {{ package_name }}
+module-root = "src"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = ["-ra", "-q", {{ coverage_arg }}, "--cov-report=term-missing:skip-covered"]
+cache_dir = "$XDG_CACHE_HOME/pytest"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.forge]
+blueprint = "{{ blueprint_name }}>={{ blueprint_version }}"
+project_name = {{ project_name }}
+package_name = {{ package_name }}
+description = {{ description }}
+{{ author_name }}{{ author_email }}license = {{ license }}
+python_min = {{ python_min }}
+gitignore_profile = {{ gitignore_profile }}
+{{ forge_overrides }}

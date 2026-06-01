@@ -1,0 +1,39 @@
+[package]
+name = "forge"
+version = "0.0.0"
+edition = "2024"
+repository = "https://github.com/pesap/forge"
+description = "CLI for scaffolding and updating repository infrastructure from blueprints"
+homepage = "https://github.com/pesap/forge"
+authors = ["Forge contributors"]
+
+[package.metadata.wix]
+upgrade-guid = "B2A381AE-27CC-4061-AADC-3CF4573C2974"
+path-guid = "72161012-6163-4293-B537-0AC6DA0F4D52"
+license = false
+eula = false
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.6.1", features = ["derive"] }
+clap_complete = "4.5.61"
+dialoguer = "0.12.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+toml = "1.1.2"
+minijinja = { version = "2.12.0", default-features = false, features = [
+  "builtins",
+  "multi_template",
+  "serde",
+] }
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.3"
+tempfile = "3.15.0"
+yaml-rust2 = "0.11.0"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
