@@ -34,6 +34,9 @@ jobs:
         with:
           just-version: 1.5.0
 
+      - name: Install prek
+        run: cargo install --locked --version 0.4.1 prek
+
       - name: Run CI checks
         run: just ci
 
