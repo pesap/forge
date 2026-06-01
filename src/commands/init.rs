@@ -147,6 +147,7 @@ fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
         author_email: args.author_email.clone(),
         license: args.license.clone(),
         python_min: args.python_min.clone(),
+        gitignore_profile: args.gitignore_profile.clone(),
         docs: args.docs,
         codecov: args.codecov,
         pypi_publish: args.pypi_publish,
@@ -388,6 +389,7 @@ fn preview_init_command(
     resolved.author_email = resolved_new_args.author_email;
     resolved.license = resolved_new_args.license;
     resolved.python_min = resolved_new_args.python_min;
+    resolved.gitignore_profile = resolved_new_args.gitignore_profile;
     resolved.docs = resolved_new_args.docs;
     resolved.codecov = resolved_new_args.codecov;
     resolved.pypi_publish = resolved_new_args.pypi_publish;
@@ -415,6 +417,11 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName, force: bool) -> Strin
     new::push_option(&mut parts, "--author-email", args.author_email.as_deref());
     new::push_option(&mut parts, "--license", args.license.as_deref());
     new::push_option(&mut parts, "--python-min", args.python_min.as_deref());
+    new::push_option(
+        &mut parts,
+        "--gitignore-profile",
+        args.gitignore_profile.as_deref(),
+    );
 
     new::push_managed_option_flags(
         &mut parts,
@@ -521,6 +528,7 @@ mod tests {
             author_email: Some("ada@example.com".to_string()),
             license: Some("MIT".to_string()),
             python_min: Some("3.12".to_string()),
+            gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
             docs: false,
             codecov: Some(false),
             pypi_publish: Some(true),
@@ -564,6 +572,7 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
@@ -601,6 +610,7 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
@@ -714,6 +724,7 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,

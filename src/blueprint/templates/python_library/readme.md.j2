@@ -1,12 +1,16 @@
 # {{ project_name }}
 
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yaml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yaml)
+[![Release Please](https://github.com/OWNER/REPO/actions/workflows/release-please.yaml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/release-please.yaml)
+[![codecov](https://codecov.io/gh/OWNER/REPO/graph/badge.svg)](https://codecov.io/gh/OWNER/REPO)
+
 {{ description }}
 
 ## Development
 
 ```bash
 uv sync --all-groups
-just hooks-install
+just setup
 just verify
 ```
 

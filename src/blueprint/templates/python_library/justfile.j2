@@ -8,6 +8,8 @@ sync:
 
 hooks-install:
     uv run prek install
+
+setup: hooks-install sync
 {{ docs_recipe }}
 format:
     uv run ruff format .
@@ -17,6 +19,9 @@ format:
 
 test:
     uv run pytest -q
+
+smoke:
+    uv run python -c "import {{ package_name_unquoted }}"
 
 build:
     uv build

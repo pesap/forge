@@ -1,0 +1,17 @@
+name: workflow-quality
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/**"
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/actionlint@v1

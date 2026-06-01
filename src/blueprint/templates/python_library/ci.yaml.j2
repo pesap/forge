@@ -6,13 +6,29 @@ on:
   pull_request:
 
 {{ cancel_redundant_ci_concurrency }}{{ read_only_permissions }}jobs:
-  test:
+  pytest:
     runs-on: ubuntu-latest
 {{ job_timeout }}    strategy:
       matrix:
-        python-version: [{{ python_matrix }}]
+        python-version: {% raw %}${{ github.event_name == 'pull_request' && fromJSON('["3.14"]') || fromJSON('[{% endraw %}{{ python_matrix }}{% raw %}]') }}{% endraw %}
     steps:
 {{ read_only_checkout_step }}{{ setup_uv_step }}      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: {% raw %}${{ matrix.python-version }}{% endraw %}
-{{ install_forge_step }}{{ uv_sync_locked_step }}{{ uv_lock_check_step }}{{ ruff_format_step }}{{ ruff_check_step }}{{ ty_check_step }}{{ prek_step }}{{ forge_update_check_step }}{{ pytest_cov_step }}{{ codecov_step }}      - run: uv build --locked
+{{ install_forge_step }}{{ uv_sync_locked_step }}      - run: uv run --locked pytest --cov --cov-report=xml
+{{ codecov_step }}
+  prek:
+    runs-on: ubuntu-latest
+{{ job_timeout }}    steps:
+{{ read_only_checkout_step }}{{ setup_uv_step }}      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+{{ install_forge_step }}{{ uv_sync_locked_step }}      - run: uv run --locked prek run --all-files
+
+  smoke:
+    runs-on: ubuntu-latest
+{{ job_timeout }}    steps:
+{{ read_only_checkout_step }}{{ setup_uv_step }}      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+{{ install_forge_step }}{{ uv_sync_locked_step }}      - run: uv run --locked python -c "import {{ package_name }}"

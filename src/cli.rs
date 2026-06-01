@@ -125,6 +125,9 @@ pub struct InitArgs {
     /// Minimum supported Python version for python-library projects as major.minor. Defaults to 3.11.
     #[arg(long)]
     pub python_min: Option<String>,
+    /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
+    #[arg(long)]
+    pub gitignore_profile: Option<String>,
     /// Generate MkDocs documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,
@@ -229,6 +232,9 @@ pub struct NewArgs {
     /// Minimum supported Python version for python-library projects as major.minor. Defaults to 3.11.
     #[arg(long)]
     pub python_min: Option<String>,
+    /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
+    #[arg(long)]
+    pub gitignore_profile: Option<String>,
     /// Generate MkDocs documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,

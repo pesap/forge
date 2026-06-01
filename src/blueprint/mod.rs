@@ -46,6 +46,11 @@ const PYTHON_LIBRARY_FIELDS: &[BlueprintField] = &[
     BlueprintField::optional("author-email", "Package author email"),
     BlueprintField::defaulted("license", "BSD-3-Clause", "SPDX license identifier"),
     BlueprintField::defaulted("python-min", "3.11", "Minimum supported Python version"),
+    BlueprintField::defaulted(
+        "gitignore-profile",
+        "python,macos,visualstudiocode,jetbrains,node",
+        "Comma-separated Toptal gitignore profile",
+    ),
 ];
 
 const RUST_LIBRARY_FIELDS: &[BlueprintField] = &[

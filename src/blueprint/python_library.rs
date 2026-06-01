@@ -34,6 +34,7 @@ pub struct ProjectConfig {
     pub author_email: Option<String>,
     pub license: String,
     pub python_min: String,
+    pub gitignore_profile: String,
     pub docs: bool,
     pub codecov: bool,
     pub pypi_publish: bool,
@@ -148,8 +149,12 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_license(config)),
     );
     files.insert(
+        PathBuf::from("LICENSE.txt"),
+        GeneratedFile::text(render_license(config)),
+    );
+    files.insert(
         PathBuf::from(".gitignore"),
-        GeneratedFile::text(render_gitignore()),
+        GeneratedFile::text(render_gitignore(&config.gitignore_profile)),
     );
     files.insert(
         PathBuf::from(".python-version"),
@@ -168,6 +173,14 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.insert(
+        PathBuf::from(".cspell.json"),
+        GeneratedFile::text(render_cspell_config()),
+    );
+    files.insert(
+        PathBuf::from("CONTRIBUTING.md"),
+        GeneratedFile::text(render_contributing()),
+    );
+    files.insert(
         PathBuf::from("CHANGELOG.md"),
         GeneratedFile::text(render_changelog()),
     );
@@ -181,6 +194,10 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     files.insert(
         PathBuf::from(".github/workflows/release-please.yaml"),
         GeneratedFile::text(render_release_please_workflow()),
+    );
+    files.insert(
+        PathBuf::from(".github/workflows/workflow-quality.yaml"),
+        GeneratedFile::text(render_workflow_quality_workflow()),
     );
     files.insert(
         PathBuf::from(".github/workflows/forge-update.yaml"),
@@ -197,12 +214,16 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
 
     if config.pypi_publish {
         files.insert(
-            PathBuf::from(".github/workflows/publish-pypi.yaml"),
+            PathBuf::from(".github/workflows/publish.yaml"),
             GeneratedFile::text(render_publish_pypi()),
         );
     }
 
     if config.docs {
+        files.insert(
+            PathBuf::from(".github/workflows/docs-pages.yaml"),
+            GeneratedFile::text(render_docs_pages_workflow()),
+        );
         files.insert(
             PathBuf::from("docs/package.json"),
             GeneratedFile::text(render_docs_package_json(config)),
@@ -242,6 +263,7 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
     if !config.docs {
         files.extend(
             [
+                ".github/workflows/docs-pages.yaml",
                 "docs/package.json",
                 "docs/astro.config.mjs",
                 "docs/tsconfig.json",
@@ -253,7 +275,7 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
     }
 
     if !config.pypi_publish {
-        files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
+        files.push(PathBuf::from(".github/workflows/publish.yaml"));
     }
 
     files.extend(config.components.disabled_file_paths());
@@ -288,8 +310,11 @@ fn render_license(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_gitignore() -> String {
-    template_engine::render_template("python_library/gitignore.j2", ())
+fn render_gitignore(gitignore_profile: &str) -> String {
+    template_engine::render_template(
+        "python_library/gitignore.j2",
+        serde_json::json!({"gitignore_profile": gitignore_profile}),
+    )
 }
 
 fn render_authors(config: &ProjectConfig) -> String {
@@ -343,6 +368,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "author_email": render_optional_forge_field("author_email", &config.author_email),
             "license": toml_value::string_literal(&config.license),
             "python_min": toml_value::string_literal(&config.python_min),
+            "gitignore_profile": toml_value::string_literal(&config.gitignore_profile),
             "forge_overrides": render_forge_overrides_table(
                 BlueprintName::PythonLibrary,
                 &[
@@ -375,7 +401,7 @@ fn render_docs_dependency_group(_enabled: bool) -> &'static str {
 fn render_justfile(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/justfile.j2",
-        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
+        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config), "package_name_unquoted": config.package_name}),
     )
 }
 
@@ -395,6 +421,14 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     )
 }
 
+fn render_cspell_config() -> String {
+    template_engine::render_template("python_library/cspell.json.j2", ())
+}
+
+fn render_contributing() -> String {
+    template_engine::render_template("python_library/contributing.md.j2", ())
+}
+
 fn render_changelog() -> String {
     template_engine::render_template("python_library/changelog.md.j2", ())
 }
@@ -407,6 +441,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "read_only_permissions": github_actions::read_only_permissions(),
             "job_timeout": github_actions::job_timeout(),
             "python_matrix": render_python_matrix(&config.python_min),
+            "package_name": config.package_name,
             "read_only_checkout_step": github_actions::read_only_checkout_step(),
             "setup_uv_step": github_actions::setup_uv_step(),
             "install_forge_step": github_actions::install_forge_step(),
@@ -418,7 +453,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "forge_update_check_step": github_actions::forge_update_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@v6\n", CODECOV_NOTICE)} else {String::new()}
+            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@v6\n", CODECOV_NOTICE)}
         }),
     )
 }
@@ -446,6 +481,14 @@ fn ci_python_versions(python_min: &str) -> Vec<String> {
         .into_iter()
         .map(|minor| format!("3.{minor}"))
         .collect()
+}
+
+fn render_workflow_quality_workflow() -> String {
+    template_engine::render_template("python_library/workflow-quality.yaml.j2", ())
+}
+
+fn render_docs_pages_workflow() -> String {
+    template_engine::render_template("python_library/docs-pages.yaml.j2", ())
 }
 
 fn render_release_please_workflow() -> String {
@@ -536,6 +579,7 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     python_min: String,
+    gitignore_profile: Option<String>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
 }
@@ -566,6 +610,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         author_email: forge.author_email,
         license: forge.license,
         python_min: forge.python_min,
+        gitignore_profile: forge.gitignore_profile.unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
@@ -663,6 +708,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.13".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -672,7 +718,7 @@ mod tests {
 
         let workflow = render_ci_workflow(&config);
 
-        assert!(workflow.contains("python-version: [\"3.13\", \"3.14\"]"));
+        assert!(workflow.contains("fromJSON('[\"3.13\", \"3.14\"]')"));
         assert!(!workflow.contains("\"3.12\""));
     }
 
@@ -695,18 +741,10 @@ mod tests {
         config.codecov = true;
         let workflow = render_ci_workflow(&config);
 
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff format --check .")));
-        assert!(workflow.contains(github_actions::uv_lock_check_step()));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff check .")));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ty check")));
-        assert!(workflow.contains("run: forge update --path . --check"));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step(
-            "pytest --cov --cov-report=xml"
-        )));
+        assert!(workflow.contains("uv run --locked pytest --cov --cov-report=xml"));
         assert!(workflow.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
-        assert!(workflow.contains("# - name: Upload coverage to Codecov"));
-        assert!(workflow.contains(CODECOV_NOTICE));
-        assert!(workflow.contains("run: uv build --locked"));
+        assert!(workflow.contains("name: Upload coverage to Codecov"));
+        assert!(workflow.contains("if: ${{ matrix.python-version == '3.14' }}"));
     }
 
     #[test]
@@ -775,6 +813,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs,
             codecov: false,
             pypi_publish: false,
@@ -793,6 +832,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -812,6 +852,7 @@ mod tests {
             author_email: Some("not-an-email".to_string()), // Invalid
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -831,6 +872,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "GPL-3.0".to_string(), // Not in allowed list
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -850,6 +892,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11\n3.12".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -943,6 +986,7 @@ prettier = true
             author_email: Some("ada@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: true,
             pypi_publish: false,
@@ -1037,6 +1081,7 @@ prettier = true
             author_email: Some("grace@example.com".to_string()),
             license: "BSD-3-Clause".to_string(),
             python_min: "3.12".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: false,
             codecov: false,
             pypi_publish: true,
