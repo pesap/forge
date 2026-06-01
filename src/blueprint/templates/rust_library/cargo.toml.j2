@@ -1,0 +1,13 @@
+[package]
+name = {{ project_name }}
+version = "0.1.0"
+edition = {{ rust_edition }}
+description = {{ description }}
+license = {{ license }}
+authors = [{{ cargo_authors }}]
+
+[lib]
+name = {{ crate_name }}
+path = "src/lib.rs"
+
+[dependencies]

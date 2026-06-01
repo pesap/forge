@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "label": "",
+  "message": "in-sync",
+  "logoSvg": "<svg width=\"64\" height=\"64\" viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"gold\" x1=\"0\" y1=\"0\" x2=\"64\" y2=\"64\"><stop stop-color=\"#FFF6C7\"/><stop offset=\"0.5\" stop-color=\"#E7C45A\"/><stop offset=\"1\" stop-color=\"#FFD86B\"/></linearGradient><linearGradient id=\"blue\" x1=\"20\" y1=\"26\" x2=\"34\" y2=\"50\"><stop stop-color=\"#8DFBFF\"/><stop offset=\"1\" stop-color=\"#007BFF\"/></linearGradient></defs><path d=\"M16 8H52L44 17H30V25H47L39 34H28L17 47V36H8L17 25H22V17L16 8Z\" fill=\"url(#gold)\"/><path d=\"M22 36L33 25V47L22 57V36Z\" fill=\"url(#blue)\"/></svg>",
+  "logoWidth": 20,
+  "labelColor": "#080A1F",
+  "color": "#2C6BFF"
+}
