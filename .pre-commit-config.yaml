@@ -51,6 +51,7 @@ repos:
     rev: v0.9.3
     hooks:
       - id: taplo-format
+        exclude: ^dist-workspace\.toml$
       - id: taplo-lint
         args: ["--", "--offline"]
 
