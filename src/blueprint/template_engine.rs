@@ -66,7 +66,6 @@ fn build_environment() -> Environment<'static> {
         "python_library/docs-pages.yaml.j2" => "templates/python_library/docs-pages.yaml.j2",
         "python_library/release-please-config.json.j2" => "templates/python_library/release-please-config.json.j2",
         "python_library/release-please-manifest.json.j2" => "templates/python_library/release-please-manifest.json.j2",
-        "python_library/publish-pypi.yaml.j2" => "templates/python_library/publish-pypi.yaml.j2",
         "python_library/docs-package.json.j2" => "templates/python_library/docs-package.json.j2",
         "python_library/docs-astro.config.mjs.j2" => "templates/python_library/docs-astro.config.mjs.j2",
         "python_library/docs-tsconfig.json.j2" => "templates/python_library/docs-tsconfig.json.j2",
