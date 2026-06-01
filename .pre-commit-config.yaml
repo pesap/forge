@@ -52,6 +52,7 @@ repos:
     hooks:
       - id: taplo-format
       - id: taplo-lint
+        args: ["--", "--offline"]
 
   # Project-specific hooks stay local; generic/shared checks should prefer pinned remote repos.
   - repo: local
