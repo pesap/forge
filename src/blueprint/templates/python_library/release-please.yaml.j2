@@ -3,14 +3,31 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Run publish-pypi fallback"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Existing release tag to publish (required when publish_pypi=true)"
+        required: false
+        type: string
 
 {{ serialized_ref_concurrency }}permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
-{{ job_timeout }}    steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+{{ job_timeout }}    outputs:
+      release_created: {% raw %}${{ steps.release.outputs.release_created }}{% endraw %}
+      release_tag: {% raw %}${{ steps.release.outputs.tag_name }}{% endraw %}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+{{ pypi_publish_job_block }}

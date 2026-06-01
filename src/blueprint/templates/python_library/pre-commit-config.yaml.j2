@@ -14,10 +14,24 @@
         entry: uv run --locked ty check
         language: system
         types_or: [python, pyi]
-{% endif %}{{ component_hooks }}{% if python_rules %}      - id: pytest
+{% endif %}      - id: pretty-format-json
+{{ component_hooks }}{% if python_rules %}      - id: pytest
         name: pytest
-        entry: uv run --locked pytest -q --maxfail=1
+        entry: uv run --locked pytest -q --maxfail=1 -m "not slow"
         language: system
         pass_filenames: false
         stages: [pre-push]
-{% endif %}{{ uv_lock_hook }}
+{% endif %}
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.9.1
+    hooks:
+      - id: commitizen
+      - id: commitizen-branch
+  - repo: local
+    hooks:
+      - id: cspell
+        name: cspell
+        entry: uvx cspell --no-progress --no-must-find-files
+        language: system
+        files: \.(md|txt|py|toml|ya?ml|json)$
+{{ uv_lock_hook }}

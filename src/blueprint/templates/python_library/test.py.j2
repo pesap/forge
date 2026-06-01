@@ -1,15 +1,19 @@
 from importlib import metadata
 
-import {{ package_name }}
-
 
 def test_package_imports() -> None:
+    import {{ package_name }}
+
     assert {{ package_name }}.__name__ == "{{ package_name }}"
 
 
 def test_package_version_matches_metadata() -> None:
+    import {{ package_name }}
+
     assert {{ package_name }}.__version__ == metadata.version("{{ project_name }}")
 
 
 def test_starter_symbol_exists() -> None:
+    import {{ package_name }}
+
     assert {{ package_name }}.hello() == "hello from {{ package_name }}"

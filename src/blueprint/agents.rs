@@ -1,21 +1,10 @@
 use std::path::PathBuf;
 
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles};
+use crate::blueprint::template_engine;
 
-pub fn render_agent_instructions(extra_guidance: &[&str]) -> String {
-    let mut instructions = vec![
-        "MUST FOLLOW TDD FOR FEATURES AND BUG FIXES.",
-        "MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC.",
-        "MUST PRESERVE USER-AUTHORED PROJECT CODE DURING MANAGED UPDATES.",
-    ];
-    instructions.extend(extra_guidance);
-
-    let bullets = instructions
-        .into_iter()
-        .map(|instruction| format!("- {instruction}\n"))
-        .collect::<String>();
-
-    format!("# AGENTS\n\nGuidance for coding agents in this repository.\n\n{bullets}")
+pub fn render_agent_instructions(_extra_guidance: &[&str]) -> String {
+    template_engine::render_template("shared/agents.md.j2", ())
 }
 
 pub fn render_agent_files(extra_guidance: &[&str]) -> GeneratedFiles {
@@ -47,10 +36,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_instructions_include_blueprint_specific_guidance() {
-        let instructions = render_agent_instructions(&["Run cargo test before handoff."]);
+    fn agent_instructions_include_requested_rules() {
+        let instructions = render_agent_instructions(&[]);
 
-        assert!(instructions.contains("Run cargo test before handoff."));
+        assert!(instructions.contains("DO NOT ASSUME THE USER IS CORRECT"));
+        assert!(instructions.contains("BE DIRECT AND OBJECTIVE"));
     }
 
     #[test]
@@ -61,7 +51,7 @@ mod tests {
             files
                 .get(&PathBuf::from("AGENTS.md"))
                 .and_then(|file| file.as_text())
-                .is_some_and(|content| content.contains("Guidance for coding agents"))
+                .is_some_and(|content| content.contains("# AGENTS"))
         );
         assert_eq!(
             files

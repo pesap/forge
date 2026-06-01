@@ -34,6 +34,7 @@ pub struct ProjectConfig {
     pub author_email: Option<String>,
     pub license: String,
     pub python_min: String,
+    pub gitignore_profile: String,
     pub docs: bool,
     pub codecov: bool,
     pub pypi_publish: bool,
@@ -117,7 +118,7 @@ pub fn render_project_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(format!("src/{}/py.typed", config.package_name)),
-        GeneratedFile::text("\n"),
+        GeneratedFile::text(template_engine::render_template("shared/py.typed.j2", ())),
     );
     files.insert(
         PathBuf::from(format!("tests/test_{}.py", config.package_name)),
@@ -144,12 +145,12 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_readme(config)),
     );
     files.insert(
-        PathBuf::from("LICENSE"),
+        PathBuf::from("LICENSE.txt"),
         GeneratedFile::text(render_license(config)),
     );
     files.insert(
         PathBuf::from(".gitignore"),
-        GeneratedFile::text(render_gitignore()),
+        GeneratedFile::text(render_gitignore(&config.gitignore_profile)),
     );
     files.insert(
         PathBuf::from(".python-version"),
@@ -168,6 +169,14 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.insert(
+        PathBuf::from(".cspell.json"),
+        GeneratedFile::text(render_cspell_config()),
+    );
+    files.insert(
+        PathBuf::from("CONTRIBUTING.md"),
+        GeneratedFile::text(render_contributing()),
+    );
+    files.insert(
         PathBuf::from("CHANGELOG.md"),
         GeneratedFile::text(render_changelog()),
     );
@@ -180,7 +189,11 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(".github/workflows/release-please.yaml"),
-        GeneratedFile::text(render_release_please_workflow()),
+        GeneratedFile::text(render_release_please_workflow(config)),
+    );
+    files.insert(
+        PathBuf::from(".github/workflows/workflow-quality.yaml"),
+        GeneratedFile::text(render_workflow_quality_workflow()),
     );
     files.insert(
         PathBuf::from(".github/workflows/forge-update.yaml"),
@@ -195,14 +208,11 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_release_please_manifest()),
     );
 
-    if config.pypi_publish {
-        files.insert(
-            PathBuf::from(".github/workflows/publish-pypi.yaml"),
-            GeneratedFile::text(render_publish_pypi()),
-        );
-    }
-
     if config.docs {
+        files.insert(
+            PathBuf::from(".github/workflows/docs-pages.yaml"),
+            GeneratedFile::text(render_docs_pages_workflow()),
+        );
         files.insert(
             PathBuf::from("docs/package.json"),
             GeneratedFile::text(render_docs_package_json(config)),
@@ -242,6 +252,7 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
     if !config.docs {
         files.extend(
             [
+                ".github/workflows/docs-pages.yaml",
                 "docs/package.json",
                 "docs/astro.config.mjs",
                 "docs/tsconfig.json",
@@ -252,9 +263,8 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
         );
     }
 
-    if !config.pypi_publish {
-        files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
-    }
+    files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
+    files.push(PathBuf::from(".github/workflows/publish.yaml"));
 
     files.extend(config.components.disabled_file_paths());
     files
@@ -288,8 +298,11 @@ fn render_license(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_gitignore() -> String {
-    template_engine::render_template("python_library/gitignore.j2", ())
+fn render_gitignore(gitignore_profile: &str) -> String {
+    template_engine::render_template(
+        "python_library/gitignore.j2",
+        serde_json::json!({"gitignore_profile": gitignore_profile}),
+    )
 }
 
 fn render_authors(config: &ProjectConfig) -> String {
@@ -343,6 +356,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "author_email": render_optional_forge_field("author_email", &config.author_email),
             "license": toml_value::string_literal(&config.license),
             "python_min": toml_value::string_literal(&config.python_min),
+            "gitignore_profile": toml_value::string_literal(&config.gitignore_profile),
             "forge_overrides": render_forge_overrides_table(
                 BlueprintName::PythonLibrary,
                 &[
@@ -375,7 +389,7 @@ fn render_docs_dependency_group(_enabled: bool) -> &'static str {
 fn render_justfile(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/justfile.j2",
-        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
+        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config), "package_name_unquoted": config.package_name}),
     )
 }
 
@@ -395,6 +409,14 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     )
 }
 
+fn render_cspell_config() -> String {
+    template_engine::render_template("python_library/cspell.json.j2", ())
+}
+
+fn render_contributing() -> String {
+    template_engine::render_template("python_library/contributing.md.j2", ())
+}
+
 fn render_changelog() -> String {
     template_engine::render_template("python_library/changelog.md.j2", ())
 }
@@ -407,6 +429,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "read_only_permissions": github_actions::read_only_permissions(),
             "job_timeout": github_actions::job_timeout(),
             "python_matrix": render_python_matrix(&config.python_min),
+            "package_name": config.package_name,
             "read_only_checkout_step": github_actions::read_only_checkout_step(),
             "setup_uv_step": github_actions::setup_uv_step(),
             "install_forge_step": github_actions::install_forge_step(),
@@ -418,7 +441,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "forge_update_check_step": github_actions::forge_update_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@v6\n", CODECOV_NOTICE)} else {String::new()}
+            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n", CODECOV_NOTICE)}
         }),
     )
 }
@@ -448,10 +471,32 @@ fn ci_python_versions(python_min: &str) -> Vec<String> {
         .collect()
 }
 
-fn render_release_please_workflow() -> String {
+fn render_workflow_quality_workflow() -> String {
+    template_engine::render_template("python_library/workflow-quality.yaml.j2", ())
+}
+
+fn render_docs_pages_workflow() -> String {
+    template_engine::render_template("python_library/docs-pages.yaml.j2", ())
+}
+
+fn render_release_please_workflow(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/release-please.yaml.j2",
-        serde_json::json!({"serialized_ref_concurrency": github_actions::serialized_ref_concurrency(), "job_timeout": github_actions::job_timeout()}),
+        serde_json::json!({
+            "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
+            "job_timeout": github_actions::job_timeout(),
+            "pypi_publish_job_block": if config.pypi_publish {
+                format!(
+                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')\n    concurrency:\n      group: pypi-publish-${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\n      cancel-in-progress: false\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - id: publish_ref\n        run: |\n          if [ \"${{{{ github.event_name }}}}\" = \"workflow_dispatch\" ] && [ \"${{{{ github.event.inputs.publish_pypi }}}}\" = \"true\" ] && [ -z \"${{{{ github.event.inputs.release_tag }}}}\" ]; then\n            echo \"release_tag input is required when publish_pypi=true\" >&2\n            exit 1\n          fi\n          REF=\"${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\"\n          if [ -z \"$REF\" ]; then\n            echo \"No release tag resolved for publish step\" >&2\n            exit 1\n          fi\n          echo \"ref=$REF\" >> \"$GITHUB_OUTPUT\"\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ steps.publish_ref.outputs.ref }}}}\n          persist-credentials: false\n      - name: Verify release tag exists\n        run: git rev-parse --verify \"refs/tags/${{{{ steps.publish_ref.outputs.ref }}}}\"\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      - run: uv publish --dry-run\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n      - name: Publish summary\n        run: |\n          echo \"### PyPI publish fallback dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- project: {}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- tag: ${{{{ steps.publish_ref.outputs.ref }}}}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- mode: uv publish --dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- to enable real publish: uncomment the trusted publishing step in this workflow\" >> \"$GITHUB_STEP_SUMMARY\"\n",
+                    config.project_name,
+                    github_actions::job_timeout(),
+                    PYPI_PUBLISH_NOTICE,
+                    config.project_name
+                )
+            } else {
+                String::new()
+            }
+        }),
     )
 }
 
@@ -461,13 +506,6 @@ fn render_release_please_config() -> String {
 
 fn render_release_please_manifest() -> String {
     template_engine::render_template("python_library/release-please-manifest.json.j2", ())
-}
-
-fn render_publish_pypi() -> String {
-    template_engine::render_template(
-        "python_library/publish-pypi.yaml.j2",
-        serde_json::json!({"serialized_release_concurrency": github_actions::serialized_release_concurrency(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "pypi_publish_notice": PYPI_PUBLISH_NOTICE}),
-    )
 }
 
 fn render_docs_package_json(config: &ProjectConfig) -> String {
@@ -536,6 +574,7 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     python_min: String,
+    gitignore_profile: Option<String>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
 }
@@ -566,6 +605,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         author_email: forge.author_email,
         license: forge.license,
         python_min: forge.python_min,
+        gitignore_profile: forge.gitignore_profile.unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
@@ -663,6 +703,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.13".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -672,7 +713,7 @@ mod tests {
 
         let workflow = render_ci_workflow(&config);
 
-        assert!(workflow.contains("python-version: [\"3.13\", \"3.14\"]"));
+        assert!(workflow.contains("fromJSON('[\"3.13\", \"3.14\"]')"));
         assert!(!workflow.contains("\"3.12\""));
     }
 
@@ -695,18 +736,10 @@ mod tests {
         config.codecov = true;
         let workflow = render_ci_workflow(&config);
 
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff format --check .")));
-        assert!(workflow.contains(github_actions::uv_lock_check_step()));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ruff check .")));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step("ty check")));
-        assert!(workflow.contains("run: forge update --path . --check"));
-        assert!(workflow.contains(&github_actions::uv_run_locked_step(
-            "pytest --cov --cov-report=xml"
-        )));
+        assert!(workflow.contains("uv run --locked pytest --cov --cov-report=xml"));
         assert!(workflow.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
-        assert!(workflow.contains("# - name: Upload coverage to Codecov"));
-        assert!(workflow.contains(CODECOV_NOTICE));
-        assert!(workflow.contains("run: uv build --locked"));
+        assert!(workflow.contains("name: Upload coverage to Codecov"));
+        assert!(workflow.contains("if: ${{ matrix.python-version == '3.14' }}"));
     }
 
     #[test]
@@ -775,6 +808,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs,
             codecov: false,
             pypi_publish: false,
@@ -793,6 +827,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -812,6 +847,7 @@ mod tests {
             author_email: Some("not-an-email".to_string()), // Invalid
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -831,6 +867,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "GPL-3.0".to_string(), // Not in allowed list
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -850,6 +887,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11\n3.12".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: false,
             pypi_publish: false,
@@ -943,6 +981,7 @@ prettier = true
             author_email: Some("ada@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             codecov: true,
             pypi_publish: false,
@@ -963,7 +1002,7 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
-        assert!(files.contains_key(&PathBuf::from("LICENSE")));
+        assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
         assert_eq!(
             files
                 .get(&PathBuf::from("CLAUDE.md"))
@@ -987,8 +1026,7 @@ prettier = true
 
     #[test]
     fn release_workflows_use_job_timeouts() {
-        let release_please = render_release_please_workflow();
-        let publish_pypi = render_publish_pypi();
+        let release_please = render_release_please_workflow(&test_config(true));
 
         assert!(release_please.contains(github_actions::job_timeout()));
         assert!(
@@ -996,35 +1034,30 @@ prettier = true
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
             )
         );
-        assert!(publish_pypi.contains(github_actions::job_timeout()));
-        assert!(publish_pypi.contains(github_actions::read_only_checkout_step()));
-        assert!(publish_pypi.contains("enable-cache: true"));
-        assert!(publish_pypi.contains("run: uv build --locked"));
-        assert!(publish_pypi.contains(PYPI_PUBLISH_NOTICE));
-        assert!(publish_pypi.contains("# - name: Publish package distributions to PyPI"));
-        assert!(publish_pypi.contains("#   uses: pypa/gh-action-pypi-publish@release/v1"));
+        assert!(!release_please.contains("publish is handled"));
+
+        let mut with_publish = test_config(true);
+        with_publish.pypi_publish = true;
+        let release_please_with_publish = render_release_please_workflow(&with_publish);
+        assert!(release_please_with_publish.contains("publish-pypi:"));
+        assert!(release_please_with_publish.contains("needs: release-please"));
+        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')"));
+        assert!(release_please_with_publish.contains("release_tag input is required when publish_pypi=true"));
+        assert!(release_please_with_publish.contains("steps.publish_ref.outputs.ref"));
+        assert!(release_please_with_publish.contains("concurrency:\n      group: pypi-publish-"));
+        assert!(release_please_with_publish.contains("    environment:\n      name: pypi\n"));
+        assert!(release_please_with_publish.contains("url: https://pypi.org/p/test-project"));
+        assert!(release_please_with_publish.contains("uv build --locked"));
+        assert!(release_please_with_publish.contains("uv publish --dry-run"));
+        assert!(release_please_with_publish.contains(PYPI_PUBLISH_NOTICE));
+        assert!(release_please_with_publish.contains("# - name: Publish package distributions to PyPI"));
     }
 
     #[test]
     fn release_workflows_serialize_duplicate_runs() {
-        let release_please = render_release_please_workflow();
-        let publish_pypi = render_publish_pypi();
+        let release_please = render_release_please_workflow(&test_config(true));
 
         assert!(release_please.contains("concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: false\n\npermissions:"));
-        assert!(publish_pypi.contains("concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\njobs:"));
-    }
-
-    #[test]
-    fn publish_pypi_workflow_uses_dedicated_environment_and_job_permissions() {
-        let publish_pypi = render_publish_pypi();
-
-        assert!(publish_pypi.contains("    environment:\n      name: pypi\n"));
-        assert!(publish_pypi.contains("      url: https://pypi.org/p/<your-pypi-project-name>\n"));
-        assert!(
-            publish_pypi
-                .contains("    permissions:\n      id-token: write\n      contents: read\n")
-        );
-        assert!(!publish_pypi.contains("\npermissions:\n  id-token: write\n"));
     }
 
     #[test]
@@ -1037,6 +1070,7 @@ prettier = true
             author_email: Some("grace@example.com".to_string()),
             license: "BSD-3-Clause".to_string(),
             python_min: "3.12".to_string(),
+            gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: false,
             codecov: false,
             pypi_publish: true,

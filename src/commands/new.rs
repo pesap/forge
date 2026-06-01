@@ -121,7 +121,9 @@ pub fn run(args: NewArgs) -> Result<()> {
         file_paths.push("uv.lock".to_string());
         file_paths.sort();
     }
-    initialize_git_repository(&destination, args.github, args.json)?;
+    if !args.no_git_history {
+        initialize_git_repository(&destination, args.github, args.json)?;
+    }
 
     if args.github {
         create_github_repo(
@@ -492,6 +494,10 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
         .get("python_min")
         .and_then(Value::as_str)
         .map(str::to_string);
+    resolved.gitignore_profile = forge
+        .get("gitignore_profile")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
     resolved.docs = option_flag(options, "docs").unwrap_or(resolved.docs);
     resolved.codecov = option_flag(options, "codecov");
@@ -524,6 +530,11 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
     push_option(&mut parts, "--author-email", args.author_email.as_deref());
     push_option(&mut parts, "--license", args.license.as_deref());
     push_option(&mut parts, "--python-min", args.python_min.as_deref());
+    push_option(
+        &mut parts,
+        "--gitignore-profile",
+        args.gitignore_profile.as_deref(),
+    );
     push_managed_option_flags(
         &mut parts,
         ManagedOptionFlags {
@@ -535,6 +546,9 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
             markdownlint: args.markdownlint,
         },
     );
+    if args.no_git_history {
+        parts.push("--no-git-history".to_string());
+    }
     if args.github {
         parts.push("--github".to_string());
     }
@@ -845,6 +859,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
     let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut python_min = args.python_min.clone();
+    let gitignore_profile = args.gitignore_profile.clone();
     let mut docs = docs_enabled(args);
     let mut codecov = codecov_enabled(args);
     let mut pypi_publish = pypi_publish_enabled(args);
@@ -910,6 +925,9 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min: python_min.unwrap_or_else(|| DEFAULT_PYTHON_MIN.to_string()),
+        gitignore_profile: gitignore_profile.unwrap_or_else(|| {
+            "python,macos,visualstudiocode,jetbrains,node".to_string()
+        }),
         docs,
         codecov,
         pypi_publish,
@@ -1145,6 +1163,13 @@ fn pypi_publish_enabled(args: &NewArgs) -> bool {
 }
 
 pub(crate) fn validate_explicit_options(blueprint: BlueprintName, args: &NewArgs) -> Result<()> {
+    if args.no_git_history && args.github {
+        return Err(coded_error(
+            ErrorCode::Input,
+            "option 'no-git-history' is not compatible with --github",
+        ));
+    }
+
     if !args.github {
         reject_if_requires("github-owner", args.github_owner.is_some(), "--github")?;
         reject_if_requires(
@@ -1163,6 +1188,11 @@ pub(crate) fn validate_explicit_options(blueprint: BlueprintName, args: &NewArgs
 
     if blueprint != BlueprintName::PythonLibrary {
         reject_if_present(blueprint, "python-min", args.python_min.is_some())?;
+        reject_if_present(
+            blueprint,
+            "gitignore-profile",
+            args.gitignore_profile.is_some(),
+        )?;
     }
 
     if !blueprint.supports_option(ManagedOption::Codecov) && args.codecov.is_some() {
@@ -1227,6 +1257,7 @@ fn creation_field_is_present(field: &str, args: &NewArgs) -> bool {
         "author-email" => args.author_email.is_some(),
         "license" => args.license.is_some(),
         "python-min" => args.python_min.is_some(),
+        "gitignore-profile" => args.gitignore_profile.is_some(),
         _ => false,
     }
 }
@@ -1662,12 +1693,14 @@ mod tests {
             author_email: Some("ada@example.com".to_string()),
             license: Some("MIT".to_string()),
             python_min: Some("3.12".to_string()),
+            gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
             docs: false,
             codecov: Some(false),
             pypi_publish: Some(true),
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            no_git_history: false,
             github: true,
             github_owner: Some("example-org".to_string()),
             github_visibility: Some(GithubVisibility::Private),
@@ -1685,7 +1718,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge new --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
+            "forge new --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -1753,12 +1786,14 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
             prettier: true,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1850,12 +1885,14 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1890,12 +1927,14 @@ mod tests {
             author_email: Some("ada@example.com".to_string()),
             license: Some("MIT".to_string()),
             python_min: Some("3.12".to_string()),
+            gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
             docs: true,
             codecov: Some(true),
             pypi_publish: Some(false),
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -1933,12 +1972,14 @@ mod tests {
             author_email: Some("ferris@example.com".to_string()),
             license: Some("MIT".to_string()),
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -2028,12 +2069,14 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
@@ -2132,12 +2175,14 @@ mod tests {
             author_email: None,
             license: None,
             python_min: None,
+            gitignore_profile: None,
             docs: true,
             codecov: None,
             pypi_publish: None,
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            no_git_history: false,
             github: false,
             github_owner: None,
             github_visibility: None,
