@@ -339,11 +339,42 @@ fn author_display_name(config: &ProjectConfig) -> String {
         .unwrap_or_else(|| "the authors".to_string())
 }
 
+fn pytest_cache_dir(project_name: &str) -> PathBuf {
+    cache_home_dir()
+        .map(|cache_dir| cache_dir.join("pytest").join(project_name))
+        .unwrap_or_else(|| PathBuf::from(".pytest_cache").join(project_name))
+}
+
+#[cfg(target_os = "windows")]
+fn cache_home_dir() -> Option<PathBuf> {
+    env_path("LOCALAPPDATA")
+        .or_else(|| env_path("USERPROFILE").map(|home| home.join("AppData").join("Local")))
+}
+
+#[cfg(target_os = "macos")]
+fn cache_home_dir() -> Option<PathBuf> {
+    env_path("HOME").map(|home| home.join("Library").join("Caches"))
+}
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+fn cache_home_dir() -> Option<PathBuf> {
+    env_path("XDG_CACHE_HOME")
+        .filter(|path| path.is_absolute())
+        .or_else(|| env_path("HOME").map(|home| home.join(".cache")))
+}
+
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 fn render_pyproject(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pyproject.toml.j2",
         serde_json::json!({
             "project_name": toml_value::string_literal(&config.project_name),
+            "pytest_cache_dir": toml_value::string_literal(&pytest_cache_dir(&config.project_name).to_string_lossy()),
             "description": toml_value::string_literal(&config.description),
             "authors": render_authors(config),
             "requires_python": toml_value::string_literal(&format!(">={},<3.15", config.python_min)),

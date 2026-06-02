@@ -24,10 +24,10 @@ hosting = "github"
 install-updater = false
 # Whether to enable GitHub Attestations
 github-attestations = true
-# Path that installers should place binaries in
-install-path = "CARGO_HOME"
 # Extra build setup steps for generated GitHub Actions release jobs
 github-build-setup = "../build-setup.yml"
+# Path that installers should place binaries in
+install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
 
 [dist.github-custom-runners.aarch64-pc-windows-msvc]
 runner = "windows-11-arm"
