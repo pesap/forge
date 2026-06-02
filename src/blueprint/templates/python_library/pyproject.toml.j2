@@ -35,7 +35,7 @@ minversion = "9.0"
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = ["-ra", "-q", {{ coverage_arg }}, "--cov-report=term-missing:skip-covered"]
-cache_dir = "$XDG_CACHE_HOME/pytest"
+cache_dir = {{ pytest_cache_dir }}
 
 [tool.ruff]
 line-length = 100

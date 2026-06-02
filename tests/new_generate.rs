@@ -14,6 +14,33 @@ fn write_executable(path: &std::path::Path, content: &str) {
     fs::set_permissions(path, permissions).expect("fake command should be executable");
 }
 
+fn expected_pytest_cache_dir(project_name: &str) -> String {
+    cache_home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from(".pytest_cache"))
+        .join("pytest")
+        .join(project_name)
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(target_os = "macos")]
+fn cache_home_dir() -> Option<std::path::PathBuf> {
+    env_path("HOME").map(|home| home.join("Library").join("Caches"))
+}
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+fn cache_home_dir() -> Option<std::path::PathBuf> {
+    env_path("XDG_CACHE_HOME")
+        .filter(|path| path.is_absolute())
+        .or_else(|| env_path("HOME").map(|home| home.join(".cache")))
+}
+
+fn env_path(name: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 #[test]
 fn new_generates_python_project_with_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
@@ -63,6 +90,13 @@ fn new_generates_python_project_with_metadata() {
     assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
     assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
     assert!(pyproject.contains("project_name = \"grid-tools\""));
+
+    let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
+    let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
+        .as_str()
+        .expect("pytest cache_dir should be a string");
+    assert_eq!(pytest_cache_dir, expected_pytest_cache_dir("grid-tools"));
+    assert!(!pytest_cache_dir.contains("XDG_CACHE_HOME"));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
     assert!(readme.contains("forge update --path ."));
