@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/pesap/forge/compare/v0.1.1...v0.2.0) (2026-06-02)
+
+
+### Features
+
+* adding `forge sync` command ([#58](https://github.com/pesap/forge/issues/58)) ([de07bb8](https://github.com/pesap/forge/commit/de07bb8ad4ff8efcb6d53773601960e748948fe1))
+
+
+### Bug Fixes
+
+* address sync follow-up naming ([#60](https://github.com/pesap/forge/issues/60)) ([e93dcaa](https://github.com/pesap/forge/commit/e93dcaae11d5b58bd609e5ca580b7d6b81901c4b))
+
 ## [0.1.1](https://github.com/pesap/forge/compare/v0.1.0...v0.1.1) (2026-06-02)
 
 
