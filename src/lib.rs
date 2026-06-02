@@ -19,7 +19,7 @@ pub fn run(cli: cli::Cli) -> Result<()> {
         Some(cli::Commands::Completions(args)) => commands::completions::run(args),
         Some(cli::Commands::Init(args)) => commands::init::run(args),
         Some(cli::Commands::New(args)) => commands::new::run(args),
-        Some(cli::Commands::Update(args)) => commands::update::run(args),
+        Some(cli::Commands::Sync(args)) => commands::sync::run(args),
         Some(cli::Commands::SelfCommand(args)) => commands::self_update::run(args),
         Some(cli::Commands::Doctor(args)) => commands::doctor::run(args),
         None => {

@@ -166,7 +166,7 @@ pub fn run(args: NewArgs) -> Result<()> {
     if pypi_publish_notice(&project.options) {
         ui::info("pypi", python_library::PYPI_PUBLISH_NOTICE);
     }
-    ui::info("managed update", "forge update --path .");
+    ui::info("managed sync", "forge sync --path .");
     ui::section("Next steps");
     ui::next_step(&format!(
         "cd {}",
@@ -352,7 +352,7 @@ fn print_json_report(input: NewReportInput<'_>) -> Result<()> {
         github: input.github,
         github_visibility: input.github_visibility.map(github_visibility_label),
         dry_run: input.dry_run,
-        managed_update: "forge update --path .",
+        managed_update: "forge sync --path .",
         infrastructure: input.infrastructure,
         required_tools: required_tools_summary_for_options(input.blueprint, input.options),
         options: input.options,

@@ -181,7 +181,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_changelog()),
     );
     files.extend(agents::render_agent_files(&[
-        "Preserve user-authored Python package code during managed infrastructure updates.",
+        "Preserve user-authored Python package code during managed infrastructure syncs.",
     ]));
     files.insert(
         PathBuf::from(".github/workflows/ci.yaml"),
@@ -196,7 +196,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_workflow_quality_workflow()),
     );
     files.insert(
-        PathBuf::from(".github/workflows/forge-update.yaml"),
+        PathBuf::from(".github/workflows/forge-sync.yaml"),
         GeneratedFile::text(github_actions::render_forge_update_workflow()),
     );
     files.insert(
@@ -758,7 +758,7 @@ mod tests {
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
         assert!(justfile.contains("uv run --locked ty check"));
-        assert!(justfile.contains("forge update --path . --check"));
+        assert!(justfile.contains("forge sync --path . --check"));
         assert!(justfile.contains("uv run --locked pytest --tb=short"));
         assert!(justfile.contains("uv build --locked"));
     }

@@ -26,8 +26,8 @@ demo-clean:
     rm -rf demo-pylib demo-rustlib demo-anyproject
 
 _demo-refresh path create_cmd:
-    bash -c 'if [ -d "$1" ]; then cargo run -- update --path "$1" --yes || (rm -rf "$1" && eval "$2"); else eval "$2"; fi' -- {{path}} {{create_cmd}}
-    cargo run -- update --path {{path}} --check
+    bash -c 'if [ -d "$1" ]; then cargo run -- sync --path "$1" --yes || (rm -rf "$1" && eval "$2"); else eval "$2"; fi' -- {{path}} {{create_cmd}}
+    cargo run -- sync --path {{path}} --check
 
 demo-pylib:
     just _demo-refresh demo-pylib 'cargo run -- new --blueprint python-library --path demo-pylib --project-name demo-pylib --package-name demo_pylib --description "Demo Python library" --author-name "Forge Demo" --author-email "demo@example.com" --no-git-history --yes'

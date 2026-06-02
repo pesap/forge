@@ -130,14 +130,14 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.extend(agents::render_agent_files(&[
         "Run `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test` before handoff.",
-        "Preserve user-authored Rust source during managed infrastructure updates.",
+        "Preserve user-authored Rust source during managed infrastructure syncs.",
     ]));
     files.insert(
         PathBuf::from(".github/workflows/ci.yaml"),
         GeneratedFile::text(render_ci_workflow()),
     );
     files.insert(
-        PathBuf::from(".github/workflows/forge-update.yaml"),
+        PathBuf::from(".github/workflows/forge-sync.yaml"),
         GeneratedFile::text(github_actions::render_forge_update_workflow()),
     );
     if config.docs {
@@ -435,7 +435,7 @@ mod tests {
                 .contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
         );
         assert!(justfile.contains("uv run --locked prek run --all-files"));
-        assert!(justfile.contains("forge update --path . --check"));
+        assert!(justfile.contains("forge sync --path . --check"));
         assert!(justfile.contains("cargo test"));
     }
 
@@ -498,7 +498,7 @@ mod tests {
                 "run: cargo clippy --workspace --all-targets --all-features -- -D warnings"
             )
         );
-        assert!(workflow.contains("run: forge update --path . --check"));
+        assert!(workflow.contains("run: forge sync --path . --check"));
         assert!(workflow.contains("run: cargo test"));
     }
 

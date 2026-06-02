@@ -129,7 +129,7 @@ pub fn run(args: InitArgs) -> Result<()> {
             "required tools",
             new::required_tools_summary_for_options(blueprint, &project.options),
         );
-        ui::info("managed update", "forge update --path .");
+        ui::info("managed sync", "forge sync --path .");
         print_next_steps(&args, blueprint, conflicts, args.dry_run);
     }
 
@@ -231,7 +231,7 @@ fn ensure_not_already_managed(path: &Path) -> Result<()> {
     Err(coded_error(
         ErrorCode::Conflict,
         format!(
-            "repository is already managed by forge{blueprint}; use `forge update --path {}`",
+            "repository is already managed by forge{blueprint}; use `forge sync --path {}`",
             ui::shell_arg(path.display().to_string())
         ),
     ))
@@ -297,7 +297,7 @@ fn print_json_report(
         status_code: init_status_code(dry_run, conflicts),
         dry_run,
         force,
-        managed_update: "forge update --path .",
+        managed_update: "forge sync --path .",
         infrastructure: new::managed_infrastructure_summary(&project.files),
         required_tools: new::required_tools_summary_for_options(blueprint, &project.options),
         options: &project.options,

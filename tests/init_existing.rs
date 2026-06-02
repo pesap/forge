@@ -72,7 +72,7 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
         .stdout(contains(format!("cd {}", project_path.display())))
         .stdout(contains("uv sync --all-groups"))
         .stdout(contains("just verify"))
-        .stdout(contains("forge update --path ."));
+        .stdout(contains("forge sync --path ."));
 
     let existing_source = fs::read_to_string(project_path.join("src/ops_tools/core.py"))
         .expect("source should exist");
@@ -91,7 +91,7 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -142,7 +142,7 @@ fn init_adds_managed_infrastructure_to_existing_rust_repo() {
         .stdout(contains("[ok] managed infrastructure added"))
         .stdout(contains("blueprint: rust-library"))
         .stdout(contains("infrastructure:"))
-        .stdout(contains("forge update --path ."));
+        .stdout(contains("forge sync --path ."));
 
     let existing_source =
         fs::read_to_string(project_path.join("src/lib.rs")).expect("source should exist");
@@ -165,7 +165,7 @@ fn init_adds_managed_infrastructure_to_existing_rust_repo() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -210,7 +210,7 @@ fn init_adds_managed_infrastructure_to_existing_any_project_repo() {
         .stdout(contains("blueprint: any-project"))
         .stdout(contains("infrastructure:"))
         .stdout(contains("docs"))
-        .stdout(contains("forge update --path ."));
+        .stdout(contains("forge sync --path ."));
 
     let script = fs::read_to_string(project_path.join("scripts/healthcheck.sh"))
         .expect("script should remain readable");
@@ -234,7 +234,7 @@ fn init_adds_managed_infrastructure_to_existing_any_project_repo() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -393,7 +393,7 @@ fn init_rejects_already_managed_repository() {
     cmd.assert()
         .failure()
         .stderr(contains("repository is already managed by forge"))
-        .stderr(contains("forge update --path"))
+        .stderr(contains("forge sync --path"))
         .stderr(contains("error_code: FORGE_E_CONFLICT"));
 
     let pyproject_after =

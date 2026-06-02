@@ -68,21 +68,20 @@ fn canonical_display(path: &Path) -> String {
 }
 
 #[test]
-fn update_missing_pyproject_suggests_init_or_new() {
+fn sync_missing_pyproject_suggests_init_or_new() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops tools");
     fs::create_dir_all(&project_path).expect("project dir should create");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
 
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("missing Forge metadata"))
         .stderr(contains(format!(
@@ -96,21 +95,21 @@ fn update_missing_pyproject_suggests_init_or_new() {
 }
 
 #[test]
-fn update_json_missing_pyproject_keeps_stdout_empty() {
+fn sync_json_missing_pyproject_keeps_stdout_empty() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops tools");
     fs::create_dir_all(&project_path).expect("project dir should create");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -124,7 +123,7 @@ fn update_json_missing_pyproject_keeps_stdout_empty() {
 }
 
 #[test]
-fn update_pyproject_without_forge_metadata_suggests_init() {
+fn sync_pyproject_without_forge_metadata_suggests_init() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops tools");
     fs::create_dir_all(&project_path).expect("project dir should create");
@@ -134,16 +133,15 @@ fn update_pyproject_without_forge_metadata_suggests_init() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
 
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("missing [tool.forge] metadata"))
         .stderr(contains(format!(
@@ -153,14 +151,14 @@ fn update_pyproject_without_forge_metadata_suggests_init() {
 }
 
 #[test]
-fn update_json_rejects_invalid_set_before_printing_report() {
+fn sync_json_rejects_invalid_set_before_printing_report() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -169,7 +167,7 @@ fn update_json_rejects_invalid_set_before_printing_report() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -181,22 +179,21 @@ fn update_json_rejects_invalid_set_before_printing_report() {
 }
 
 #[test]
-fn update_file_path_explains_repository_directory_requirement() {
+fn sync_file_path_explains_repository_directory_requirement() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("pyproject.toml");
     fs::write(&project_path, "[project]\nname = \"not-a-directory\"\n")
         .expect("file path should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
 
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains(format!(
             "repository path is not a directory: {}",
@@ -208,22 +205,22 @@ fn update_file_path_explains_repository_directory_requirement() {
 }
 
 #[test]
-fn update_json_file_path_keeps_stdout_empty() {
+fn sync_json_file_path_keeps_stdout_empty() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("pyproject.toml");
     fs::write(&project_path, "[project]\nname = \"not-a-directory\"\n")
         .expect("file path should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -235,7 +232,7 @@ fn update_json_file_path_keeps_stdout_empty() {
 }
 
 #[test]
-fn update_only_rewrites_managed_infra_files() {
+fn sync_only_rewrites_managed_infra_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -256,17 +253,16 @@ fn update_only_rewrites_managed_infra_files() {
     fs::write(&claude_file, "stale duplicate instructions\n")
         .expect("should write stale claude file");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
-        .stdout(contains("Project updated"))
+        .stdout(contains("Project synced"))
         .stdout(contains("[ok] managed infrastructure refreshed"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains("required tools: uv, just"))
@@ -284,7 +280,7 @@ fn update_only_rewrites_managed_infra_files() {
     assert!(just_after.contains("uv lock --check"));
     assert!(just_after.contains("uv run --locked ruff check ."));
     assert!(just_after.contains("uv run --locked prek run --all-files"));
-    assert!(just_after.contains("forge update --path . --check"));
+    assert!(just_after.contains("forge sync --path . --check"));
     assert_eq!(
         fs::read_link(claude_file).expect("update should restore CLAUDE.md as a symlink"),
         std::path::PathBuf::from("AGENTS.md")
@@ -292,7 +288,7 @@ fn update_only_rewrites_managed_infra_files() {
 }
 
 #[test]
-fn update_refreshes_managed_infra() {
+fn sync_refreshes_managed_infra() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -302,14 +298,14 @@ fn update_refreshes_managed_infra() {
     let ci_workflow = project_path.join(".github/workflows/ci.yaml");
     fs::write(&ci_workflow, "BROKEN\n").expect("should write broken CI workflow");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
     assert!(!just_after.contains("BROKEN"));
@@ -321,7 +317,7 @@ fn update_refreshes_managed_infra() {
 }
 
 #[test]
-fn update_apply_without_yes_in_noninteractive_mode_fails_fast() {
+fn sync_apply_without_yes_in_noninteractive_mode_fails_fast() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -329,17 +325,16 @@ fn update_apply_without_yes_in_noninteractive_mode_fails_fast() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("interactive confirmation requires a terminal"))
-        .stderr(contains("forge update --path"))
+        .stderr(contains("forge sync --path"))
         .stderr(contains("--yes"))
         .stderr(contains("or pass --json, --dry-run, or --check"))
         .stderr(contains("error_code: FORGE_E_INPUT"));
@@ -349,25 +344,24 @@ fn update_apply_without_yes_in_noninteractive_mode_fails_fast() {
 }
 
 #[test]
-fn update_noninteractive_error_includes_apply_command_with_overrides() {
+fn sync_noninteractive_error_includes_apply_command_with_overrides() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("interactive confirmation requires a terminal"))
         .stderr(contains(format!(
-            "forge update --path '{}' --set prettier=true --yes",
+            "forge sync --path '{}' --set prettier=true --yes",
             canonical_display(&project_path)
         )))
         .stderr(contains("or pass --json, --dry-run, or --check"))
@@ -375,19 +369,18 @@ fn update_noninteractive_error_includes_apply_command_with_overrides() {
 }
 
 #[test]
-fn update_apply_without_yes_allows_noop_in_noninteractive_mode() {
+fn sync_apply_without_yes_allows_noop_in_noninteractive_mode() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Project checked"))
         .stdout(contains("[ok] managed infrastructure is already current"))
@@ -395,37 +388,37 @@ fn update_apply_without_yes_allows_noop_in_noninteractive_mode() {
 }
 
 #[test]
-fn update_defaults_missing_overrides_table() {
+fn sync_defaults_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 }
 
 #[test]
-fn update_set_creates_missing_overrides_table() {
+fn sync_set_creates_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject should be readable");
@@ -434,23 +427,23 @@ fn update_set_creates_missing_overrides_table() {
 }
 
 #[test]
-fn update_check_defaults_missing_overrides_table() {
+fn sync_check_defaults_missing_overrides_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--check",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 }
 
 #[test]
-fn update_rejects_missing_blueprint_version_metadata() {
+fn sync_rejects_missing_blueprint_version_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -472,15 +465,14 @@ fn update_rejects_missing_blueprint_version_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(predicates::str::is_empty())
         .stderr(contains("failed to validate Forge metadata at"))
@@ -489,7 +481,7 @@ fn update_rejects_missing_blueprint_version_metadata() {
 }
 
 #[test]
-fn update_check_rejects_missing_blueprint_version() {
+fn sync_check_rejects_missing_blueprint_version() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -511,15 +503,14 @@ fn update_check_rejects_missing_blueprint_version() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--check",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(predicates::str::is_empty())
         .stderr(contains("missing tool.forge.blueprint version"))
@@ -527,7 +518,7 @@ fn update_check_rejects_missing_blueprint_version() {
 }
 
 #[test]
-fn update_check_json_rejects_missing_blueprint_version() {
+fn sync_check_json_rejects_missing_blueprint_version() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -549,15 +540,15 @@ fn update_check_json_rejects_missing_blueprint_version() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--check",
         "--json",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.is_empty());
@@ -567,7 +558,7 @@ fn update_check_json_rejects_missing_blueprint_version() {
 }
 
 #[test]
-fn update_set_rejects_missing_version_and_options_metadata() {
+fn sync_set_rejects_missing_version_and_options_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -593,17 +584,16 @@ fn update_set_rejects_missing_version_and_options_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(predicates::str::is_empty())
         .stderr(contains("missing tool.forge.blueprint version"))
@@ -611,7 +601,7 @@ fn update_set_rejects_missing_version_and_options_metadata() {
 }
 
 #[test]
-fn update_json_rejects_missing_version_and_options_metadata() {
+fn sync_json_rejects_missing_version_and_options_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -637,10 +627,10 @@ fn update_json_rejects_missing_version_and_options_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    let output = update
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    let output = sync
         .args([
-            "update",
+            "sync",
             "--yes",
             "--json",
             "--path",
@@ -658,7 +648,7 @@ fn update_json_rejects_missing_version_and_options_metadata() {
 }
 
 #[test]
-fn update_check_json_rejects_missing_version_and_options_metadata() {
+fn sync_check_json_rejects_missing_version_and_options_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -684,10 +674,10 @@ fn update_check_json_rejects_missing_version_and_options_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    let output = update
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    let output = sync
         .args([
-            "update",
+            "sync",
             "--check",
             "--json",
             "--path",
@@ -705,7 +695,7 @@ fn update_check_json_rejects_missing_version_and_options_metadata() {
 }
 
 #[test]
-fn update_dry_run_json_rejects_missing_version_and_options_metadata() {
+fn sync_dry_run_json_rejects_missing_version_and_options_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -731,10 +721,10 @@ fn update_dry_run_json_rejects_missing_version_and_options_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    let output = update
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    let output = sync
         .args([
-            "update",
+            "sync",
             "--dry-run",
             "--json",
             "--path",
@@ -751,7 +741,7 @@ fn update_dry_run_json_rejects_missing_version_and_options_metadata() {
 }
 
 #[test]
-fn update_rejects_unknown_forge_metadata_fields() {
+fn sync_rejects_unknown_forge_metadata_fields() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -770,22 +760,21 @@ fn update_rejects_unknown_forge_metadata_fields() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("unknown field `typo_field`"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
 #[test]
-fn update_rejects_unknown_forge_option_fields() {
+fn sync_rejects_unknown_forge_option_fields() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -810,22 +799,21 @@ fn update_rejects_unknown_forge_option_fields() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("unsupported managed option 'codcov'"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
 #[test]
-fn update_accepts_legacy_sparse_options_table() {
+fn sync_accepts_legacy_sparse_options_table() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -835,18 +823,18 @@ fn update_accepts_legacy_sparse_options_table() {
     let pyproject = pyproject.replace("[tool.forge.overrides]", "[tool.forge.options]");
     fs::write(&pyproject_path, pyproject).expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 }
 
 #[test]
-fn update_rejects_unknown_forge_metadata() {
+fn sync_rejects_unknown_forge_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -868,22 +856,21 @@ fn update_rejects_unknown_forge_metadata() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("unknown field `metadata_owner`"))
         .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
 #[test]
-fn update_rejects_newer_blueprint_version_than_supported() {
+fn sync_rejects_newer_blueprint_version_than_supported() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -904,15 +891,14 @@ fn update_rejects_newer_blueprint_version_than_supported() {
     )
     .expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("newer than this forge supports"))
         .stderr(contains("upgrade forge"))
@@ -920,7 +906,7 @@ fn update_rejects_newer_blueprint_version_than_supported() {
 }
 
 #[test]
-fn update_dry_run_previews_without_writing_files() {
+fn sync_dry_run_previews_without_writing_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -928,16 +914,15 @@ fn update_dry_run_previews_without_writing_files() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--dry-run",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("update: 1"))
@@ -950,7 +935,7 @@ fn update_dry_run_previews_without_writing_files() {
 }
 
 #[test]
-fn update_dry_run_diff_shows_text_changes_without_writing() {
+fn sync_dry_run_diff_shows_text_changes_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -958,17 +943,16 @@ fn update_dry_run_diff_shows_text_changes_without_writing() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--dry-run",
         "--diff",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Managed diff"))
         .stdout(contains("--- a/justfile"))
@@ -983,7 +967,7 @@ fn update_dry_run_diff_shows_text_changes_without_writing() {
 }
 
 #[test]
-fn update_diff_requires_dry_run_or_check() {
+fn sync_diff_requires_dry_run_or_check() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -991,16 +975,15 @@ fn update_diff_requires_dry_run_or_check() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--diff",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("--diff requires --dry-run or --check"));
 
@@ -1009,7 +992,7 @@ fn update_diff_requires_dry_run_or_check() {
 }
 
 #[test]
-fn update_reports_conflicts_before_writing_any_files() {
+fn sync_reports_conflicts_before_writing_any_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1020,22 +1003,21 @@ fn update_reports_conflicts_before_writing_any_files() {
     let ci_workflow = project_path.join(".github/workflows/ci.yaml");
     fs::write(&ci_workflow, "BROKEN\n").expect("should write broken CI workflow");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains("conflict justfile (managed path is a directory)"))
         .stdout(contains("conflicts: 1"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains("infrastructure:"))
         .stdout(contains("Next steps"))
-        .stdout(contains("resolve conflicted paths and rerun update"))
+        .stdout(contains("resolve conflicted paths and rerun sync"))
         .stderr(contains("managed infrastructure has conflicts"));
 
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
@@ -1043,7 +1025,7 @@ fn update_reports_conflicts_before_writing_any_files() {
 }
 
 #[test]
-fn update_reports_parent_path_conflicts_before_writing_any_files() {
+fn sync_reports_parent_path_conflicts_before_writing_any_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1055,15 +1037,14 @@ fn update_reports_parent_path_conflicts_before_writing_any_files() {
     fs::remove_dir_all(&github_dir).expect("generated .github directory should be removable");
     fs::write(&github_dir, "not a directory\n").expect("conflicting .github file should write");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains(
             "conflict .github/workflows/ci.yaml (managed parent path is not a directory)",
@@ -1077,7 +1058,7 @@ fn update_reports_parent_path_conflicts_before_writing_any_files() {
 
 #[cfg(unix)]
 #[test]
-fn update_reports_unreadable_managed_text_file_conflict_before_writing() {
+fn sync_reports_unreadable_managed_text_file_conflict_before_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1087,15 +1068,14 @@ fn update_reports_unreadable_managed_text_file_conflict_before_writing() {
     std::os::unix::fs::symlink("missing-justfile", &justfile)
         .expect("broken justfile symlink should create");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains(
             "conflict justfile (managed text file cannot be read)",
@@ -1109,7 +1089,7 @@ fn update_reports_unreadable_managed_text_file_conflict_before_writing() {
 }
 
 #[test]
-fn update_json_reports_conflicts_before_failing() {
+fn sync_json_reports_conflicts_before_failing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1118,16 +1098,16 @@ fn update_json_reports_conflicts_before_failing() {
     fs::remove_file(&claude_file).expect("managed symlink should be removable");
     fs::create_dir(&claude_file).expect("conflicting claude directory should create");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(!stdout.contains("Managed changes"));
@@ -1144,7 +1124,7 @@ fn update_json_reports_conflicts_before_failing() {
     assert_eq!(report["action_counts"]["conflict"], 1);
     assert_eq!(
         report["next_steps"],
-        serde_json::json!(["resolve conflicted paths and rerun update"])
+        serde_json::json!(["resolve conflicted paths and rerun sync"])
     );
 
     let conflict = report["actions"]
@@ -1163,7 +1143,7 @@ fn update_json_reports_conflicts_before_failing() {
 }
 
 #[test]
-fn update_dry_run_can_emit_json_report_without_human_output() {
+fn sync_dry_run_can_emit_json_report_without_human_output() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1171,9 +1151,9 @@ fn update_dry_run_can_emit_json_report_without_human_output() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1181,7 +1161,7 @@ fn update_dry_run_can_emit_json_report_without_human_output() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1206,7 +1186,7 @@ fn update_dry_run_can_emit_json_report_without_human_output() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge update --path {} --yes",
+            "forge sync --path {} --yes",
             canonical_display(&project_path)
         )])
     );
@@ -1223,7 +1203,7 @@ fn update_dry_run_can_emit_json_report_without_human_output() {
 }
 
 #[test]
-fn update_can_emit_json_report_while_applying_changes() {
+fn sync_can_emit_json_report_while_applying_changes() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1231,27 +1211,27 @@ fn update_can_emit_json_report_while_applying_changes() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(!stdout.contains("Managed changes"));
-    assert!(!stdout.contains("Project updated"));
+    assert!(!stdout.contains("Project synced"));
 
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should be valid JSON");
     assert_eq!(report["blueprint"], "python-library");
     assert_eq!(report["blueprint_version"], "0.1.0");
-    assert_eq!(report["status_code"], "updated");
+    assert_eq!(report["status_code"], "synced");
     assert_eq!(report["dry_run"], false);
     assert_eq!(report["check"], false);
     assert_eq!(report["required_tools"], "uv, just");
@@ -1267,25 +1247,25 @@ fn update_can_emit_json_report_while_applying_changes() {
 
     let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
     assert!(!just_after.contains("BROKEN"));
-    assert!(just_after.contains("forge update --path . --check"));
+    assert!(just_after.contains("forge sync --path . --check"));
 }
 
 #[test]
-fn update_json_reports_current_when_no_changes_are_needed() {
+fn sync_json_reports_current_when_no_changes_are_needed() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1299,21 +1279,20 @@ fn update_json_reports_current_when_no_changes_are_needed() {
 }
 
 #[test]
-fn update_check_succeeds_when_managed_infra_is_current() {
+fn sync_check_succeeds_when_managed_infra_is_current() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--check",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("changes: 0"))
@@ -1322,14 +1301,14 @@ fn update_check_succeeds_when_managed_infra_is_current() {
 }
 
 #[test]
-fn update_check_json_reports_current_when_managed_infra_is_current() {
+fn sync_check_json_reports_current_when_managed_infra_is_current() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1337,7 +1316,7 @@ fn update_check_json_reports_current_when_managed_infra_is_current() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1353,7 +1332,7 @@ fn update_check_json_reports_current_when_managed_infra_is_current() {
 }
 
 #[test]
-fn update_check_fails_when_managed_infra_has_drift_without_writing() {
+fn sync_check_fails_when_managed_infra_has_drift_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1361,23 +1340,22 @@ fn update_check_fails_when_managed_infra_has_drift_without_writing() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--check",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains("update  justfile"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains("infrastructure:"))
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
-            "forge update --path {} --yes",
+            "forge sync --path {} --yes",
             canonical_display(&project_path)
         )))
         .stderr(contains("managed infrastructure is out of date"))
@@ -1388,7 +1366,7 @@ fn update_check_fails_when_managed_infra_has_drift_without_writing() {
 }
 
 #[test]
-fn update_check_json_reports_changes_before_failing() {
+fn sync_check_json_reports_changes_before_failing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1396,9 +1374,9 @@ fn update_check_json_reports_changes_before_failing() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1406,7 +1384,7 @@ fn update_check_json_reports_changes_before_failing() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1434,7 +1412,7 @@ fn update_check_json_reports_changes_before_failing() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge update --path {} --yes",
+            "forge sync --path {} --yes",
             canonical_display(&project_path)
         )])
     );
@@ -1448,7 +1426,7 @@ fn update_check_json_reports_changes_before_failing() {
 }
 
 #[test]
-fn update_check_json_quotes_next_step_path_with_spaces() {
+fn sync_check_json_quotes_next_step_path_with_spaces() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops tools");
     generate_project(&project_path);
@@ -1456,9 +1434,9 @@ fn update_check_json_quotes_next_step_path_with_spaces() {
     let justfile = project_path.join("justfile");
     fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1466,7 +1444,7 @@ fn update_check_json_quotes_next_step_path_with_spaces() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1477,29 +1455,28 @@ fn update_check_json_quotes_next_step_path_with_spaces() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge update --path '{}' --yes",
+            "forge sync --path '{}' --yes",
             canonical_display(&project_path)
         )])
     );
 }
 
 #[test]
-fn update_set_can_enable_prettier_component() {
+fn sync_set_can_enable_prettier_component() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .prettierignore"))
         .stdout(contains("create  .prettierrc.json"))
@@ -1523,22 +1500,21 @@ fn update_set_can_enable_prettier_component() {
 }
 
 #[test]
-fn update_set_can_enable_editorconfig_component() {
+fn sync_set_can_enable_editorconfig_component() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "editorconfig=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .editorconfig"))
         .stdout(contains("Next steps"))
@@ -1551,22 +1527,21 @@ fn update_set_can_enable_editorconfig_component() {
 }
 
 #[test]
-fn update_set_can_enable_markdownlint_component() {
+fn sync_set_can_enable_markdownlint_component() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .markdownlint.jsonc"))
         .stdout(contains("required tools: uv, just, npx"))
@@ -1589,7 +1564,7 @@ fn update_set_can_enable_markdownlint_component() {
 }
 
 #[test]
-fn update_set_preserves_pyproject_comments_and_unmanaged_formatting() {
+fn sync_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1603,16 +1578,16 @@ fn update_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     );
     fs::write(&pyproject_path, pyproject).expect("pyproject should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
     assert!(pyproject.contains("# user project comment"));
@@ -1620,14 +1595,14 @@ fn update_set_preserves_pyproject_comments_and_unmanaged_formatting() {
 }
 
 #[test]
-fn update_set_dry_run_previews_option_change_without_writing() {
+fn sync_set_dry_run_previews_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1635,15 +1610,14 @@ fn update_set_dry_run_previews_option_change_without_writing() {
         "prettier=true",
         "--dry-run",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("create  .prettierignore"))
         .stdout(contains("create  .prettierrc.json"))
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
-            "forge update --path {} --set prettier=true --yes",
+            "forge sync --path {} --set prettier=true --yes",
             canonical_display(&project_path)
         )))
         .stdout(contains("uv lock"))
@@ -1657,14 +1631,14 @@ fn update_set_dry_run_previews_option_change_without_writing() {
 }
 
 #[test]
-fn update_set_dry_run_diff_shows_created_files_with_dev_null_headers() {
+fn sync_set_dry_run_diff_shows_created_files_with_dev_null_headers() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1673,8 +1647,7 @@ fn update_set_dry_run_diff_shows_created_files_with_dev_null_headers() {
         "--dry-run",
         "--diff",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("--- /dev/null"))
         .stdout(contains("+++ b/.prettierrc.json"))
@@ -1686,14 +1659,14 @@ fn update_set_dry_run_diff_shows_created_files_with_dev_null_headers() {
 }
 
 #[test]
-fn update_set_check_reports_option_change_without_writing() {
+fn sync_set_check_reports_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1701,8 +1674,7 @@ fn update_set_check_reports_option_change_without_writing() {
         "prettier=true",
         "--check",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("create  .prettierignore"))
@@ -1717,14 +1689,14 @@ fn update_set_check_reports_option_change_without_writing() {
 }
 
 #[test]
-fn update_set_dry_run_json_reports_option_change_without_writing() {
+fn sync_set_dry_run_json_reports_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1734,7 +1706,7 @@ fn update_set_dry_run_json_reports_option_change_without_writing() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1760,7 +1732,7 @@ fn update_set_dry_run_json_reports_option_change_without_writing() {
         report["next_steps"],
         serde_json::json!([
             format!(
-                "forge update --path {} --set prettier=true --yes",
+                "forge sync --path {} --set prettier=true --yes",
                 canonical_display(&project_path)
             ),
             "uv lock"
@@ -1775,7 +1747,7 @@ fn update_set_dry_run_json_reports_option_change_without_writing() {
 }
 
 #[test]
-fn update_set_can_disable_prettier_component_without_leaving_files() {
+fn sync_set_can_disable_prettier_component_without_leaving_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
 
@@ -1805,17 +1777,16 @@ fn update_set_can_disable_prettier_component_without_leaving_files() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  .prettierignore"))
         .stdout(contains("remove  .prettierrc.json"));
@@ -1832,22 +1803,21 @@ fn update_set_can_disable_prettier_component_without_leaving_files() {
 }
 
 #[test]
-fn update_set_can_disable_markdownlint_component_without_leaving_files() {
+fn sync_set_can_disable_markdownlint_component_without_leaving_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project_with_markdownlint(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  .markdownlint.jsonc"))
         .stdout(contains("required tools: uv, just"));
@@ -1867,14 +1837,14 @@ fn update_set_can_disable_markdownlint_component_without_leaving_files() {
 }
 
 #[test]
-fn update_set_markdownlint_disable_dry_run_previews_option_change_without_writing() {
+fn sync_set_markdownlint_disable_dry_run_previews_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project_with_markdownlint(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1882,14 +1852,13 @@ fn update_set_markdownlint_disable_dry_run_previews_option_change_without_writin
         "markdownlint=false",
         "--dry-run",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("remove  .markdownlint.jsonc"))
         .stdout(contains("Next steps"))
         .stdout(contains(format!(
-            "forge update --path {} --set markdownlint=false --yes",
+            "forge sync --path {} --set markdownlint=false --yes",
             canonical_display(&project_path)
         )))
         .stdout(contains("uv lock"))
@@ -1902,14 +1871,14 @@ fn update_set_markdownlint_disable_dry_run_previews_option_change_without_writin
 }
 
 #[test]
-fn update_set_markdownlint_disable_check_reports_option_change_without_writing() {
+fn sync_set_markdownlint_disable_check_reports_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project_with_markdownlint(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1917,8 +1886,7 @@ fn update_set_markdownlint_disable_check_reports_option_change_without_writing()
         "markdownlint=false",
         "--check",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains("Managed changes preview"))
         .stdout(contains("remove  .markdownlint.jsonc"))
@@ -1931,14 +1899,14 @@ fn update_set_markdownlint_disable_check_reports_option_change_without_writing()
 }
 
 #[test]
-fn update_set_markdownlint_disable_dry_run_json_reports_option_change_without_writing() {
+fn sync_set_markdownlint_disable_dry_run_json_reports_option_change_without_writing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project_with_markdownlint(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1948,7 +1916,7 @@ fn update_set_markdownlint_disable_dry_run_json_reports_option_change_without_wr
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -1973,7 +1941,7 @@ fn update_set_markdownlint_disable_dry_run_json_reports_option_change_without_wr
         report["next_steps"],
         serde_json::json!([
             format!(
-                "forge update --path {} --set markdownlint=false --yes",
+                "forge sync --path {} --set markdownlint=false --yes",
                 canonical_display(&project_path)
             ),
             "uv lock"
@@ -1987,22 +1955,21 @@ fn update_set_markdownlint_disable_dry_run_json_reports_option_change_without_wr
 }
 
 #[test]
-fn update_set_can_enable_python_pypi_publish_workflow() {
+fn sync_set_can_enable_python_pypi_publish_workflow() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "pypi-publish=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("update  .github/workflows/release-please.yaml"));
 
@@ -2031,14 +1998,14 @@ fn update_set_can_enable_python_pypi_publish_workflow() {
 }
 
 #[test]
-fn update_set_rejects_duplicate_canonical_options() {
+fn sync_set_rejects_duplicate_canonical_options() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2047,14 +2014,13 @@ fn update_set_rejects_duplicate_canonical_options() {
         "--set",
         "pypi-publish=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("option 'pypi-publish' was set more than once"));
 }
 
 #[test]
-fn update_set_can_disable_python_pypi_publish_workflow() {
+fn sync_set_can_disable_python_pypi_publish_workflow() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
 
@@ -2085,17 +2051,16 @@ fn update_set_can_disable_python_pypi_publish_workflow() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "pypi-publish=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("update  .github/workflows/release-please.yaml"));
 
@@ -2109,7 +2074,7 @@ fn update_set_can_disable_python_pypi_publish_workflow() {
 }
 
 #[test]
-fn update_set_rejects_options_not_supported_by_detected_blueprint() {
+fn sync_set_rejects_options_not_supported_by_detected_blueprint() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2132,16 +2097,16 @@ fn update_set_rejects_options_not_supported_by_detected_blueprint() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "codecov=true",
     ]);
-    update.assert().failure().stderr(contains(
+    sync.assert().failure().stderr(contains(
         "option 'codecov' is not supported by rust-library",
     ));
 
@@ -2151,14 +2116,14 @@ fn update_set_rejects_options_not_supported_by_detected_blueprint() {
 }
 
 #[test]
-fn update_set_rejects_duplicate_option_overrides() {
+fn sync_set_rejects_duplicate_option_overrides() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2167,8 +2132,7 @@ fn update_set_rejects_duplicate_option_overrides() {
         "--set",
         "prettier=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("option 'prettier' was set more than once"));
 
@@ -2180,22 +2144,21 @@ fn update_set_rejects_duplicate_option_overrides() {
 }
 
 #[test]
-fn update_set_rejects_whitespace_padded_option_overrides() {
+fn sync_set_rejects_whitespace_padded_option_overrides() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         " prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("invalid option override ' prettier=true'"));
 
@@ -2205,34 +2168,33 @@ fn update_set_rejects_whitespace_padded_option_overrides() {
 }
 
 #[test]
-fn update_set_rejects_cli_style_option_names() {
+fn sync_set_rejects_cli_style_option_names() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set=--prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stderr(contains("unsupported managed option '--prettier'"));
 }
 
 #[test]
-fn update_set_json_rejects_cli_style_option_names_with_empty_stdout() {
+fn sync_set_json_rejects_cli_style_option_names_with_empty_stdout() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2240,7 +2202,7 @@ fn update_set_json_rejects_cli_style_option_names_with_empty_stdout() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(!output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -2251,7 +2213,7 @@ fn update_set_json_rejects_cli_style_option_names_with_empty_stdout() {
 }
 
 #[test]
-fn update_cleans_prettier_files_when_component_is_disabled() {
+fn sync_cleans_prettier_files_when_component_is_disabled() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -2261,21 +2223,21 @@ fn update_cleans_prettier_files_when_component_is_disabled() {
     fs::write(project_path.join(".prettierignore"), "dist/\n")
         .expect("stale prettier ignore should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     assert!(!project_path.join(".prettierrc.json").exists());
     assert!(!project_path.join(".prettierignore").exists());
 }
 
 #[test]
-fn update_cleans_markdownlint_files_when_component_is_disabled() {
+fn sync_cleans_markdownlint_files_when_component_is_disabled() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -2286,20 +2248,20 @@ fn update_cleans_markdownlint_files_when_component_is_disabled() {
     )
     .expect("stale markdownlint config should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     assert!(!project_path.join(".markdownlint.jsonc").exists());
 }
 
 #[test]
-fn update_reports_optional_cleanup_directory_conflicts_before_removing_files() {
+fn sync_reports_optional_cleanup_directory_conflicts_before_removing_files() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -2309,15 +2271,14 @@ fn update_reports_optional_cleanup_directory_conflicts_before_removing_files() {
     fs::write(project_path.join(".prettierignore"), "dist/\n")
         .expect("stale prettier ignore should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .failure()
         .stdout(contains(
             "conflict .prettierrc.json (managed path is a directory)",
@@ -2329,7 +2290,7 @@ fn update_reports_optional_cleanup_directory_conflicts_before_removing_files() {
 }
 
 #[test]
-fn update_dry_run_previews_optional_file_removal_without_removing() {
+fn sync_dry_run_previews_optional_file_removal_without_removing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -2337,16 +2298,15 @@ fn update_dry_run_previews_optional_file_removal_without_removing() {
     fs::write(project_path.join(".prettierrc.json"), "{}\n")
         .expect("stale prettier config should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--dry-run",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  .prettierrc.json"));
 
@@ -2354,7 +2314,7 @@ fn update_dry_run_previews_optional_file_removal_without_removing() {
 }
 
 #[test]
-fn update_refreshes_language_agnostic_infra_project() {
+fn sync_refreshes_language_agnostic_infra_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("repo-infra");
 
@@ -2378,15 +2338,14 @@ fn update_refreshes_language_agnostic_infra_project() {
     let ci_workflow = project_path.join(".github/workflows/ci.yaml");
     fs::write(&ci_workflow, "BROKEN\n").expect("should write broken CI workflow");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("blueprint: any-project"))
         .stdout(contains("required tools: uv, just"));
@@ -2395,9 +2354,9 @@ fn update_refreshes_language_agnostic_infra_project() {
     assert!(!just_after.contains("BROKEN"));
     assert!(just_after.contains("uv run --locked prek run --all-files"));
     assert!(just_after.contains("uv lock --check"));
-    assert!(just_after.contains("forge update --path . --check"));
+    assert!(just_after.contains("forge sync --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
-    assert!(ci_after.contains("forge update --path . --check"));
+    assert!(ci_after.contains("forge sync --path . --check"));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path
@@ -2407,7 +2366,7 @@ fn update_refreshes_language_agnostic_infra_project() {
 }
 
 #[test]
-fn update_set_can_enable_prettier_for_language_agnostic_project() {
+fn sync_set_can_enable_prettier_for_language_agnostic_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("repo-infra");
 
@@ -2426,17 +2385,16 @@ fn update_set_can_enable_prettier_for_language_agnostic_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .prettierignore"))
         .stdout(contains("create  .prettierrc.json"));
@@ -2455,7 +2413,7 @@ fn update_set_can_enable_prettier_for_language_agnostic_project() {
 }
 
 #[test]
-fn update_set_can_enable_markdownlint_for_language_agnostic_project() {
+fn sync_set_can_enable_markdownlint_for_language_agnostic_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("repo-infra");
 
@@ -2474,17 +2432,16 @@ fn update_set_can_enable_markdownlint_for_language_agnostic_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .markdownlint.jsonc"))
         .stdout(contains("required tools: uv, just, npx"));
@@ -2505,7 +2462,7 @@ fn update_set_can_enable_markdownlint_for_language_agnostic_project() {
 }
 
 #[test]
-fn update_set_can_disable_markdownlint_for_language_agnostic_project() {
+fn sync_set_can_disable_markdownlint_for_language_agnostic_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("repo-infra");
 
@@ -2525,17 +2482,16 @@ fn update_set_can_disable_markdownlint_for_language_agnostic_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  .markdownlint.jsonc"))
         .stdout(contains("required tools: uv, just"));
@@ -2555,7 +2511,7 @@ fn update_set_can_disable_markdownlint_for_language_agnostic_project() {
 }
 
 #[test]
-fn update_refreshes_rust_library_managed_infra_without_touching_source() {
+fn sync_refreshes_rust_library_managed_infra_without_touching_source() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2587,15 +2543,14 @@ fn update_refreshes_rust_library_managed_infra_without_touching_source() {
     let ci_workflow = project_path.join(".github/workflows/ci.yaml");
     fs::write(&ci_workflow, "BROKEN\n").expect("CI workflow should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("blueprint: rust-library"))
         .stdout(contains("required tools: cargo, uv, just"));
@@ -2610,14 +2565,14 @@ fn update_refreshes_rust_library_managed_infra_without_touching_source() {
     assert!(
         just_after.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
-    assert!(just_after.contains("forge update --path . --check"));
+    assert!(just_after.contains("forge sync --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
     assert!(ci_after.contains("cargo fmt --all --check"));
     assert!(ci_after.contains("uv lock --check"));
     assert!(
         ci_after.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
-    assert!(ci_after.contains("forge update --path . --check"));
+    assert!(ci_after.contains("forge sync --path . --check"));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path
@@ -2627,7 +2582,7 @@ fn update_refreshes_rust_library_managed_infra_without_touching_source() {
 }
 
 #[test]
-fn update_set_can_enable_prettier_for_rust_library_project() {
+fn sync_set_can_enable_prettier_for_rust_library_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2650,17 +2605,16 @@ fn update_set_can_enable_prettier_for_rust_library_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "prettier=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .prettierignore"))
         .stdout(contains("create  .prettierrc.json"));
@@ -2680,7 +2634,7 @@ fn update_set_can_enable_prettier_for_rust_library_project() {
 }
 
 #[test]
-fn update_set_can_enable_markdownlint_for_rust_library_project() {
+fn sync_set_can_enable_markdownlint_for_rust_library_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2703,17 +2657,16 @@ fn update_set_can_enable_markdownlint_for_rust_library_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  .markdownlint.jsonc"))
         .stdout(contains("required tools: cargo, uv, just, npx"));
@@ -2735,7 +2688,7 @@ fn update_set_can_enable_markdownlint_for_rust_library_project() {
 }
 
 #[test]
-fn update_set_can_disable_markdownlint_for_rust_library_project() {
+fn sync_set_can_disable_markdownlint_for_rust_library_project() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2759,17 +2712,16 @@ fn update_set_can_disable_markdownlint_for_rust_library_project() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "markdownlint=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  .markdownlint.jsonc"))
         .stdout(contains("required tools: cargo, uv, just"));
@@ -2790,7 +2742,7 @@ fn update_set_can_disable_markdownlint_for_rust_library_project() {
 }
 
 #[test]
-fn update_removes_rust_docs_when_disabled_in_metadata() {
+fn sync_removes_rust_docs_when_disabled_in_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2824,14 +2776,14 @@ fn update_removes_rust_docs_when_disabled_in_metadata() {
     )
     .expect("stale docs should write");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     assert!(!project_path.join("docs/package.json").exists());
     assert!(
@@ -2842,7 +2794,7 @@ fn update_removes_rust_docs_when_disabled_in_metadata() {
 }
 
 #[test]
-fn update_set_can_disable_rust_docs() {
+fn sync_set_can_disable_rust_docs() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2865,17 +2817,16 @@ fn update_set_can_disable_rust_docs() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "docs=false",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("remove  docs/src/content/docs/index.mdx"))
         .stdout(contains("remove  docs/package.json"));
@@ -2898,7 +2849,7 @@ fn update_set_can_disable_rust_docs() {
 }
 
 #[test]
-fn update_set_dry_run_reports_empty_docs_directory_removal() {
+fn sync_set_dry_run_reports_empty_docs_directory_removal() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2921,9 +2872,9 @@ fn update_set_dry_run_reports_empty_docs_directory_removal() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2933,7 +2884,7 @@ fn update_set_dry_run_reports_empty_docs_directory_removal() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -2958,7 +2909,7 @@ fn update_set_dry_run_reports_empty_docs_directory_removal() {
 }
 
 #[test]
-fn update_set_dry_run_preserves_nonempty_docs_directory_in_report() {
+fn sync_set_dry_run_preserves_nonempty_docs_directory_in_report() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -2984,9 +2935,9 @@ fn update_set_dry_run_preserves_nonempty_docs_directory_in_report() {
     fs::write(project_path.join("docs/guide.md"), "# User guide\n")
         .expect("user docs should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2996,7 +2947,7 @@ fn update_set_dry_run_preserves_nonempty_docs_directory_in_report() {
         "--json",
     ]);
 
-    let output = update.output().expect("update should run");
+    let output = sync.output().expect("update should run");
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -3020,7 +2971,7 @@ fn update_set_dry_run_preserves_nonempty_docs_directory_in_report() {
 }
 
 #[test]
-fn update_set_can_enable_rust_docs() {
+fn sync_set_can_enable_rust_docs() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -3045,17 +2996,16 @@ fn update_set_can_enable_rust_docs() {
     ]);
     new_project.assert().success();
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "docs=true",
     ]);
-    update
-        .assert()
+    sync.assert()
         .success()
         .stdout(contains("create  docs/src/content/docs/index.mdx"))
         .stdout(contains("create  docs/package.json"));
@@ -3077,7 +3027,7 @@ fn update_set_can_enable_rust_docs() {
 }
 
 #[test]
-fn update_set_preserves_docs_directory_when_user_files_remain() {
+fn sync_set_preserves_docs_directory_when_user_files_remain() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
 
@@ -3103,16 +3053,16 @@ fn update_set_preserves_docs_directory_when_user_files_remain() {
     fs::write(project_path.join("docs/guide.md"), "# User guide\n")
         .expect("user docs should be writable");
 
-    let mut update = Command::cargo_bin("forge").expect("forge binary should build");
-    update.args([
-        "update",
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--set",
         "docs=false",
     ]);
-    update.assert().success();
+    sync.assert().success();
 
     assert!(
         !project_path

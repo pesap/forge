@@ -56,8 +56,8 @@ just verify
 ```
 
 That is it. Generated projects include managed CI, release-please
-configuration, agent instructions, `prek` hooks, and a scheduled Forge update
-workflow that opens an infrastructure update PR when drift is detected.
+configuration, agent instructions, `prek` hooks, and a scheduled Forge sync
+workflow that opens an infrastructure sync PR when drift is detected.
 
 ---
 
@@ -94,7 +94,7 @@ with that package manager instead.
 | ------------------- | --------------------------------------------------------------------------------- |
 | `forge new`         | Create a new project from a blueprint                                             |
 | `forge init`        | Adopt Forge-managed infrastructure in an existing repository                      |
-| `forge update`      | Refresh managed infrastructure in a Forge-managed project                         |
+| `forge sync`      | Refresh managed infrastructure in a Forge-managed project                         |
 | `forge self update` | Update a standalone-installer Forge binary                                        |
 | `forge blueprints`  | List available blueprints and their setup fields                                  |
 | `forge components`  | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
@@ -127,7 +127,7 @@ Forge writes two kinds of files:
 - **Project files** -- starter source code, package metadata, agent instructions.
   Generated once by `forge new`.
 - **Managed files** -- CI workflows, hook configs, documentation config, editor
-  settings. Regenerated on every `forge update` run, so they stay current with
+  settings. Regenerated on every `forge sync` run, so they stay current with
   the latest templates.
 
 Managed files are tracked through `[tool.forge]` metadata embedded in
@@ -144,10 +144,10 @@ records only explicit deviations in `[tool.forge.overrides]`.
 forge components --json
 
 # Add Prettier to an existing project
-forge update --path . --set prettier=true
+forge sync --path . --set prettier=true
 
 # Remove it
-forge update --path . --set prettier=false
+forge sync --path . --set prettier=false
 ```
 
 ---
@@ -237,22 +237,22 @@ files. Conflicting existing files are reported instead of overwritten.
 | `--diff`    | Include text diffs for conflicting files |
 | `--force`   | Overwrite conflicting managed paths      |
 
-After init succeeds, future changes flow through `forge update --path .`.
+After init succeeds, future changes flow through `forge sync --path .`.
 
 Repositories that already have `[tool.forge]` metadata are rejected by `init`;
-use `forge update` instead.
+use `forge sync` instead.
 
 ### Keeping infrastructure current
 
 ```bash
 # Check for drift (exit code reflects result)
-forge update --path . --check
+forge sync --path . --check
 
 # Preview changes
-forge update --path . --dry-run --diff
+forge sync --path . --dry-run --diff
 
 # Apply changes
-forge update --path . --yes
+forge sync --path . --yes
 ```
 
 Forge reads `[tool.forge]` from `pyproject.toml`, compares the registered
@@ -262,7 +262,7 @@ paths before replacing targets.
 
 | Flag              | Effect                             |
 | ----------------- | ---------------------------------- |
-| `--json`          | Machine-readable update report     |
+| `--json`          | Machine-readable sync report       |
 | `--dry-run`       | Preview without writing            |
 | `--diff`          | Include text diffs                 |
 | `--check`         | Exit nonzero on drift (for CI)     |
@@ -270,7 +270,7 @@ paths before replacing targets.
 | `--yes`           | Skip confirmation prompt           |
 
 <details>
-<summary>Update behavior details</summary>
+<summary>Sync behavior details</summary>
 
 Managed text updates and symlink relinks are staged through temporary paths in
 the same directory before replacing the target, so a failed write does not leave
@@ -347,7 +347,7 @@ All blueprints generate:
   of stale runs on the same ref
 - **Hooks** -- `prek` hooks that check Forge infrastructure drift
 - **Release** -- `release-please` configuration
-- **Scheduled update workflow** -- opens an infrastructure update PR when drift
+- **Scheduled sync workflow** -- opens an infrastructure sync PR when drift
   is found (write permissions only, serialized runs)
 
 ### Blueprint-specific output
