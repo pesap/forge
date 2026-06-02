@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn forge_sync_workflow_serializes_runs_without_canceling_in_progress_updates() {
+    fn forge_sync_workflow_serializes_runs_without_canceling_in_progress_syncs() {
         let workflow = render_forge_sync_workflow();
 
         assert!(workflow.contains(serialized_sync_concurrency()));
