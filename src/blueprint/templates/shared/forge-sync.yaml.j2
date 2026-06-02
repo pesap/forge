@@ -5,7 +5,7 @@ on:
     - cron: "0 8 * * 1"
   workflow_dispatch:
 
-{{ serialized_update_concurrency }}permissions:
+{{ serialized_sync_concurrency }}permissions:
   contents: write
   pull-requests: write
 

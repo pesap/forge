@@ -82,7 +82,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_update_workflow()),
+        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
     );
     if config.docs {
         files.insert(
@@ -278,7 +278,7 @@ fn render_ci_workflow() -> String {
         uv_sync_locked_step: &'a str,
         uv_lock_check_step: &'a str,
         uv_run_locked_step: String,
-        forge_update_check_step: &'a str,
+        forge_sync_check_step: &'a str,
     }
 
     template_engine::render_template(
@@ -293,7 +293,7 @@ fn render_ci_workflow() -> String {
             uv_sync_locked_step: github_actions::uv_sync_locked_step(),
             uv_lock_check_step: github_actions::uv_lock_check_step(),
             uv_run_locked_step: github_actions::uv_run_locked_step("prek run --all-files"),
-            forge_update_check_step: github_actions::forge_update_check_step(),
+            forge_sync_check_step: github_actions::forge_sync_check_step(),
         },
     )
 }
