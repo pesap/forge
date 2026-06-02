@@ -1,0 +1,9 @@
+/target
+.codegraph
+.mcp*
+.pi
+
+# local demo projects
+demo-pylib/
+demo-rustlib/
+demo-anyproject/
