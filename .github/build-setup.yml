@@ -1,0 +1,19 @@
+- name: Install WiX Toolset
+  if: ${{ runner.os == 'Windows' }}
+  shell: pwsh
+  run: |
+    choco install wixtoolset --version=3.14.1.20250415 --yes
+
+    $wixBin = Get-ChildItem -Path 'C:\Program Files (x86)\WiX Toolset*' -Recurse -Filter candle.exe |
+      Select-Object -First 1 |
+      Split-Path -Parent
+
+    if (-not $wixBin) {
+      throw 'WiX candle.exe was not found after installation.'
+    }
+
+    $wixRoot = Split-Path -Parent $wixBin
+    "WIX=$wixRoot" >> $env:GITHUB_ENV
+    $wixBin >> $env:GITHUB_PATH
+
+    & "$wixBin\candle.exe" -?
