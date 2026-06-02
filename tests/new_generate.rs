@@ -15,12 +15,12 @@ fn write_executable(path: &std::path::Path, content: &str) {
 }
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
-    cache_home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from(".pytest_cache"))
-        .join("pytest")
-        .join(project_name)
-        .to_string_lossy()
-        .into_owned()
+    match cache_home_dir() {
+        Some(cache_dir) => cache_dir.join("pytest").join(project_name),
+        None => std::path::PathBuf::from(".pytest_cache").join(project_name),
+    }
+    .to_string_lossy()
+    .into_owned()
 }
 
 #[cfg(target_os = "macos")]
