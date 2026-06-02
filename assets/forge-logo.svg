@@ -1,0 +1,52 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="forge-title">
+  <title id="forge-title">forge</title>
+
+  <defs>
+    <linearGradient id="gold" x1="24" y1="14" x2="330" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF7C2"></stop>
+      <stop offset="0.38" stop-color="#E8C45A"></stop>
+      <stop offset="0.72" stop-color="#C99A32"></stop>
+      <stop offset="1" stop-color="#FFF0A3"></stop>
+    </linearGradient>
+
+    <linearGradient id="blue" x1="42" y1="68" x2="70" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9DFFFF"></stop>
+      <stop offset="0.42" stop-color="#35C7FF"></stop>
+      <stop offset="1" stop-color="#0A55FF"></stop>
+    </linearGradient>
+
+    <linearGradient id="text-blue" x1="92" y1="36" x2="290" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A7EEFF"></stop>
+      <stop offset="0.45" stop-color="#3DBBFF"></stop>
+      <stop offset="1" stop-color="#2C6BFF"></stop>
+    </linearGradient>
+
+    <filter id="blue-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="0.6" result="blur"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="blur"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+
+    <filter id="gold-soft-glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="0.15" result="blur"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="blur"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- F mark -->
+  <path d="M30 24H112L98 39H66V52H99L85 66H61L40 90V72H20L36 52H46V39L30 24Z" fill="url(#gold)" filter="url(#gold-soft-glow)"></path>
+
+  <!-- blue shard -->
+  <path d="M42 74L66 50V88L42 108V74Z" fill="url(#blue)" filter="url(#blue-glow)"></path>
+
+  <!-- orge -->
+  <text x="92" y="89" font-family="Orbitron, Eurostile, Bank Gothic, Audiowide, Montserrat, Arial, sans-serif" font-size="62" font-weight="700" letter-spacing="-6" fill="url(#text-blue)" filter="url(#blue-glow)">orge</text>
+
+  <!-- subtle highlight -->
+  <text x="92" y="87" font-family="Orbitron, Eurostile, Bank Gothic, Audiowide, Montserrat, Arial, sans-serif" font-size="62" font-weight="700" letter-spacing="-6" fill="#DDF6FF" fill-opacity="0.28">orge</text>
+</svg>

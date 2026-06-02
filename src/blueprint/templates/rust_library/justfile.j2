@@ -1,0 +1,26 @@
+set dotenv-load := false
+
+default:
+    @just --list
+
+sync:
+    uv sync --all-groups
+
+hooks-install:
+    uv run prek install
+{{ docs_recipe }}
+format:
+    cargo fmt --all
+{{ component_format_steps }}lint:
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+test:
+    cargo test
+
+verify:
+    uv lock --check
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    uv run --locked prek run --all-files
+    forge update --path . --check
+    cargo test
