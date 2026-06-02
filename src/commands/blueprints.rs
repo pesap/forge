@@ -43,12 +43,12 @@ pub fn run(args: BlueprintsArgs) -> Result<()> {
         ui::info("required tools", blueprint.required_tools.join(", "));
         ui::info("create", create_command(blueprint.name));
         ui::info("init", init_command(blueprint.name));
-        ui::info("check", update_check_command());
+        ui::info("check", sync_check_command());
     }
     ui::section("Next steps");
     ui::next_step(&create_command("python-library"));
     ui::next_step(&init_command("python-library"));
-    ui::next_step(update_check_command());
+    ui::next_step(sync_check_command());
     Ok(())
 }
 
@@ -62,7 +62,7 @@ fn print_json() -> Result<()> {
             description: blueprint.description,
             create_command: create_command(blueprint.name),
             init_command: init_command(blueprint.name),
-            update_check_command: update_check_command(),
+            sync_check_command: sync_check_command(),
             fields: blueprint.fields.to_vec(),
             required_tools: blueprint.required_tools.to_vec(),
             managed_highlights: managed_highlights(blueprint.id).to_vec(),
@@ -100,8 +100,8 @@ fn init_command(blueprint_name: &str) -> String {
     format!("forge init --path . --blueprint {blueprint_name} --yes ...")
 }
 
-fn update_check_command() -> &'static str {
-    "forge update --path . --check"
+fn sync_check_command() -> &'static str {
+    "forge sync --path . --check"
 }
 
 fn managed_highlights(blueprint: BlueprintName) -> &'static [&'static str] {
@@ -153,7 +153,7 @@ struct BlueprintInfo<'a> {
     description: &'a str,
     create_command: String,
     init_command: String,
-    update_check_command: &'a str,
+    sync_check_command: &'a str,
     fields: Vec<BlueprintField>,
     required_tools: Vec<&'a str>,
     managed_highlights: Vec<&'a str>,

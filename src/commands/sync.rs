@@ -17,13 +17,13 @@ use crate::blueprint::{
     detect_blueprint_metadata_from_pyproject, managed_option_enabled,
     validate_managed_overrides_from_metadata,
 };
-use crate::cli::UpdateArgs;
+use crate::cli::SyncArgs;
 use crate::commands::diff;
 use crate::commands::new::managed_infrastructure_summary;
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
-pub fn run(args: UpdateArgs) -> Result<()> {
+pub fn run(args: SyncArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
     crate::commands::validate_diff_mode(args.diff, args.dry_run, args.check)?;
     let root = args
@@ -87,7 +87,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
 
     if conflicts > 0 {
         if args.json {
-            print_json_report(UpdateJsonReportInput {
+            print_json_report(SyncJsonReportInput {
                 root: &root,
                 metadata: &metadata,
                 blueprint_version,
@@ -99,7 +99,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
                 actions: &actions,
             })?;
         } else {
-            print_update_context(
+            print_sync_context(
                 &root,
                 blueprint,
                 blueprint_version,
@@ -110,11 +110,11 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         }
         return Err(coded_error(
             ErrorCode::Conflict,
-            "managed infrastructure has conflicts; resolve conflicted paths and rerun update",
+            "managed infrastructure has conflicts; resolve conflicted paths and rerun sync",
         ));
     }
 
-    if should_confirm_update(
+    if should_confirm_sync(
         args.yes,
         args.json,
         args.dry_run,
@@ -122,17 +122,17 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         stdin_is_terminal,
         changes,
     ) {
-        print_update_review(
+        print_sync_review(
             &root,
             blueprint,
             blueprint_version,
             &options,
             &infrastructure,
             changes,
-            update_command(&root, &args.set),
+            sync_command(&root, &args.set),
         );
-        if !confirm_update_apply()? {
-            ui::section("Update canceled");
+        if !confirm_sync_apply()? {
+            ui::section("Sync canceled");
             ui::success("no files changed");
             return Ok(());
         }
@@ -155,7 +155,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     }
 
     if args.json {
-        print_json_report(UpdateJsonReportInput {
+        print_json_report(SyncJsonReportInput {
             root: &root,
             metadata: &metadata,
             blueprint_version,
@@ -175,9 +175,9 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         return Ok(());
     }
 
-    ui::section(update_result_section_title(read_only, changes));
+    ui::section(sync_result_section_title(read_only, changes));
     if args.check && changes > 0 {
-        print_update_context(
+        print_sync_context(
             &root,
             blueprint,
             blueprint_version,
@@ -188,7 +188,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         return Err(coded_error(
             ErrorCode::Conflict,
             format!(
-                "managed infrastructure is out of date; run `forge update --path {}`",
+                "managed infrastructure is out of date; run `forge sync --path {}`",
                 root.display()
             ),
         ));
@@ -201,7 +201,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     } else {
         ui::success("managed infrastructure refreshed");
     }
-    print_update_context(
+    print_sync_context(
         &root,
         blueprint,
         blueprint_version,
@@ -260,7 +260,7 @@ fn ensure_forge_metadata_for_update(root: &Path, pyproject: &str) -> Result<()> 
         return Err(coded_error(
             ErrorCode::Env,
             format!(
-                "missing [tool.forge] metadata; use `forge init --path {}` to adopt this repository before running update",
+                "missing [tool.forge] metadata; use `forge init --path {}` to adopt this repository before running sync",
                 ui::shell_arg(root.display().to_string())
             ),
         ));
@@ -269,7 +269,7 @@ fn ensure_forge_metadata_for_update(root: &Path, pyproject: &str) -> Result<()> 
     Ok(())
 }
 
-fn should_confirm_update(
+fn should_confirm_sync(
     assume_yes: bool,
     json: bool,
     dry_run: bool,
@@ -299,7 +299,7 @@ fn ensure_noninteractive_apply_allowed(input: NonInteractiveApplyGuardInput<'_>)
         && !input.stdin_is_terminal
         && input.changes > 0
     {
-        let apply_command = update_command(input.root, input.option_overrides);
+        let apply_command = sync_command(input.root, input.option_overrides);
         return Err(coded_error(
             ErrorCode::Input,
             format!(
@@ -311,14 +311,14 @@ fn ensure_noninteractive_apply_allowed(input: NonInteractiveApplyGuardInput<'_>)
     Ok(())
 }
 
-fn confirm_update_apply() -> Result<bool> {
+fn confirm_sync_apply() -> Result<bool> {
     Ok(Confirm::new()
         .with_prompt("Apply managed infrastructure changes?")
         .default(true)
         .interact()?)
 }
 
-fn print_update_review(
+fn print_sync_review(
     root: &Path,
     blueprint: BlueprintName,
     blueprint_version: &str,
@@ -327,7 +327,7 @@ fn print_update_review(
     changes: usize,
     apply_command: String,
 ) {
-    let summary = update_review_summary(
+    let summary = sync_review_summary(
         root,
         blueprint,
         blueprint_version,
@@ -337,7 +337,7 @@ fn print_update_review(
         apply_command,
     );
 
-    ui::section("Update review");
+    ui::section("Sync review");
     ui::info("path", &summary.path);
     ui::info("blueprint", summary.blueprint);
     ui::info("blueprint version", &summary.blueprint_version);
@@ -349,7 +349,7 @@ fn print_update_review(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct UpdateReviewSummary {
+struct SyncReviewSummary {
     path: String,
     blueprint: &'static str,
     blueprint_version: String,
@@ -360,7 +360,7 @@ struct UpdateReviewSummary {
     apply: String,
 }
 
-fn update_review_summary(
+fn sync_review_summary(
     root: &Path,
     blueprint: BlueprintName,
     blueprint_version: &str,
@@ -368,8 +368,8 @@ fn update_review_summary(
     infrastructure: &str,
     changes: usize,
     apply_command: String,
-) -> UpdateReviewSummary {
-    UpdateReviewSummary {
+) -> SyncReviewSummary {
+    SyncReviewSummary {
         path: root.display().to_string(),
         blueprint: blueprint.as_str(),
         blueprint_version: blueprint_version.to_string(),
@@ -708,7 +708,7 @@ fn action_breakdown(actions: &[ManagedFileAction]) -> ActionBreakdown {
     breakdown
 }
 
-fn print_update_context(
+fn print_sync_context(
     root: &Path,
     blueprint: BlueprintName,
     blueprint_version: &str,
@@ -726,11 +726,11 @@ fn print_update_context(
     ui::info("infrastructure", infrastructure);
 }
 
-fn update_result_section_title(read_only: bool, changes: usize) -> &'static str {
+fn sync_result_section_title(read_only: bool, changes: usize) -> &'static str {
     if read_only || changes == 0 {
         "Project checked"
     } else {
-        "Project updated"
+        "Project synced"
     }
 }
 
@@ -765,12 +765,12 @@ fn next_steps_for_actions(
     actions: &[ManagedFileAction],
 ) -> Vec<String> {
     if count_conflicts(actions) > 0 {
-        return vec!["resolve conflicted paths and rerun update".to_string()];
+        return vec!["resolve conflicted paths and rerun sync".to_string()];
     }
 
     let mut next_steps = Vec::new();
     if (dry_run || check) && count_changes(actions) > 0 {
-        next_steps.push(update_command(root, option_overrides));
+        next_steps.push(sync_command(root, option_overrides));
     }
     if actions
         .iter()
@@ -782,9 +782,9 @@ fn next_steps_for_actions(
     next_steps
 }
 
-fn update_command(root: &Path, option_overrides: &[String]) -> String {
+fn sync_command(root: &Path, option_overrides: &[String]) -> String {
     let mut command = format!(
-        "forge update --path {}",
+        "forge sync --path {}",
         ui::shell_arg(root.display().to_string())
     );
     for option_override in option_overrides {
@@ -795,7 +795,7 @@ fn update_command(root: &Path, option_overrides: &[String]) -> String {
     command
 }
 
-struct UpdateJsonReportInput<'a> {
+struct SyncJsonReportInput<'a> {
     root: &'a Path,
     metadata: &'a BlueprintMetadata,
     blueprint_version: &'a str,
@@ -807,16 +807,16 @@ struct UpdateJsonReportInput<'a> {
     actions: &'a [ManagedFileAction],
 }
 
-fn print_json_report(input: UpdateJsonReportInput<'_>) -> Result<()> {
+fn print_json_report(input: SyncJsonReportInput<'_>) -> Result<()> {
     let blueprint = input.metadata.name;
     let required_tools = required_tools_summary_for_options(blueprint, input.options);
     let changes = count_changes(input.actions);
     let conflicts = count_conflicts(input.actions);
-    let report = UpdateReport {
+    let report = SyncReport {
         path: input.root.display().to_string(),
         blueprint: blueprint.as_str(),
         blueprint_version: input.blueprint_version,
-        status_code: update_status_code(input.dry_run, input.check, changes, conflicts),
+        status_code: sync_status_code(input.dry_run, input.check, changes, conflicts),
         dry_run: input.dry_run,
         check: input.check,
         infrastructure: input.infrastructure,
@@ -835,7 +835,7 @@ fn print_json_report(input: UpdateJsonReportInput<'_>) -> Result<()> {
         actions: input
             .actions
             .iter()
-            .map(|action| UpdateAction {
+            .map(|action| SyncAction {
                 action: action.label(),
                 path: action.path().display().to_string(),
                 reason_code: action.reason_code(),
@@ -849,7 +849,7 @@ fn print_json_report(input: UpdateJsonReportInput<'_>) -> Result<()> {
 }
 
 #[derive(Serialize)]
-struct UpdateReport<'a> {
+struct SyncReport<'a> {
     path: String,
     blueprint: &'a str,
     blueprint_version: &'a str,
@@ -863,15 +863,10 @@ struct UpdateReport<'a> {
     conflicts: usize,
     action_counts: ActionBreakdown,
     next_steps: Vec<String>,
-    actions: Vec<UpdateAction<'a>>,
+    actions: Vec<SyncAction<'a>>,
 }
 
-fn update_status_code(
-    dry_run: bool,
-    check: bool,
-    changes: usize,
-    conflicts: usize,
-) -> &'static str {
+fn sync_status_code(dry_run: bool, check: bool, changes: usize, conflicts: usize) -> &'static str {
     if conflicts > 0 {
         return "conflicts";
     }
@@ -884,11 +879,11 @@ fn update_status_code(
     if changes == 0 {
         return "current";
     }
-    "updated"
+    "synced"
 }
 
 #[derive(Serialize)]
-struct UpdateAction<'a> {
+struct SyncAction<'a> {
     action: &'a str,
     path: String,
     reason_code: Option<&'a str>,
@@ -901,7 +896,8 @@ fn cleanup_actions_for_blueprint(
     root: &Path,
     pyproject: &str,
 ) -> Result<Vec<ManagedFileAction>> {
-    let paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
+    let mut paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
+    paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
 
     let mut cleanup_actions: Vec<ManagedFileAction> = paths
         .into_iter()
@@ -1003,11 +999,11 @@ mod tests {
     use crate::blueprint::BlueprintName;
     use crate::blueprint::files::{ManagedFileAction, ManagedFileConflict};
     use crate::commands::new::SelectedOption;
-    use crate::commands::update::{
+    use crate::commands::sync::{
         NonInteractiveApplyGuardInput, action_breakdown, cleanup_action_for_optional_path,
         cleanup_actions_for_blueprint, ensure_noninteractive_apply_allowed,
-        required_tools_summary_for_options, should_confirm_update, update_command,
-        update_result_section_title, update_review_summary, update_status_code,
+        required_tools_summary_for_options, should_confirm_sync, sync_command,
+        sync_result_section_title, sync_review_summary, sync_status_code,
     };
     use tempfile::TempDir;
 
@@ -1123,14 +1119,14 @@ markdownlint = false
     }
 
     #[test]
-    fn update_confirmation_gate_requires_interactive_apply_mode() {
-        assert!(should_confirm_update(false, false, false, false, true, 1));
-        assert!(!should_confirm_update(true, false, false, false, true, 1));
-        assert!(!should_confirm_update(false, true, false, false, true, 1));
-        assert!(!should_confirm_update(false, false, true, false, true, 1));
-        assert!(!should_confirm_update(false, false, false, true, true, 1));
-        assert!(!should_confirm_update(false, false, false, false, false, 1));
-        assert!(!should_confirm_update(false, false, false, false, true, 0));
+    fn sync_confirmation_gate_requires_interactive_apply_mode() {
+        assert!(should_confirm_sync(false, false, false, false, true, 1));
+        assert!(!should_confirm_sync(true, false, false, false, true, 1));
+        assert!(!should_confirm_sync(false, true, false, false, true, 1));
+        assert!(!should_confirm_sync(false, false, true, false, true, 1));
+        assert!(!should_confirm_sync(false, false, false, true, true, 1));
+        assert!(!should_confirm_sync(false, false, false, false, false, 1));
+        assert!(!should_confirm_sync(false, false, false, false, true, 0));
     }
 
     #[test]
@@ -1154,7 +1150,7 @@ markdownlint = false
         assert!(
             error
                 .to_string()
-                .contains("forge update --path /tmp/ops --set prettier=true --yes")
+                .contains("forge sync --path /tmp/ops --set prettier=true --yes")
         );
 
         ensure_noninteractive_apply_allowed(NonInteractiveApplyGuardInput {
@@ -1215,8 +1211,8 @@ markdownlint = false
     }
 
     #[test]
-    fn update_command_preserves_overrides_and_appends_yes() {
-        let command = update_command(
+    fn sync_command_preserves_overrides_and_appends_yes() {
+        let command = sync_command(
             Path::new("/tmp/ops tools"),
             &[
                 String::from("prettier=true"),
@@ -1226,12 +1222,12 @@ markdownlint = false
 
         assert_eq!(
             command,
-            "forge update --path '/tmp/ops tools' --set prettier=true --set markdownlint=false --yes"
+            "forge sync --path '/tmp/ops tools' --set prettier=true --set markdownlint=false --yes"
         );
     }
 
     #[test]
-    fn update_review_summary_includes_apply_and_changes() {
+    fn sync_review_summary_includes_apply_and_changes() {
         let options = vec![
             SelectedOption {
                 name: "docs",
@@ -1243,14 +1239,14 @@ markdownlint = false
             },
         ];
 
-        let summary = update_review_summary(
+        let summary = sync_review_summary(
             Path::new("/tmp/ops tools"),
             BlueprintName::AnyProject,
             "0.1.0",
             &options,
             "pyproject.toml, justfile",
             3,
-            String::from("forge update --path '/tmp/ops tools' --yes"),
+            String::from("forge sync --path '/tmp/ops tools' --yes"),
         );
 
         assert_eq!(summary.path, "/tmp/ops tools");
@@ -1260,23 +1256,23 @@ markdownlint = false
         assert_eq!(summary.required_tools, "uv, just");
         assert_eq!(summary.infrastructure, "pyproject.toml, justfile");
         assert_eq!(summary.changes, 3);
-        assert_eq!(summary.apply, "forge update --path '/tmp/ops tools' --yes");
+        assert_eq!(summary.apply, "forge sync --path '/tmp/ops tools' --yes");
     }
 
     #[test]
-    fn update_result_section_title_matches_mode_and_changes() {
-        assert_eq!(update_result_section_title(true, 0), "Project checked");
-        assert_eq!(update_result_section_title(true, 4), "Project checked");
-        assert_eq!(update_result_section_title(false, 0), "Project checked");
-        assert_eq!(update_result_section_title(false, 2), "Project updated");
+    fn sync_result_section_title_matches_mode_and_changes() {
+        assert_eq!(sync_result_section_title(true, 0), "Project checked");
+        assert_eq!(sync_result_section_title(true, 4), "Project checked");
+        assert_eq!(sync_result_section_title(false, 0), "Project checked");
+        assert_eq!(sync_result_section_title(false, 2), "Project synced");
     }
 
     #[test]
-    fn update_status_code_covers_json_outcomes() {
-        assert_eq!(update_status_code(false, false, 2, 1), "conflicts");
-        assert_eq!(update_status_code(false, true, 1, 0), "out_of_date");
-        assert_eq!(update_status_code(true, false, 3, 0), "dry_run");
-        assert_eq!(update_status_code(false, false, 0, 0), "current");
-        assert_eq!(update_status_code(false, false, 3, 0), "updated");
+    fn sync_status_code_covers_json_outcomes() {
+        assert_eq!(sync_status_code(false, false, 2, 1), "conflicts");
+        assert_eq!(sync_status_code(false, true, 1, 0), "out_of_date");
+        assert_eq!(sync_status_code(true, false, 3, 0), "dry_run");
+        assert_eq!(sync_status_code(false, false, 0, 0), "current");
+        assert_eq!(sync_status_code(false, false, 3, 0), "synced");
     }
 }

@@ -9,8 +9,8 @@ use crate::blueprint::BlueprintName;
 #[command(
     name = "forge",
     version,
-    about = "Create and update project blueprints",
-    after_help = "Quickstart:\n  forge blueprints\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge update --path ./my-lib --check"
+    about = "Create projects and sync repository infrastructure from blueprints",
+    after_help = "Quickstart:\n  forge blueprints\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge sync --path ./my-lib --check"
 )]
 pub struct Cli {
     /// Colorized terminal output policy
@@ -47,11 +47,11 @@ pub enum Commands {
         after_help = "Examples:\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes --dry-run --diff\n  forge new --blueprint rust-library --project-name tools --package-name tools --description \"Internal tools\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge new --blueprint any-project --project-name infra --description \"Shared repo infrastructure\" --yes"
     )]
     New(NewArgs),
-    /// Update managed infrastructure files in an existing project
+    /// Sync managed infrastructure files with the project blueprint
     #[command(
-        after_help = "Examples:\n  forge update --path . --yes\n  forge update --path . --dry-run\n  forge update --path . --check\n  forge update --path . --set prettier=true --yes"
+        after_help = "Examples:\n  forge sync --path . --yes\n  forge sync --path . --dry-run\n  forge sync --path . --check\n  forge sync --path . --set prettier=true --yes"
     )]
-    Update(UpdateArgs),
+    Sync(SyncArgs),
     /// Commands for forge itself
     #[command(name = "self")]
     SelfCommand(SelfArgs),
@@ -333,8 +333,8 @@ pub enum GithubVisibility {
 }
 
 #[derive(Debug, Args)]
-pub struct UpdateArgs {
-    /// Project path to update
+pub struct SyncArgs {
+    /// Project path to sync
     #[arg(long, default_value = ".")]
     pub path: PathBuf,
     /// Preview managed infrastructure changes without writing files
@@ -349,7 +349,7 @@ pub struct UpdateArgs {
     /// Override a managed option, for example --set prettier=true
     #[arg(long = "set", value_name = "OPTION=BOOL")]
     pub set: Vec<String>,
-    /// Emit a machine-readable JSON update report
+    /// Emit a machine-readable JSON sync report
     #[arg(long, action = ArgAction::SetTrue)]
     pub json: bool,
     /// Non-interactive mode

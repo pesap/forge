@@ -81,7 +81,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_ci_workflow()),
     );
     files.insert(
-        PathBuf::from(".github/workflows/forge-update.yaml"),
+        PathBuf::from(".github/workflows/forge-sync.yaml"),
         GeneratedFile::text(github_actions::render_forge_update_workflow()),
     );
     if config.docs {

@@ -39,7 +39,7 @@ fn generated_python_project_configs_are_structurally_valid() {
         &["name", "on", "jobs"],
     );
     assert_yaml_file(
-        project_path.join(".github/workflows/forge-update.yaml"),
+        project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
     );
     assert_yaml_file(
@@ -98,7 +98,7 @@ fn generated_rust_project_configs_are_structurally_valid() {
         &["name", "on", "jobs"],
     );
     assert_yaml_file(
-        project_path.join(".github/workflows/forge-update.yaml"),
+        project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
     );
     assert_json_file(
@@ -141,7 +141,7 @@ fn generated_any_project_configs_are_structurally_valid() {
         &["name", "on", "jobs"],
     );
     assert_yaml_file(
-        project_path.join(".github/workflows/forge-update.yaml"),
+        project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
     );
     assert_json_file(
@@ -211,7 +211,7 @@ fn assert_file_contains(path: PathBuf, snippets: &[&str]) {
 fn assert_update_check_is_current(project_path: &Path) {
     let mut command = Command::cargo_bin("forge").expect("forge binary should build");
     command
-        .arg("update")
+        .arg("sync")
         .arg("--path")
         .arg(project_path)
         .arg("--check")

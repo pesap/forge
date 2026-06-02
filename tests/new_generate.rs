@@ -99,13 +99,13 @@ fn new_generates_python_project_with_metadata() {
     assert!(!pytest_cache_dir.contains("XDG_CACHE_HOME"));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
-    assert!(readme.contains("forge update --path ."));
-    assert!(readme.contains("forge update --path . --dry-run"));
-    assert!(readme.contains("forge update --path . --check"));
+    assert!(readme.contains("forge sync --path ."));
+    assert!(readme.contains("forge sync --path . --dry-run"));
+    assert!(readme.contains("forge sync --path . --check"));
     assert!(readme.contains("uv lock"));
     assert!(readme.contains("[tool.forge]"));
-    assert!(readme.contains("Automated Forge Updates"));
-    assert!(readme.contains("Forge-managed infrastructure updates"));
+    assert!(readme.contains("Automated Forge Syncs"));
+    assert!(readme.contains("Forge-managed infrastructure syncs"));
     assert!(!readme.contains("infra-only"));
     assert!(!readme.contains("template-managed"));
 
@@ -117,7 +117,7 @@ fn new_generates_python_project_with_metadata() {
     assert!(justfile.contains("uv run --locked ruff format --check ."));
     assert!(justfile.contains("uv run --locked ruff check ."));
     assert!(justfile.contains("uv run --locked prek run --all-files"));
-    assert!(justfile.contains("forge update --path . --check"));
+    assert!(justfile.contains("forge sync --path . --check"));
     assert!(justfile.contains("uv build --locked"));
 
     assert!(project_path.join("src/grid_tools/__init__.py").exists());
@@ -140,9 +140,9 @@ fn new_generates_python_project_with_metadata() {
     );
 
     let update_workflow =
-        fs::read_to_string(project_path.join(".github/workflows/forge-update.yaml"))
-            .expect("forge update workflow should be generated");
-    assert!(update_workflow.contains("forge update --path ."));
+        fs::read_to_string(project_path.join(".github/workflows/forge-sync.yaml"))
+            .expect("forge sync workflow should be generated");
+    assert!(update_workflow.contains("forge sync --path ."));
     assert!(update_workflow.contains("uv lock"));
     assert!(update_workflow.contains("persist-credentials: false"));
     assert!(update_workflow.contains("peter-evans/create-pull-request"));
@@ -1180,7 +1180,7 @@ fn new_escapes_toml_metadata_without_losing_user_input() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1252,7 +1252,7 @@ fn new_escapes_rust_toml_metadata_without_losing_user_input() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -1947,7 +1947,7 @@ fn new_generates_language_agnostic_infra_project() {
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
     assert!(ci.contains("permissions:\n  contents: read\n\njobs:"));
-    assert!(ci.contains("forge update --path . --check"));
+    assert!(ci.contains("forge sync --path . --check"));
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
     assert!(precommit.contains("id: check-added-large-files"));
@@ -1955,7 +1955,7 @@ fn new_generates_language_agnostic_infra_project() {
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(justfile.contains("uv run --locked prek run --all-files"));
     assert!(justfile.contains("uv lock --check"));
-    assert!(justfile.contains("forge update --path . --check"));
+    assert!(justfile.contains("forge sync --path . --check"));
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join("docs/package.json").exists());
     assert!(
@@ -1967,7 +1967,7 @@ fn new_generates_language_agnostic_infra_project() {
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
-        "update",
+        "sync",
         "--yes",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
@@ -2035,7 +2035,7 @@ fn new_generates_rust_library_project() {
         justfile.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
     assert!(justfile.contains("uv run --locked prek run --all-files"));
-    assert!(justfile.contains("forge update --path . --check"));
+    assert!(justfile.contains("forge sync --path . --check"));
 
     assert!(project_path.join("src/lib.rs").exists());
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
@@ -2044,7 +2044,7 @@ fn new_generates_rust_library_project() {
     assert!(ci.contains("uv lock --check"));
     assert!(ci.contains("cargo fmt --all --check"));
     assert!(ci.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings"));
-    assert!(ci.contains("forge update --path . --check"));
+    assert!(ci.contains("forge sync --path . --check"));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path

@@ -23,7 +23,7 @@ pub fn read_only_checkout_step() -> &'static str {
 }
 
 pub fn forge_update_check_step() -> &'static str {
-    "      - run: forge update --path . --check\n"
+    "      - run: forge sync --path . --check\n"
 }
 
 pub fn read_only_permissions() -> &'static str {
@@ -52,7 +52,7 @@ pub fn job_timeout() -> &'static str {
 
 pub fn render_forge_update_workflow() -> String {
     crate::blueprint::template_engine::render_template(
-        "shared/forge-update.yaml.j2",
+        "shared/forge-sync.yaml.j2",
         serde_json::json!({
             "serialized_update_concurrency": serialized_update_concurrency(),
             "job_timeout": job_timeout(),
@@ -78,7 +78,7 @@ mod tests {
         assert!(install_forge_step().contains("--locked forge"));
         assert_eq!(
             forge_update_check_step(),
-            "      - run: forge update --path . --check\n"
+            "      - run: forge sync --path . --check\n"
         );
         assert_eq!(
             read_only_permissions(),
@@ -134,9 +134,9 @@ mod tests {
     fn forge_update_workflow_runs_update_and_opens_pull_request() {
         let workflow = render_forge_update_workflow();
 
-        assert!(workflow.contains("name: forge-update"));
+        assert!(workflow.contains("name: forge-sync"));
         assert!(workflow.contains(install_forge_step()));
-        assert!(workflow.contains("run: forge update --path ."));
+        assert!(workflow.contains("run: forge sync --path ."));
         assert!(workflow.contains("run: uv lock"));
         assert!(workflow.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
         assert!(workflow.contains("persist-credentials: false"));

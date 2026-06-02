@@ -6,7 +6,7 @@ pub mod doctor;
 pub mod init;
 pub mod new;
 pub mod self_update;
-pub mod update;
+pub mod sync;
 
 use anyhow::Result;
 

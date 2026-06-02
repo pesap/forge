@@ -46,8 +46,8 @@ practical engineering guide for daily development, review, and handoff.
   - `diff.rs`: Shared human-readable managed file diff rendering.
   - `init.rs`: Existing-repository adoption logic.
   - `new.rs`: Project generation logic.
-  - `update.rs`: Managed infrastructure update/check/dry-run logic.
-  - `self_update.rs`: CLI self-management.
+  - `sync.rs`: Managed infrastructure sync/check/dry-run logic.
+  - `self_sync.rs`: CLI self-management.
   - `doctor.rs`: Environment diagnostics.
 - `src/blueprint/`: Blueprint registry, implementations, and file planning.
   - `mod.rs`: Blueprint and managed-option registry.
@@ -90,7 +90,7 @@ Additional rules:
 - Keep blueprints in `src/blueprint/{name}.rs`.
 - Define a `BLUEPRINT_NAME` constant.
 - Register each blueprint in `BLUEPRINT_REGISTRY` so setup fields, CLI
-  discovery, metadata detection, update dispatch, and managed cleanup share one
+  discovery, metadata detection, sync dispatch, and managed cleanup share one
   integration point.
 - Implement `render_project_files()` and `render_managed_files()` using
   `GeneratedFiles`.
@@ -105,7 +105,7 @@ Additional rules:
 - `config_from_pyproject()` must return validated blueprint configs so update
   and cleanup paths cannot use corrupt metadata.
 - Store managed feature deviations under `[tool.forge.overrides]`; omitted values use blueprint defaults.
-- Keep update behavior driven by generated metadata in the target repository; do
+- Keep sync behavior driven by generated metadata in the target repository; do
   not introduce a separate Forge status file.
 - When adding blueprints, update tests and docs in the same change.
 
@@ -113,7 +113,7 @@ Additional rules:
 
 - Prefer unit tests for validation logic, file generation, and pure functions.
 - Prefer integration tests for CLI workflows using `assert_cmd` and `tempfile`,
-  including create, update, check, dry-run, and JSON output paths.
+  including create, sync, check, dry-run, and JSON output paths.
 - Unit tests live in the same file under `#[cfg(test)] mod tests`.
 - Integration tests live in `tests/` directory.
 - Avoid mock-heavy tests when real behavior can be verified directly.

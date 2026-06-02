@@ -22,5 +22,5 @@ verify:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     uv run --locked prek run --all-files
-    forge update --path . --check
+    forge sync --path . --check
     cargo test

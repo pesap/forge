@@ -115,11 +115,11 @@ fn supported_blueprints(component: ManagedComponent) -> Vec<&'static BlueprintDe
 }
 
 fn enable_command(option: &str) -> String {
-    format!("forge update --path . --set {option}=true")
+    format!("forge sync --path . --set {option}=true")
 }
 
 fn disable_command(option: &str) -> String {
-    format!("forge update --path . --set {option}=false")
+    format!("forge sync --path . --set {option}=false")
 }
 
 #[derive(Serialize)]

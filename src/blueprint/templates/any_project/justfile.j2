@@ -13,4 +13,4 @@ format:
 {{ format_steps }}verify:
     uv lock --check
     uv run --locked prek run --all-files
-    forge update --path . --check
+    forge sync --path . --check

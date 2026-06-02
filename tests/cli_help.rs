@@ -54,14 +54,14 @@ fn top_level_help_lists_expected_commands() {
         .stdout(contains("Quickstart:"))
         .stdout(contains("forge blueprints"))
         .stdout(contains("--description \"My library\""))
-        .stdout(contains("forge update --path ./my-lib --check"))
+        .stdout(contains("forge sync --path ./my-lib --check"))
         .stdout(contains("--color"))
         .stdout(contains("blueprints"))
         .stdout(contains("components"))
         .stdout(contains("completions"))
         .stdout(contains("init"))
         .stdout(contains("new"))
-        .stdout(contains("update"))
+        .stdout(contains("sync"))
         .stdout(contains("self"))
         .stdout(contains("upgrade").not())
         .stdout(contains("--plain").not());
@@ -96,7 +96,9 @@ fn top_level_without_args_shows_help_and_exits_success() {
 
     cmd.assert()
         .success()
-        .stdout(contains("Create and update project blueprints"))
+        .stdout(contains(
+            "Create projects and sync repository infrastructure from blueprints",
+        ))
         .stdout(contains("Usage: forge [OPTIONS] [COMMAND]"))
         .stdout(contains("Quickstart:"));
 }
@@ -128,17 +130,15 @@ fn components_lists_available_optional_components() {
         .stdout(contains(
             "check command: npx --yes markdownlint-cli2@0.18.1 \"**/*.md\"",
         ))
+        .stdout(contains("enable: forge sync --path . --set prettier=true"))
         .stdout(contains(
-            "enable: forge update --path . --set prettier=true",
+            "disable: forge sync --path . --set prettier=false",
         ))
         .stdout(contains(
-            "disable: forge update --path . --set prettier=false",
-        ))
-        .stdout(contains(
-            "enable: forge update --path . --set markdownlint=true",
+            "enable: forge sync --path . --set markdownlint=true",
         ))
         .stdout(contains("python-library"))
-        .stdout(contains("forge update --path . --set prettier=true"));
+        .stdout(contains("forge sync --path . --set prettier=true"));
 }
 
 #[test]
@@ -186,8 +186,8 @@ fn components_can_emit_json() {
             && component["pre_commit_hook"] == true
             && component["format_command"] == "npx --yes prettier@3.8.3 --write --ignore-unknown ."
             && component["check_command"] == "npx --yes prettier@3.8.3 --check --ignore-unknown ."
-            && component["enable_command"] == "forge update --path . --set prettier=true"
-            && component["disable_command"] == "forge update --path . --set prettier=false"
+            && component["enable_command"] == "forge sync --path . --set prettier=true"
+            && component["disable_command"] == "forge sync --path . --set prettier=false"
     }));
     assert!(components.iter().any(|component| {
         component["name"] == "editorconfig"
@@ -204,8 +204,8 @@ fn components_can_emit_json() {
             && component["pre_commit_hook"] == false
             && component["format_command"].is_null()
             && component["check_command"].is_null()
-            && component["enable_command"] == "forge update --path . --set editorconfig=true"
-            && component["disable_command"] == "forge update --path . --set editorconfig=false"
+            && component["enable_command"] == "forge sync --path . --set editorconfig=true"
+            && component["disable_command"] == "forge sync --path . --set editorconfig=false"
     }));
     assert!(components.iter().any(|component| {
         component["name"] == "markdownlint"
@@ -223,8 +223,8 @@ fn components_can_emit_json() {
             && component["pre_commit_hook"] == true
             && component["format_command"] == "npx --yes markdownlint-cli2@0.18.1 --fix \"**/*.md\""
             && component["check_command"] == "npx --yes markdownlint-cli2@0.18.1 \"**/*.md\""
-            && component["enable_command"] == "forge update --path . --set markdownlint=true"
-            && component["disable_command"] == "forge update --path . --set markdownlint=false"
+            && component["enable_command"] == "forge sync --path . --set markdownlint=true"
+            && component["disable_command"] == "forge sync --path . --set markdownlint=false"
     }));
 }
 
@@ -345,7 +345,7 @@ fn blueprints_lists_available_blueprints() {
         .stdout(contains(
             "init: forge init --path . --blueprint python-library --yes ...",
         ))
-        .stdout(contains("check: forge update --path . --check"));
+        .stdout(contains("check: forge sync --path . --check"));
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn blueprints_can_emit_json() {
             && blueprint["summary"] == "managed infrastructure for any repository"
             && blueprint["create_command"] == "forge new --blueprint any-project --yes ..."
             && blueprint["init_command"] == "forge init --path . --blueprint any-project --yes ..."
-            && blueprint["update_check_command"] == "forge update --path . --check"
+            && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
                 .as_array()
                 .expect("fields should be an array")
@@ -430,7 +430,7 @@ fn blueprints_can_emit_json() {
             && blueprint["create_command"] == "forge new --blueprint python-library --yes ..."
             && blueprint["init_command"]
                 == "forge init --path . --blueprint python-library --yes ..."
-            && blueprint["update_check_command"] == "forge update --path . --check"
+            && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
                 .as_array()
                 .expect("fields should be an array")
@@ -467,7 +467,7 @@ fn blueprints_can_emit_json() {
         blueprint["name"] == "rust-library"
             && blueprint["create_command"] == "forge new --blueprint rust-library --yes ..."
             && blueprint["init_command"] == "forge init --path . --blueprint rust-library --yes ..."
-            && blueprint["update_check_command"] == "forge update --path . --check"
+            && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["required_tools"]
                 .as_array()
                 .expect("required_tools should be an array")
@@ -1321,10 +1321,10 @@ fn doctor_json_reports_missing_required_tools_before_failing() {
 }
 
 #[test]
-fn update_help_exposes_dry_run_preview() {
+fn sync_help_exposes_dry_run_preview() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
 
-    cmd.args(["update", "--help"])
+    cmd.args(["sync", "--help"])
         .assert()
         .success()
         .stdout(contains("--dry-run"))
@@ -1333,7 +1333,7 @@ fn update_help_exposes_dry_run_preview() {
         .stdout(contains("--set <OPTION=BOOL>"))
         .stdout(contains("--json"))
         .stdout(contains("--yes"))
-        .stdout(contains("forge update --path . --yes"))
-        .stdout(contains("forge update --path . --set prettier=true --yes"))
+        .stdout(contains("forge sync --path . --yes"))
+        .stdout(contains("forge sync --path . --set prettier=true --yes"))
         .stdout(contains("Preview managed infrastructure changes"));
 }
