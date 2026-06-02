@@ -1,0 +1,16 @@
+rust:
+  - changed-files:
+      - any-glob-to-any-file: ["src/**/*.rs", "Cargo.toml", "Cargo.lock"]
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ["tests/**"]
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ["README.md", "AGENTS.md", "docs/**"]
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          [".github/**", ".pre-commit-config.yaml", "justfile"]
