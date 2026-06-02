@@ -138,7 +138,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_update_workflow()),
+        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
     );
     if config.docs {
         files.insert(
@@ -327,7 +327,7 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
 fn render_ci_workflow() -> String {
     template_engine::render_template(
         "rust_library/ci.yaml.j2",
-        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "install_forge_step": github_actions::install_forge_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files"), "forge_update_check_step": github_actions::forge_update_check_step()}),
+        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "install_forge_step": github_actions::install_forge_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files"), "forge_sync_check_step": github_actions::forge_sync_check_step()}),
     )
 }
 

@@ -22,7 +22,7 @@ pub fn read_only_checkout_step() -> &'static str {
     include_str!("templates/shared/read-only-checkout-step.yaml.j2")
 }
 
-pub fn forge_update_check_step() -> &'static str {
+pub fn forge_sync_check_step() -> &'static str {
     "      - run: forge sync --path . --check\n"
 }
 
@@ -34,7 +34,7 @@ pub fn cancel_redundant_ci_concurrency() -> &'static str {
     "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
 }
 
-pub fn serialized_update_concurrency() -> &'static str {
+pub fn serialized_sync_concurrency() -> &'static str {
     "concurrency:\n  group: ${{ github.workflow }}\n  cancel-in-progress: false\n\n"
 }
 
@@ -50,11 +50,11 @@ pub fn job_timeout() -> &'static str {
     "    timeout-minutes: 20\n"
 }
 
-pub fn render_forge_update_workflow() -> String {
+pub fn render_forge_sync_workflow() -> String {
     crate::blueprint::template_engine::render_template(
         "shared/forge-sync.yaml.j2",
         serde_json::json!({
-            "serialized_update_concurrency": serialized_update_concurrency(),
+            "serialized_sync_concurrency": serialized_sync_concurrency(),
             "job_timeout": job_timeout(),
             "read_only_checkout_step": read_only_checkout_step(),
             "setup_uv_step": setup_uv_step(),
@@ -66,9 +66,9 @@ pub fn render_forge_update_workflow() -> String {
 #[cfg(test)]
 mod tests {
     use crate::blueprint::github_actions::{
-        cancel_redundant_ci_concurrency, forge_update_check_step, install_forge_step, job_timeout,
-        read_only_checkout_step, read_only_permissions, render_forge_update_workflow,
-        serialized_ref_concurrency, serialized_release_concurrency, serialized_update_concurrency,
+        cancel_redundant_ci_concurrency, forge_sync_check_step, install_forge_step, job_timeout,
+        read_only_checkout_step, read_only_permissions, render_forge_sync_workflow,
+        serialized_ref_concurrency, serialized_release_concurrency, serialized_sync_concurrency,
         setup_uv_step, uv_lock_check_step, uv_run_locked_step, uv_sync_locked_step,
     };
 
@@ -77,7 +77,7 @@ mod tests {
         assert!(install_forge_step().contains("cargo install --git"));
         assert!(install_forge_step().contains("--locked forge"));
         assert_eq!(
-            forge_update_check_step(),
+            forge_sync_check_step(),
             "      - run: forge sync --path . --check\n"
         );
         assert_eq!(
@@ -89,7 +89,7 @@ mod tests {
             "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
         );
         assert_eq!(
-            serialized_update_concurrency(),
+            serialized_sync_concurrency(),
             "concurrency:\n  group: ${{ github.workflow }}\n  cancel-in-progress: false\n\n"
         );
         assert_eq!(
@@ -123,16 +123,16 @@ mod tests {
     }
 
     #[test]
-    fn forge_update_workflow_serializes_runs_without_canceling_in_progress_updates() {
-        let workflow = render_forge_update_workflow();
+    fn forge_sync_workflow_serializes_runs_without_canceling_in_progress_syncs() {
+        let workflow = render_forge_sync_workflow();
 
-        assert!(workflow.contains(serialized_update_concurrency()));
+        assert!(workflow.contains(serialized_sync_concurrency()));
         assert!(workflow.contains("  cancel-in-progress: false\n\npermissions:"));
     }
 
     #[test]
-    fn forge_update_workflow_runs_update_and_opens_pull_request() {
-        let workflow = render_forge_update_workflow();
+    fn forge_sync_workflow_runs_sync_and_opens_pull_request() {
+        let workflow = render_forge_sync_workflow();
 
         assert!(workflow.contains("name: forge-sync"));
         assert!(workflow.contains(install_forge_step()));

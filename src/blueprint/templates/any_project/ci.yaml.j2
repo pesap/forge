@@ -11,4 +11,4 @@ on:
 {{ job_timeout }}    steps:
 {{ read_only_checkout_step }}      - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-{{ setup_uv_step }}{{ install_forge_step }}{{ uv_sync_locked_step }}{{ uv_lock_check_step }}{{ uv_run_locked_step }}{{ forge_update_check_step }}
+{{ setup_uv_step }}{{ install_forge_step }}{{ uv_sync_locked_step }}{{ uv_lock_check_step }}{{ uv_run_locked_step }}{{ forge_sync_check_step }}

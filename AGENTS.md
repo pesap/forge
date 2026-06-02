@@ -47,7 +47,7 @@ practical engineering guide for daily development, review, and handoff.
   - `init.rs`: Existing-repository adoption logic.
   - `new.rs`: Project generation logic.
   - `sync.rs`: Managed infrastructure sync/check/dry-run logic.
-  - `self_sync.rs`: CLI self-management.
+  - `self_update.rs`: CLI self-management.
   - `doctor.rs`: Environment diagnostics.
 - `src/blueprint/`: Blueprint registry, implementations, and file planning.
   - `mod.rs`: Blueprint and managed-option registry.

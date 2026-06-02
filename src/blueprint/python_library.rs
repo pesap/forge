@@ -197,7 +197,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     );
     files.insert(
         PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_update_workflow()),
+        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
     );
     files.insert(
         PathBuf::from(".release-please-config.json"),
@@ -470,7 +470,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "ruff_check_step": github_actions::uv_run_locked_step("ruff check ."),
             "ty_check_step": github_actions::uv_run_locked_step("ty check"),
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
-            "forge_update_check_step": github_actions::forge_update_check_step(),
+            "forge_sync_check_step": github_actions::forge_sync_check_step(),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
             "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n", CODECOV_NOTICE)}
         }),
