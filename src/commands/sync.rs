@@ -14,7 +14,8 @@ use crate::blueprint::files::{
 };
 use crate::blueprint::{
     BlueprintMetadata, BlueprintName, ManagedOption, ManagedOptionValues,
-    detect_blueprint_metadata_from_pyproject, managed_option_enabled,
+    detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
+    managed_option_enabled, minimal_external_pyproject_metadata,
     validate_managed_overrides_from_metadata,
 };
 use crate::cli::SyncArgs;
@@ -434,21 +435,29 @@ fn apply_option_overrides(
 
 fn uses_external_pyproject(pyproject: &str) -> Result<bool> {
     let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
-    Ok(parsed
+    let Some(forge) = parsed
         .get("tool")
         .and_then(Value::as_table)
         .and_then(|tool| tool.get("forge"))
         .and_then(Value::as_table)
-        .and_then(|forge| forge.get("managed_pyproject"))
-        .and_then(Value::as_bool)
-        == Some(false))
+    else {
+        return Ok(false);
+    };
+
+    Ok(
+        forge.get("managed_pyproject").and_then(Value::as_bool) == Some(false)
+            || !forge.contains_key("project_name"),
+    )
 }
 
 fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
     let forge_metadata = forge_metadata_block(generated_pyproject)
         .context("generated pyproject.toml is missing [tool.forge]")?;
     let synced = sync_forge_dependency_group(pyproject, generated_pyproject)?;
-    let synced = sync_forge_metadata(&synced, &external_pyproject_metadata(forge_metadata));
+    let synced = sync_forge_metadata(
+        &synced,
+        &external_pyproject_metadata(pyproject, forge_metadata),
+    );
     toml::from_str::<Value>(&synced).context("failed to parse synced external pyproject.toml")?;
     Ok(synced)
 }
@@ -588,7 +597,13 @@ fn forge_metadata_block(pyproject: &str) -> Option<&str> {
         .map(|start| &pyproject[start..])
 }
 
-fn external_pyproject_metadata(forge_metadata: &str) -> String {
+fn external_pyproject_metadata(pyproject: &str, forge_metadata: &str) -> String {
+    if current_forge_managed_pyproject(pyproject) != Some(false)
+        && forge_metadata_is_python_library(forge_metadata)
+    {
+        return minimal_external_pyproject_metadata(forge_metadata);
+    }
+
     let marker = "\n[tool.forge.overrides]";
     if let Some(index) = forge_metadata.find(marker) {
         let (forge_table, overrides) = forge_metadata.split_at(index);
@@ -601,6 +616,15 @@ fn external_pyproject_metadata(forge_metadata: &str) -> String {
         metadata.push_str("managed_pyproject = false\n");
         metadata
     }
+}
+
+fn current_forge_managed_pyproject(pyproject: &str) -> Option<bool> {
+    toml::from_str::<Value>(pyproject)
+        .ok()
+        .and_then(|parsed| parsed.get("tool").cloned())
+        .and_then(|tool| tool.get("forge").cloned())
+        .and_then(|forge| forge.get("managed_pyproject").cloned())
+        .and_then(|managed| managed.as_bool())
 }
 
 fn preserve_pyproject_format_if_equivalent(

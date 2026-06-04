@@ -105,6 +105,16 @@ fn python_minor_version(value: &str) -> Option<u16> {
     minor.parse::<u16>().ok()
 }
 
+fn minimum_python_from_requires_python(requires_python: &str) -> Option<String> {
+    requires_python
+        .split(',')
+        .map(str::trim)
+        .find_map(|requirement| requirement.strip_prefix(">="))
+        .map(str::trim)
+        .filter(|version| is_valid_python_version(version))
+        .map(str::to_string)
+}
+
 pub fn render_project_files(config: &ProjectConfig) -> GeneratedFiles {
     let mut files = render_infrastructure_files(config);
 
@@ -584,12 +594,34 @@ fn render_test_py(config: &ProjectConfig) -> String {
 
 #[derive(Debug, Deserialize)]
 struct PyprojectFile {
+    project: Option<ProjectSection>,
     tool: Option<ToolSection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectSection {
+    name: Option<String>,
+    description: Option<String>,
+    #[serde(rename = "requires-python")]
+    requires_python: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ToolSection {
     forge: Option<ForgeSection>,
+    uv: Option<UvSection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UvSection {
+    #[serde(rename = "build-backend")]
+    build_backend: Option<UvBuildBackendSection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UvBuildBackendSection {
+    #[serde(rename = "module-name")]
+    module_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -600,13 +632,13 @@ struct ForgeSection {
     _blueprint_version: Option<String>,
     #[serde(rename = "managed_pyproject")]
     _managed_pyproject: Option<bool>,
-    project_name: String,
-    package_name: String,
-    description: String,
+    project_name: Option<String>,
+    package_name: Option<String>,
+    description: Option<String>,
     author_name: Option<String>,
     author_email: Option<String>,
-    license: String,
-    python_min: String,
+    license: Option<String>,
+    python_min: Option<String>,
     gitignore_profile: Option<String>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
@@ -615,8 +647,13 @@ struct ForgeSection {
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
     let parsed: PyprojectFile =
         toml::from_str(content).context("failed to parse pyproject.toml")?;
-    let forge = parsed
-        .tool
+    let tool = parsed.tool;
+    let uv_module_name = tool
+        .as_ref()
+        .and_then(|tool| tool.uv.as_ref())
+        .and_then(|uv| uv.build_backend.as_ref())
+        .and_then(|build_backend| build_backend.module_name.clone());
+    let forge = tool
         .and_then(|tool| tool.forge)
         .context("missing [tool.forge] metadata")?;
 
@@ -630,14 +667,41 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
     let options =
         validate_managed_overrides_from_metadata(BlueprintName::PythonLibrary, overrides)?;
 
+    let project = parsed.project;
+    let project_name = forge
+        .project_name
+        .or_else(|| project.as_ref().and_then(|project| project.name.clone()))
+        .context("missing tool.forge.project_name and project.name")?;
+    let package_name = forge
+        .package_name
+        .or(uv_module_name)
+        .unwrap_or_else(|| default_package_name(&project_name));
+    let description = forge
+        .description
+        .or_else(|| {
+            project
+                .as_ref()
+                .and_then(|project| project.description.clone())
+        })
+        .context("missing tool.forge.description and project.description")?;
+    let python_min = forge
+        .python_min
+        .or_else(|| {
+            project
+                .as_ref()
+                .and_then(|project| project.requires_python.as_deref())
+                .and_then(minimum_python_from_requires_python)
+        })
+        .unwrap_or_else(|| "3.11".to_string());
+
     let config = ProjectConfig {
-        project_name: forge.project_name,
-        package_name: forge.package_name,
-        description: forge.description,
+        project_name,
+        package_name,
+        description,
         author_name: forge.author_name,
         author_email: forge.author_email,
-        license: forge.license,
-        python_min: forge.python_min,
+        license: forge.license.unwrap_or_else(|| "BSD-3-Clause".to_string()),
+        python_min,
         gitignore_profile: forge
             .gitignore_profile
             .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),

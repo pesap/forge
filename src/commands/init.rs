@@ -11,7 +11,8 @@ use crate::blueprint::files::{
     count_conflicts, plan_generated_files, write_generated_files,
 };
 use crate::blueprint::{
-    BlueprintName, detect_blueprint_metadata_from_pyproject, python_library, rust_library,
+    BlueprintName, detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
+    minimal_external_pyproject_metadata, python_library, rust_library,
 };
 use crate::cli::{GithubVisibility, InitArgs, NewArgs};
 use crate::commands::diff;
@@ -294,7 +295,7 @@ fn append_forge_metadata(
     if !adopted.ends_with("\n\n") {
         adopted.push('\n');
     }
-    adopted.push_str(&external_pyproject_metadata(forge_metadata));
+    adopted.push_str(&external_pyproject_metadata(existing, forge_metadata));
     Ok(adopted)
 }
 
@@ -388,7 +389,11 @@ fn table_range(content: &str, table_name: &str) -> Option<(usize, usize)> {
     Some((start, relative_end))
 }
 
-fn external_pyproject_metadata(forge_metadata: &str) -> String {
+fn external_pyproject_metadata(existing: &str, forge_metadata: &str) -> String {
+    if existing_has_project_table(existing) && forge_metadata_is_python_library(forge_metadata) {
+        return minimal_external_pyproject_metadata(forge_metadata);
+    }
+
     let marker = "\n[tool.forge.overrides]";
     if let Some(index) = forge_metadata.find(marker) {
         let (forge_table, overrides) = forge_metadata.split_at(index);
@@ -401,6 +406,13 @@ fn external_pyproject_metadata(forge_metadata: &str) -> String {
         metadata.push_str("managed_pyproject = false\n");
         metadata
     }
+}
+
+fn existing_has_project_table(existing: &str) -> bool {
+    toml::from_str::<toml::Value>(existing)
+        .ok()
+        .and_then(|parsed| parsed.get("project").cloned())
+        .is_some()
 }
 
 fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
