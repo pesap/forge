@@ -1041,7 +1041,7 @@ fn prompt_license_if_missing(value: &mut Option<String>) -> Result<()> {
     if value.is_none() {
         let selected = Select::new()
             .with_prompt("License")
-            .items(SUPPORTED_LICENSES)
+            .items(SUPPORTED_LICENSES.as_slice())
             .default(default_license_index())
             .interact()?;
         *value = Some(SUPPORTED_LICENSES[selected].to_string());
