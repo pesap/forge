@@ -223,12 +223,44 @@ local project is left in place.
 
 ### Adopting Forge in an existing repo
 
+For an existing repository, start with interactive setup so Forge can collect the
+metadata it needs before it writes managed infrastructure:
+
+```bash
+forge init --path . --blueprint python-library
+```
+
+For non-interactive use, Forge can infer `--project-name`, `--description`, and
+`--python-min` from an existing PEP 621 `[project]` table in `pyproject.toml`:
+
 ```bash
 forge init --path . --blueprint python-library --yes
 ```
 
-`forge init` writes only managed infrastructure and metadata, not starter source
-files. Conflicting existing files are reported instead of overwritten.
+If the project metadata does not exist yet, pass the required setup fields
+explicitly:
+
+```bash
+forge init \
+  --path . \
+  --blueprint python-library \
+  --project-name my-library \
+  --description "My library" \
+  --yes
+```
+
+`forge init` writes Forge-managed infrastructure and `[tool.forge]` metadata, not
+starter source files. When adopting an existing `pyproject.toml`, Forge preserves
+its current project metadata and appends only Forge metadata. Other files that
+already exist at managed paths are reported as conflicts unless you review the
+plan and opt in with `--force`.
+
+Use a dry run first when adopting a repository that already has infrastructure
+such as `pyproject.toml`, `README.md`, CI workflows, hooks, or a `justfile`:
+
+```bash
+forge init --path . --blueprint python-library --project-name my-library --description "My library" --dry-run --diff
+```
 
 | Flag        | Effect                                   |
 | ----------- | ---------------------------------------- |

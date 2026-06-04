@@ -1564,6 +1564,71 @@ fn sync_set_can_enable_markdownlint_component() {
 }
 
 #[test]
+fn sync_refreshes_forge_owned_sections_in_external_pyproject() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[project]
+name = "ops-tools"
+version = "2.3.4"
+description = "Existing ops toolchain"
+requires-python = ">=3.12"
+dependencies = ["click>=8"]
+"#,
+    )
+    .expect("existing pyproject should be writable");
+
+    let mut init = Command::cargo_bin("forge").expect("forge binary should build");
+    init.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--yes",
+    ]);
+    init.assert().success();
+
+    let pyproject_path = project_path.join("pyproject.toml");
+    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
+    let drifted = pyproject.replace("ruff>=0.14.0,<0.15.0", "ruff>=0.1.0,<0.2.0");
+    fs::write(&pyproject_path, drifted).expect("pyproject should be writable");
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    check
+        .assert()
+        .failure()
+        .stdout(contains("update  pyproject.toml"))
+        .stderr(contains("managed infrastructure is out of date"));
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("update  pyproject.toml"));
+
+    let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
+    assert!(pyproject.contains("version = \"2.3.4\""));
+    assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
+    assert!(pyproject.contains("managed_pyproject = false"));
+    assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
+    assert!(!pyproject.contains("ruff>=0.1.0,<0.2.0"));
+}
+
+#[test]
 fn sync_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
