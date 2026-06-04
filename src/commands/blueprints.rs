@@ -97,7 +97,7 @@ fn create_command(blueprint_name: &str) -> String {
 }
 
 fn init_command(blueprint_name: &str) -> String {
-    format!("forge init --path . --blueprint {blueprint_name} --yes ...")
+    format!("forge init --path . --blueprint {blueprint_name}")
 }
 
 fn sync_check_command() -> &'static str {

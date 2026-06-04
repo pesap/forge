@@ -104,6 +104,68 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
 }
 
 #[test]
+fn init_infers_python_metadata_from_existing_pyproject() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[project]
+name = "ops-tools"
+version = "2.3.4"
+description = "Existing ops toolchain"
+requires-python = ">=3.12"
+dependencies = ["click>=8"]
+"#,
+    )
+    .expect("existing pyproject should be writable");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--yes",
+    ]);
+
+    cmd.assert()
+        .success()
+        .stdout(contains("Repository initialized"))
+        .stdout(contains("update  pyproject.toml"));
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("version = \"2.3.4\""));
+    assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
+    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
+    assert!(pyproject.contains("project_name = \"ops-tools\""));
+    assert!(pyproject.contains("description = \"Existing ops toolchain\""));
+    assert!(pyproject.contains("managed_pyproject = false"));
+    assert!(pyproject.contains("forge = ["));
+    assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
+    assert!(pyproject.contains("ty>=0.0.1,<0.1.0"));
+
+    let justfile =
+        fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
+    assert!(justfile.contains("uv run --locked ruff check ."));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    check
+        .assert()
+        .success()
+        .stdout(contains("managed infrastructure is current"));
+}
+
+#[test]
 fn init_adds_managed_infrastructure_to_existing_rust_repo() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-rs");

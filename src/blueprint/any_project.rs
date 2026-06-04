@@ -352,6 +352,8 @@ struct ForgeSection {
     blueprint: String,
     #[serde(rename = "blueprint_version")]
     _blueprint_version: Option<String>,
+    #[serde(rename = "managed_pyproject")]
+    _managed_pyproject: Option<bool>,
     project_name: String,
     description: String,
     #[serde(alias = "options")]

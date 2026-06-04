@@ -64,7 +64,18 @@ pub fn run(args: SyncArgs) -> Result<()> {
                 ),
             )
         })?;
-    preserve_pyproject_format_if_equivalent(&pyproject, &mut managed_files)?;
+    if uses_external_pyproject(&pyproject)? {
+        let generated_pyproject = managed_files
+            .get(Path::new("pyproject.toml"))
+            .and_then(GeneratedFile::as_text)
+            .context("generated managed files are missing pyproject.toml")?;
+        managed_files.insert(
+            PathBuf::from("pyproject.toml"),
+            GeneratedFile::text(sync_external_pyproject(&pyproject, generated_pyproject)?),
+        );
+    } else {
+        preserve_pyproject_format_if_equivalent(&pyproject, &mut managed_files)?;
+    }
     let infrastructure = managed_infrastructure_summary(&managed_files);
 
     let mut actions = plan_generated_files(&root, &managed_files);
@@ -419,6 +430,177 @@ fn apply_option_overrides(
     }
 
     apply_option_overrides_to_text(pyproject, &parsed_overrides)
+}
+
+fn uses_external_pyproject(pyproject: &str) -> Result<bool> {
+    let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
+    Ok(parsed
+        .get("tool")
+        .and_then(Value::as_table)
+        .and_then(|tool| tool.get("forge"))
+        .and_then(Value::as_table)
+        .and_then(|forge| forge.get("managed_pyproject"))
+        .and_then(Value::as_bool)
+        == Some(false))
+}
+
+fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
+    let forge_metadata = forge_metadata_block(generated_pyproject)
+        .context("generated pyproject.toml is missing [tool.forge]")?;
+    let synced = sync_forge_dependency_group(pyproject, generated_pyproject)?;
+    let synced = sync_forge_metadata(&synced, &external_pyproject_metadata(forge_metadata));
+    toml::from_str::<Value>(&synced).context("failed to parse synced external pyproject.toml")?;
+    Ok(synced)
+}
+
+fn sync_forge_dependency_group(pyproject: &str, generated_pyproject: &str) -> Result<String> {
+    let dependencies = forge_dependency_group_values(generated_pyproject)?;
+    if dependencies.is_empty() {
+        return Ok(pyproject.to_string());
+    }
+
+    let group = render_dependency_group("forge", &dependencies);
+    let Some((table_start, table_end)) = table_range(pyproject, "dependency-groups") else {
+        let mut output = pyproject.to_string();
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str("\n[dependency-groups]\n");
+        output.push_str(&group);
+        return Ok(output);
+    };
+
+    let mut lines: Vec<String> = pyproject
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect();
+    let replacement = group.split_inclusive('\n').map(str::to_string);
+    if let Some((start, end)) = assignment_range(&lines, table_start, table_end, "forge") {
+        lines.splice(start..end, replacement);
+    } else {
+        lines.splice(table_end..table_end, replacement);
+    }
+    Ok(lines.concat())
+}
+
+fn forge_dependency_group_values(generated_pyproject: &str) -> Result<Vec<String>> {
+    let parsed: Value =
+        toml::from_str(generated_pyproject).context("failed to parse generated pyproject.toml")?;
+    let Some(groups) = parsed.get("dependency-groups").and_then(Value::as_table) else {
+        return Ok(Vec::new());
+    };
+
+    let mut seen = BTreeSet::new();
+    let mut dependencies = Vec::new();
+    for group in groups.values() {
+        let Some(group_dependencies) = group.as_array() else {
+            continue;
+        };
+        for dependency in group_dependencies {
+            let Some(dependency) = dependency.as_str() else {
+                continue;
+            };
+            if seen.insert(dependency.to_string()) {
+                dependencies.push(dependency.to_string());
+            }
+        }
+    }
+    Ok(dependencies)
+}
+
+fn render_dependency_group(name: &str, dependencies: &[String]) -> String {
+    let mut group = format!("{name} = [\n");
+    for dependency in dependencies {
+        group.push_str("    ");
+        group.push_str(&crate::blueprint::toml_value::string_literal(dependency));
+        group.push_str(",\n");
+    }
+    group.push_str("]\n");
+    group
+}
+
+fn assignment_range(
+    lines: &[String],
+    table_start: usize,
+    table_end: usize,
+    key: &str,
+) -> Option<(usize, usize)> {
+    let start = (table_start + 1..table_end)
+        .find(|index| option_assignment_key(&lines[*index]) == Some(key))?;
+    let mut bracket_depth = 0_i32;
+    let mut saw_opening_bracket = false;
+    for (end, line) in lines.iter().enumerate().take(table_end).skip(start) {
+        for character in line.chars() {
+            match character {
+                '[' => {
+                    bracket_depth += 1;
+                    saw_opening_bracket = true;
+                }
+                ']' => bracket_depth -= 1,
+                _ => {}
+            }
+        }
+        if saw_opening_bracket && bracket_depth <= 0 {
+            return Some((start, end + 1));
+        }
+    }
+    Some((start, start + 1))
+}
+
+fn sync_forge_metadata(pyproject: &str, forge_metadata: &str) -> String {
+    let mut lines: Vec<String> = pyproject
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect();
+    let replacement = forge_metadata.split_inclusive('\n').map(str::to_string);
+    if let Some((start, end)) = forge_section_range(pyproject) {
+        lines.splice(start..end, replacement);
+        return lines.concat();
+    }
+
+    let mut output = pyproject.to_string();
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output.push('\n');
+    output.push_str(forge_metadata);
+    output
+}
+
+fn forge_section_range(content: &str) -> Option<(usize, usize)> {
+    let lines: Vec<&str> = content.split_inclusive('\n').collect();
+    let start = lines
+        .iter()
+        .position(|line| table_header_name(line) == Some("tool.forge"))?;
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| {
+            table_header_name(line)
+                .is_some_and(|name| name != "tool.forge" && !name.starts_with("tool.forge."))
+        })
+        .map_or(lines.len(), |offset| start + 1 + offset);
+    Some((start, end))
+}
+
+fn forge_metadata_block(pyproject: &str) -> Option<&str> {
+    pyproject
+        .find("[tool.forge]")
+        .map(|start| &pyproject[start..])
+}
+
+fn external_pyproject_metadata(forge_metadata: &str) -> String {
+    let marker = "\n[tool.forge.overrides]";
+    if let Some(index) = forge_metadata.find(marker) {
+        let (forge_table, overrides) = forge_metadata.split_at(index);
+        format!("{forge_table}managed_pyproject = false\n{overrides}")
+    } else {
+        let mut metadata = forge_metadata.to_string();
+        if !metadata.ends_with('\n') {
+            metadata.push('\n');
+        }
+        metadata.push_str("managed_pyproject = false\n");
+        metadata
+    }
 }
 
 fn preserve_pyproject_format_if_equivalent(

@@ -343,7 +343,7 @@ fn blueprints_lists_available_blueprints() {
             "create: forge new --blueprint python-library --yes ...",
         ))
         .stdout(contains(
-            "init: forge init --path . --blueprint python-library --yes ...",
+            "init: forge init --path . --blueprint python-library",
         ))
         .stdout(contains("check: forge sync --path . --check"));
 }
@@ -386,7 +386,7 @@ fn blueprints_can_emit_json() {
             && blueprint["version"] == "0.1.0"
             && blueprint["summary"] == "managed infrastructure for any repository"
             && blueprint["create_command"] == "forge new --blueprint any-project --yes ..."
-            && blueprint["init_command"] == "forge init --path . --blueprint any-project --yes ..."
+            && blueprint["init_command"] == "forge init --path . --blueprint any-project"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
                 .as_array()
@@ -428,8 +428,7 @@ fn blueprints_can_emit_json() {
     assert!(blueprints.iter().any(|blueprint| {
         blueprint["name"] == "python-library"
             && blueprint["create_command"] == "forge new --blueprint python-library --yes ..."
-            && blueprint["init_command"]
-                == "forge init --path . --blueprint python-library --yes ..."
+            && blueprint["init_command"] == "forge init --path . --blueprint python-library"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
                 .as_array()
@@ -466,7 +465,7 @@ fn blueprints_can_emit_json() {
     assert!(blueprints.iter().any(|blueprint| {
         blueprint["name"] == "rust-library"
             && blueprint["create_command"] == "forge new --blueprint rust-library --yes ..."
-            && blueprint["init_command"] == "forge init --path . --blueprint rust-library --yes ..."
+            && blueprint["init_command"] == "forge init --path . --blueprint rust-library"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["required_tools"]
                 .as_array()
