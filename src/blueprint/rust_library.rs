@@ -14,8 +14,9 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, managed_option_enabled,
-    render_forge_overrides_table, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, ManagedOption, is_supported_license, managed_option_enabled,
+    render_forge_overrides_table, supported_license_message,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "rust-library";
@@ -56,8 +57,8 @@ impl ProjectConfig {
         {
             bail!("invalid author email: {}", author_email);
         }
-        if !matches!(self.license.as_str(), "BSD-3-Clause" | "MIT" | "Apache-2.0") {
-            bail!("license must be BSD-3-Clause, MIT, or Apache-2.0");
+        if !is_supported_license(&self.license) {
+            bail!(supported_license_message());
         }
         if !matches!(self.rust_edition.as_str(), "2021" | "2024") {
             bail!("rust edition must be 2021 or 2024");
@@ -215,6 +216,8 @@ fn render_license(config: &ProjectConfig) -> String {
     let template = match config.license.as_str() {
         "MIT" => "rust_library/mit-license.j2",
         "Apache-2.0" => "rust_library/apache-license.j2",
+        "BSD-2-Clause" => "rust_library/bsd-2-clause-license.j2",
+        "ISC" => "rust_library/isc-license.j2",
         _ => "rust_library/bsd-license.j2",
     };
     template_engine::render_template(
@@ -479,6 +482,24 @@ mod tests {
             docs,
             rust_rules: true,
             components: ComponentSelection::default(),
+        }
+    }
+
+    #[test]
+    fn renders_supported_license_templates() {
+        let expected_headings = [
+            ("BSD-3-Clause", "BSD 3-Clause License"),
+            ("MIT", "MIT License"),
+            ("Apache-2.0", "Apache License"),
+            ("BSD-2-Clause", "BSD 2-Clause License"),
+            ("ISC", "ISC License"),
+        ];
+
+        for (license, heading) in expected_headings {
+            let mut config = test_config(true);
+            config.license = license.to_string();
+            config.validate().expect("license should be supported");
+            assert!(render_license(&config).contains(heading));
         }
     }
 

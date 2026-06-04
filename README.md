@@ -187,10 +187,13 @@ optional `--author-email`, `--license`, `--python-min`, and component flags.
 Rust library blueprints accept `--package-name`, optional `--author-name`,
 optional `--author-email`, `--license`, and component flags.
 
-`any-project` accepts `--author-name`, `--author-email`, `--license`, and
-component flags.
+`any-project` accepts component flags.
 
 `--package-name` defaults from `--project-name` when omitted.
+
+For library blueprints, `--license` defaults to `BSD-3-Clause`. Supported
+OSI-approved license IDs are `BSD-3-Clause`, `MIT`, `Apache-2.0`,
+`BSD-2-Clause`, and `ISC`.
 
 `--python-min` accepts values from `3.8` through `3.14`. Generated CI tests the
 configured minimum through `3.14`.

@@ -13,13 +13,15 @@ use crate::blueprint::components::{ComponentSelection, ManagedComponent};
 use crate::blueprint::files::{GeneratedFiles, plan_generated_files, write_generated_files};
 use crate::blueprint::python_library;
 use crate::blueprint::rust_library;
-use crate::blueprint::{BlueprintName, ManagedOption, ManagedOptionValues, managed_option_enabled};
+use crate::blueprint::{
+    BlueprintName, DEFAULT_LICENSE, ManagedOption, ManagedOptionValues, SUPPORTED_LICENSES,
+    managed_option_enabled,
+};
 use crate::cli::{GithubVisibility, NewArgs};
 use crate::commands::diff;
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
-const DEFAULT_LICENSE: &str = "BSD-3-Clause";
 const DEFAULT_PYTHON_MIN: &str = "3.11";
 
 pub fn run(args: NewArgs) -> Result<()> {
@@ -891,13 +893,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
             is_non_empty_text,
             "description cannot be empty",
         )?;
-        prompt_if_missing_with_default_validated(
-            &mut license,
-            "License",
-            DEFAULT_LICENSE,
-            is_supported_license,
-            "license must be BSD-3-Clause, MIT, or Apache-2.0",
-        )?;
+        prompt_license_if_missing(&mut license)?;
         prompt_if_missing_with_default_validated(
             &mut python_min,
             "Minimum Python version",
@@ -971,13 +967,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
             is_non_empty_text,
             "description cannot be empty",
         )?;
-        prompt_if_missing_with_default_validated(
-            &mut license,
-            "License",
-            DEFAULT_LICENSE,
-            is_supported_license,
-            "license must be BSD-3-Clause, MIT, or Apache-2.0",
-        )?;
+        prompt_license_if_missing(&mut license)?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
         prompt_supported_components(&mut components, BlueprintName::RustLibrary)?;
     }
@@ -1047,6 +1037,25 @@ fn prompt_if_missing_with_default_validated(
     Ok(())
 }
 
+fn prompt_license_if_missing(value: &mut Option<String>) -> Result<()> {
+    if value.is_none() {
+        let selected = Select::new()
+            .with_prompt("License")
+            .items(SUPPORTED_LICENSES.as_slice())
+            .default(default_license_index())
+            .interact()?;
+        *value = Some(SUPPORTED_LICENSES[selected].to_string());
+    }
+    Ok(())
+}
+
+fn default_license_index() -> usize {
+    SUPPORTED_LICENSES
+        .iter()
+        .position(|license| *license == DEFAULT_LICENSE)
+        .unwrap_or(0)
+}
+
 fn require_field(name: &str, value: Option<String>) -> Result<String> {
     value.ok_or_else(|| {
         coded_error(
@@ -1058,10 +1067,6 @@ fn require_field(name: &str, value: Option<String>) -> Result<String> {
 
 fn is_non_empty_text(value: &str) -> bool {
     !value.trim().is_empty()
-}
-
-fn is_supported_license(value: &str) -> bool {
-    matches!(value, "BSD-3-Clause" | "MIT" | "Apache-2.0")
 }
 
 fn default_python_package_name(project_name: &str) -> Result<String> {
@@ -1674,10 +1679,14 @@ mod tests {
         assert!(is_non_empty_text("project"));
         assert!(!is_non_empty_text("   "));
 
-        assert!(is_supported_license("BSD-3-Clause"));
-        assert!(is_supported_license("MIT"));
-        assert!(is_supported_license("Apache-2.0"));
-        assert!(!is_supported_license("GPL-3.0-only"));
+        assert!(crate::blueprint::is_supported_license("BSD-3-Clause"));
+        assert!(crate::blueprint::is_supported_license("MIT"));
+        assert!(crate::blueprint::is_supported_license("Apache-2.0"));
+        assert!(crate::blueprint::is_supported_license("BSD-2-Clause"));
+        assert!(crate::blueprint::is_supported_license("ISC"));
+        assert_eq!(SUPPORTED_LICENSES.len(), 5);
+        assert_eq!(SUPPORTED_LICENSES[default_license_index()], DEFAULT_LICENSE);
+        assert!(!crate::blueprint::is_supported_license("GPL-3.0-only"));
     }
 
     #[test]

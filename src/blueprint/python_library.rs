@@ -14,8 +14,9 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, managed_option_enabled,
-    render_forge_overrides_table, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, DEFAULT_LICENSE, ManagedOption, is_supported_license,
+    managed_option_enabled, render_forge_overrides_table, supported_license_message,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "python-library";
@@ -60,8 +61,8 @@ impl ProjectConfig {
         {
             bail!("invalid author email: {}", author_email);
         }
-        if !matches!(self.license.as_str(), "BSD-3-Clause" | "MIT" | "Apache-2.0") {
-            bail!("license must be BSD-3-Clause, MIT, or Apache-2.0");
+        if !is_supported_license(&self.license) {
+            bail!(supported_license_message());
         }
         if !is_valid_python_version(&self.python_min) {
             bail!("python-min must be between 3.8 and 3.14 as a major.minor Python 3 version");
@@ -300,6 +301,8 @@ fn render_license(config: &ProjectConfig) -> String {
     let template = match config.license.as_str() {
         "MIT" => "python_library/mit-license.j2",
         "Apache-2.0" => "python_library/apache-license.j2",
+        "BSD-2-Clause" => "python_library/bsd-2-clause-license.j2",
+        "ISC" => "python_library/isc-license.j2",
         _ => "python_library/bsd-license.j2",
     };
     template_engine::render_template(
@@ -700,7 +703,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         description,
         author_name: forge.author_name,
         author_email: forge.author_email,
-        license: forge.license.unwrap_or_else(|| "BSD-3-Clause".to_string()),
+        license: forge.license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min,
         gitignore_profile: forge
             .gitignore_profile
@@ -913,6 +916,24 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+        }
+    }
+
+    #[test]
+    fn renders_supported_license_templates() {
+        let expected_headings = [
+            ("BSD-3-Clause", "BSD 3-Clause License"),
+            ("MIT", "MIT License"),
+            ("Apache-2.0", "Apache License"),
+            ("BSD-2-Clause", "BSD 2-Clause License"),
+            ("ISC", "ISC License"),
+        ];
+
+        for (license, heading) in expected_headings {
+            let mut config = test_config(true);
+            config.license = license.to_string();
+            config.validate().expect("license should be supported");
+            assert!(render_license(&config).contains(heading));
         }
     }
 

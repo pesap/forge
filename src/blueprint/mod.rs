@@ -23,6 +23,18 @@ pub mod rust_library;
 pub mod template_engine;
 pub mod toml_value;
 
+pub const DEFAULT_LICENSE: &str = "BSD-3-Clause";
+pub const SUPPORTED_LICENSES: [&str; 5] =
+    [DEFAULT_LICENSE, "MIT", "Apache-2.0", "BSD-2-Clause", "ISC"];
+
+pub fn is_supported_license(value: &str) -> bool {
+    SUPPORTED_LICENSES.contains(&value)
+}
+
+pub fn supported_license_message() -> String {
+    format!("license must be one of: {}", SUPPORTED_LICENSES.join(", "))
+}
+
 const ANY_PROJECT_FIELDS: &[BlueprintField] = &[
     BlueprintField::required(
         "project-name",
