@@ -367,6 +367,48 @@ pub fn render_forge_overrides_table(
     }
 }
 
+pub(crate) fn forge_metadata_blueprint(forge_metadata: &str) -> Option<String> {
+    let forge_table = forge_metadata
+        .find("\n[tool.forge.overrides]")
+        .map(|index| &forge_metadata[..index])
+        .unwrap_or(forge_metadata);
+    toml::from_str::<Value>(forge_table)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .get("tool")
+                .and_then(Value::as_table)
+                .and_then(|tool| tool.get("forge"))
+                .and_then(Value::as_table)
+                .and_then(|forge| forge.get("blueprint"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+}
+
+pub(crate) fn forge_metadata_is_python_library(forge_metadata: &str) -> bool {
+    forge_metadata_blueprint(forge_metadata)
+        .as_deref()
+        .is_some_and(|blueprint| {
+            blueprint == "python-library" || blueprint.starts_with("python-library>=")
+        })
+}
+
+pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> String {
+    let overrides = forge_metadata
+        .find("\n[tool.forge.overrides]")
+        .map(|index| forge_metadata.split_at(index).1)
+        .unwrap_or("");
+    let blueprint = forge_metadata_blueprint(forge_metadata)
+        .unwrap_or_else(|| "python-library>=0.1.0".to_string());
+    let mut metadata = format!(
+        "[tool.forge]\nblueprint = {}\n",
+        toml_value::string_literal(&blueprint)
+    );
+    metadata.push_str(overrides.trim_start_matches('\n'));
+    metadata
+}
+
 fn validate_managed_options_with_error_code(
     blueprint: BlueprintName,
     options: BTreeMap<String, bool>,

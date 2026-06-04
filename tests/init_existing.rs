@@ -27,6 +27,16 @@ fn generate_python_project(project_path: &std::path::Path) {
     cmd.assert().success();
 }
 
+fn forge_section(pyproject: &str) -> &str {
+    pyproject
+        .split("[tool.forge]")
+        .nth(1)
+        .expect("forge metadata should exist")
+        .split("\n[")
+        .next()
+        .expect("forge section should be bounded")
+}
+
 #[test]
 fn init_adds_managed_infrastructure_to_existing_python_repo() {
     let temp = TempDir::new().expect("temp dir should create");
@@ -139,10 +149,10 @@ dependencies = ["click>=8"]
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("version = \"2.3.4\""));
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
-    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
-    assert!(pyproject.contains("project_name = \"ops-tools\""));
-    assert!(pyproject.contains("description = \"Existing ops toolchain\""));
-    assert!(pyproject.contains("managed_pyproject = false"));
+    assert_eq!(
+        forge_section(&pyproject).trim(),
+        "blueprint = \"python-library>=0.1.0\""
+    );
     assert!(pyproject.contains("forge = ["));
     assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
     assert!(pyproject.contains("ty>=0.0.1,<0.1.0"));

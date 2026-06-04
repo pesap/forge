@@ -67,6 +67,16 @@ fn canonical_display(path: &Path) -> String {
         .to_string()
 }
 
+fn forge_section(pyproject: &str) -> &str {
+    pyproject
+        .split("[tool.forge]")
+        .nth(1)
+        .expect("forge metadata should exist")
+        .split("\n[")
+        .next()
+        .expect("forge section should be bounded")
+}
+
 #[test]
 fn sync_missing_pyproject_suggests_init_or_new() {
     let temp = TempDir::new().expect("temp dir should create");
@@ -1623,7 +1633,10 @@ dependencies = ["click>=8"]
     let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
     assert!(pyproject.contains("version = \"2.3.4\""));
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
-    assert!(pyproject.contains("managed_pyproject = false"));
+    assert_eq!(
+        forge_section(&pyproject).trim(),
+        "blueprint = \"python-library>=0.1.0\""
+    );
     assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
     assert!(!pyproject.contains("ruff>=0.1.0,<0.2.0"));
 }
