@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/pesap/forge/compare/v0.3.0...v0.3.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **init:** minimize adopted python metadata ([#64](https://github.com/pesap/forge/issues/64)) ([31b550e](https://github.com/pesap/forge/commit/31b550e4b335a495a1830f6deb8f9420c54ddb30))
+
 ## [0.3.0](https://github.com/pesap/forge/compare/v0.2.0...v0.3.0) (2026-06-04)
 
 
