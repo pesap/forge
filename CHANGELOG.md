@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/pesap/forge/compare/v0.2.0...v0.3.0) (2026-06-04)
+
+
+### Features
+
+* **init:** adopt existing project metadata ([#62](https://github.com/pesap/forge/issues/62)) ([399a7f7](https://github.com/pesap/forge/commit/399a7f78ae2dc3cb685c2ef8aaac8edb00f71e43))
+
 ## [0.2.0](https://github.com/pesap/forge/compare/v0.1.1...v0.2.0) (2026-06-02)
 
 
