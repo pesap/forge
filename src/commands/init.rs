@@ -37,11 +37,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     new::validate_required_fields_for_yes(blueprint, &render_args)?;
     let mut project =
         new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
-    let adopted_existing_pyproject = if args.force {
-        false
-    } else {
-        adopt_existing_pyproject(&args.path, &mut project.files)?
-    };
+    let adopted_existing_pyproject = adopt_existing_pyproject(&args.path, &mut project.files)?;
     let infrastructure = new::managed_infrastructure_summary(&project.files);
     let apply_command =
         preview_init_command(&args, blueprint, &project, args.force, stdin_is_terminal);
