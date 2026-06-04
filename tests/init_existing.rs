@@ -37,6 +37,21 @@ fn forge_section(pyproject: &str) -> &str {
         .expect("forge section should be bounded")
 }
 
+fn create_existing_python_repo_with_pyproject(project_path: &std::path::Path) {
+    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[project]
+name = "ops-tools"
+version = "2.3.4"
+description = "Existing ops toolchain"
+requires-python = ">=3.12"
+dependencies = ["click>=8"]
+"#,
+    )
+    .expect("existing pyproject should be writable");
+}
+
 fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
@@ -131,18 +146,7 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
 fn init_infers_python_metadata_from_existing_pyproject() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
-    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
-    fs::write(
-        project_path.join("pyproject.toml"),
-        r#"[project]
-name = "ops-tools"
-version = "2.3.4"
-description = "Existing ops toolchain"
-requires-python = ">=3.12"
-dependencies = ["click>=8"]
-"#,
-    )
-    .expect("existing pyproject should be writable");
+    create_existing_python_repo_with_pyproject(&project_path);
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
@@ -183,20 +187,9 @@ dependencies = ["click>=8"]
 fn init_force_preserves_existing_pyproject_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
-    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    create_existing_python_repo_with_pyproject(&project_path);
     fs::write(project_path.join("README.md"), "# Handwritten\n")
         .expect("readme should be writable");
-    fs::write(
-        project_path.join("pyproject.toml"),
-        r#"[project]
-name = "ops-tools"
-version = "2.3.4"
-description = "Existing ops toolchain"
-requires-python = ">=3.12"
-dependencies = ["click>=8"]
-"#,
-    )
-    .expect("existing pyproject should be writable");
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
