@@ -37,6 +37,35 @@ fn forge_section(pyproject: &str) -> &str {
         .expect("forge section should be bounded")
 }
 
+fn create_existing_python_repo_with_pyproject(project_path: &std::path::Path) {
+    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[project]
+name = "ops-tools"
+version = "2.3.4"
+description = "Existing ops toolchain"
+requires-python = ">=3.12"
+dependencies = ["click>=8"]
+"#,
+    )
+    .expect("existing pyproject should be writable");
+}
+
+fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("version = \"2.3.4\""));
+    assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
+    assert_eq!(
+        forge_section(&pyproject).trim(),
+        "blueprint = \"python-library>=0.1.0\""
+    );
+    assert!(pyproject.contains("forge = ["));
+    assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
+    assert!(pyproject.contains("ty>=0.0.1,<0.1.0"));
+}
+
 #[test]
 fn init_adds_managed_infrastructure_to_existing_python_repo() {
     let temp = TempDir::new().expect("temp dir should create");
@@ -117,18 +146,7 @@ fn init_adds_managed_infrastructure_to_existing_python_repo() {
 fn init_infers_python_metadata_from_existing_pyproject() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
-    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
-    fs::write(
-        project_path.join("pyproject.toml"),
-        r#"[project]
-name = "ops-tools"
-version = "2.3.4"
-description = "Existing ops toolchain"
-requires-python = ">=3.12"
-dependencies = ["click>=8"]
-"#,
-    )
-    .expect("existing pyproject should be writable");
+    create_existing_python_repo_with_pyproject(&project_path);
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
@@ -145,17 +163,7 @@ dependencies = ["click>=8"]
         .stdout(contains("Repository initialized"))
         .stdout(contains("update  pyproject.toml"));
 
-    let pyproject =
-        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("version = \"2.3.4\""));
-    assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
-    assert_eq!(
-        forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\""
-    );
-    assert!(pyproject.contains("forge = ["));
-    assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
-    assert!(pyproject.contains("ty>=0.0.1,<0.1.0"));
+    assert_external_pyproject_adopted(&project_path);
 
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
@@ -173,6 +181,33 @@ dependencies = ["click>=8"]
         .assert()
         .success()
         .stdout(contains("managed infrastructure is current"));
+}
+
+#[test]
+fn init_force_preserves_existing_pyproject_metadata() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_pyproject(&project_path);
+    fs::write(project_path.join("README.md"), "# Handwritten\n")
+        .expect("readme should be writable");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--force",
+        "--yes",
+    ]);
+
+    cmd.assert()
+        .success()
+        .stdout(contains("update  README.md"))
+        .stdout(contains("update  pyproject.toml"));
+
+    assert_external_pyproject_adopted(&project_path);
 }
 
 #[test]
