@@ -1,6 +1,6 @@
 [package]
 name = "forge"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 repository = "https://github.com/pesap/forge"
 description = "CLI for scaffolding and updating repository infrastructure from blueprints"

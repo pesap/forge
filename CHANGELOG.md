@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/pesap/forge/compare/v0.3.1...v0.3.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* **init:** preserve existing pyproject adoption ([#66](https://github.com/pesap/forge/issues/66)) ([395f362](https://github.com/pesap/forge/commit/395f362ea7cdb3f39bf9c8df5935078ce9605e72))
+
 ## [0.3.1](https://github.com/pesap/forge/compare/v0.3.0...v0.3.1) (2026-06-04)
 
 
