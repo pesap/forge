@@ -234,6 +234,10 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
             GeneratedFile::text(render_docs_astro_config()),
         );
         files.insert(
+            PathBuf::from("docs/src/content.config.ts"),
+            GeneratedFile::text(render_docs_content_config()),
+        );
+        files.insert(
             PathBuf::from("docs/tsconfig.json"),
             GeneratedFile::text(render_docs_tsconfig()),
         );
@@ -268,6 +272,7 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
                 ".github/workflows/docs-pages.yaml",
                 "docs/package.json",
                 "docs/astro.config.mjs",
+                "docs/src/content.config.ts",
                 "docs/tsconfig.json",
                 "docs/src/content/docs/index.mdx",
             ]
@@ -570,6 +575,10 @@ fn render_docs_package_json(config: &ProjectConfig) -> String {
 
 fn render_docs_astro_config() -> String {
     template_engine::render_template("python_library/docs-astro.config.mjs.j2", ())
+}
+
+fn render_docs_content_config() -> String {
+    template_engine::render_template("python_library/docs-content.config.ts.j2", ())
 }
 
 fn render_docs_tsconfig() -> String {
