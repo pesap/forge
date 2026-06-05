@@ -10,7 +10,8 @@ use toml::Value;
 
 use crate::blueprint::files::{
     GeneratedFile, GeneratedFiles, ManagedFileAction, ManagedFileConflict, count_changes,
-    count_conflicts, managed_file_path, plan_generated_files, write_generated_files,
+    count_conflicts, managed_file_path, plan_generated_files, remove_managed_file_if_exists,
+    write_generated_files,
 };
 use crate::blueprint::{
     BlueprintMetadata, BlueprintName, ManagedOption, ManagedOptionValues,
@@ -19,8 +20,10 @@ use crate::blueprint::{
     validate_managed_overrides_from_metadata,
 };
 use crate::cli::SyncArgs;
+use crate::commands::dependency_groups::sync_dependency_groups;
 use crate::commands::diff;
 use crate::commands::new::managed_infrastructure_summary;
+use crate::commands::pyproject_sections::{sync_build_system, sync_pytest_sections};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
@@ -246,7 +249,7 @@ fn read_pyproject_for_update(root: &Path, pyproject_path: &Path) -> Result<Strin
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(coded_error(
             ErrorCode::Env,
             format!(
-                "missing Forge metadata at {}; use `forge init --path {}` for an existing repository or `forge new --path {}` to create a new project",
+                "missing Forge metadata at {}; use `forge init --path {}` for an existing repository or `forge init --path {}` to create a new project",
                 pyproject_path.display(),
                 ui::shell_arg(root.display().to_string()),
                 ui::shell_arg(root.display().to_string())
@@ -435,125 +438,22 @@ fn apply_option_overrides(
 
 fn uses_external_pyproject(pyproject: &str) -> Result<bool> {
     let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
-    let Some(forge) = parsed
+    Ok(parsed
         .get("tool")
         .and_then(Value::as_table)
         .and_then(|tool| tool.get("forge"))
-        .and_then(Value::as_table)
-    else {
-        return Ok(false);
-    };
-
-    Ok(
-        forge.get("managed_pyproject").and_then(Value::as_bool) == Some(false)
-            || !forge.contains_key("project_name"),
-    )
+        .is_some())
 }
 
 fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
     let forge_metadata = forge_metadata_block(generated_pyproject)
         .context("generated pyproject.toml is missing [tool.forge]")?;
-    let synced = sync_forge_dependency_group(pyproject, generated_pyproject)?;
-    let synced = sync_forge_metadata(
-        &synced,
-        &external_pyproject_metadata(pyproject, forge_metadata),
-    );
+    let synced = sync_dependency_groups(pyproject, generated_pyproject)?;
+    let synced = sync_build_system(&synced, generated_pyproject)?;
+    let synced = sync_pytest_sections(&synced, generated_pyproject)?;
+    let synced = sync_forge_metadata(&synced, &external_pyproject_metadata(forge_metadata));
     toml::from_str::<Value>(&synced).context("failed to parse synced external pyproject.toml")?;
     Ok(synced)
-}
-
-fn sync_forge_dependency_group(pyproject: &str, generated_pyproject: &str) -> Result<String> {
-    let dependencies = forge_dependency_group_values(generated_pyproject)?;
-    if dependencies.is_empty() {
-        return Ok(pyproject.to_string());
-    }
-
-    let group = render_dependency_group("forge", &dependencies);
-    let Some((table_start, table_end)) = table_range(pyproject, "dependency-groups") else {
-        let mut output = pyproject.to_string();
-        if !output.ends_with('\n') {
-            output.push('\n');
-        }
-        output.push_str("\n[dependency-groups]\n");
-        output.push_str(&group);
-        return Ok(output);
-    };
-
-    let mut lines: Vec<String> = pyproject
-        .split_inclusive('\n')
-        .map(str::to_string)
-        .collect();
-    let replacement = group.split_inclusive('\n').map(str::to_string);
-    if let Some((start, end)) = assignment_range(&lines, table_start, table_end, "forge") {
-        lines.splice(start..end, replacement);
-    } else {
-        lines.splice(table_end..table_end, replacement);
-    }
-    Ok(lines.concat())
-}
-
-fn forge_dependency_group_values(generated_pyproject: &str) -> Result<Vec<String>> {
-    let parsed: Value =
-        toml::from_str(generated_pyproject).context("failed to parse generated pyproject.toml")?;
-    let Some(groups) = parsed.get("dependency-groups").and_then(Value::as_table) else {
-        return Ok(Vec::new());
-    };
-
-    let mut seen = BTreeSet::new();
-    let mut dependencies = Vec::new();
-    for group in groups.values() {
-        let Some(group_dependencies) = group.as_array() else {
-            continue;
-        };
-        for dependency in group_dependencies {
-            let Some(dependency) = dependency.as_str() else {
-                continue;
-            };
-            if seen.insert(dependency.to_string()) {
-                dependencies.push(dependency.to_string());
-            }
-        }
-    }
-    Ok(dependencies)
-}
-
-fn render_dependency_group(name: &str, dependencies: &[String]) -> String {
-    let mut group = format!("{name} = [\n");
-    for dependency in dependencies {
-        group.push_str("    ");
-        group.push_str(&crate::blueprint::toml_value::string_literal(dependency));
-        group.push_str(",\n");
-    }
-    group.push_str("]\n");
-    group
-}
-
-fn assignment_range(
-    lines: &[String],
-    table_start: usize,
-    table_end: usize,
-    key: &str,
-) -> Option<(usize, usize)> {
-    let start = (table_start + 1..table_end)
-        .find(|index| option_assignment_key(&lines[*index]) == Some(key))?;
-    let mut bracket_depth = 0_i32;
-    let mut saw_opening_bracket = false;
-    for (end, line) in lines.iter().enumerate().take(table_end).skip(start) {
-        for character in line.chars() {
-            match character {
-                '[' => {
-                    bracket_depth += 1;
-                    saw_opening_bracket = true;
-                }
-                ']' => bracket_depth -= 1,
-                _ => {}
-            }
-        }
-        if saw_opening_bracket && bracket_depth <= 0 {
-            return Some((start, end + 1));
-        }
-    }
-    Some((start, start + 1))
 }
 
 fn sync_forge_metadata(pyproject: &str, forge_metadata: &str) -> String {
@@ -592,39 +492,25 @@ fn forge_section_range(content: &str) -> Option<(usize, usize)> {
 }
 
 fn forge_metadata_block(pyproject: &str) -> Option<&str> {
-    pyproject
-        .find("[tool.forge]")
-        .map(|start| &pyproject[start..])
+    let start = pyproject.find("[tool.forge]")?;
+    let metadata = &pyproject[start..];
+    let end = metadata
+        .match_indices("\n[")
+        .find_map(|(index, _)| {
+            let header = metadata[index + 1..].lines().next()?.trim();
+            let table = header.strip_prefix('[')?.strip_suffix(']')?;
+            (!table.starts_with("tool.forge.")).then_some(index)
+        })
+        .unwrap_or(metadata.len());
+    Some(&metadata[..end])
 }
 
-fn external_pyproject_metadata(pyproject: &str, forge_metadata: &str) -> String {
-    if current_forge_managed_pyproject(pyproject) != Some(false)
-        && forge_metadata_is_python_library(forge_metadata)
-    {
+fn external_pyproject_metadata(forge_metadata: &str) -> String {
+    if forge_metadata_is_python_library(forge_metadata) {
         return minimal_external_pyproject_metadata(forge_metadata);
     }
 
-    let marker = "\n[tool.forge.overrides]";
-    if let Some(index) = forge_metadata.find(marker) {
-        let (forge_table, overrides) = forge_metadata.split_at(index);
-        format!("{forge_table}managed_pyproject = false\n{overrides}")
-    } else {
-        let mut metadata = forge_metadata.to_string();
-        if !metadata.ends_with('\n') {
-            metadata.push('\n');
-        }
-        metadata.push_str("managed_pyproject = false\n");
-        metadata
-    }
-}
-
-fn current_forge_managed_pyproject(pyproject: &str) -> Option<bool> {
-    toml::from_str::<Value>(pyproject)
-        .ok()
-        .and_then(|parsed| parsed.get("tool").cloned())
-        .and_then(|tool| tool.get("forge").cloned())
-        .and_then(|forge| forge.get("managed_pyproject").cloned())
-        .and_then(|managed| managed.as_bool())
+    forge_metadata.to_string()
 }
 
 fn preserve_pyproject_format_if_equivalent(
@@ -702,13 +588,22 @@ fn apply_option_overrides_to_text(
         .split_inclusive('\n')
         .map(str::to_string)
         .collect();
-    let table_name = if table_range(pyproject, "tool.forge.overrides").is_some() {
+    let mut remaining_overrides = Vec::new();
+    for (option, value) in overrides {
+        if update_forge_ignore_option(&mut lines, option.as_str(), *value) {
+            continue;
+        }
+        remaining_overrides.push((*option, *value));
+    }
+    let overrides = remaining_overrides;
+    let table_name = if table_range(&lines.concat(), "tool.forge.overrides").is_some() {
         "tool.forge.overrides"
     } else {
         "tool.forge.options"
     };
-    let Some((table_start, mut table_end)) = table_range(pyproject, table_name) else {
-        return append_option_table(pyproject, overrides);
+    let current_pyproject = lines.concat();
+    let Some((table_start, mut table_end)) = table_range(&current_pyproject, table_name) else {
+        return append_option_table(&current_pyproject, &overrides);
     };
 
     for (option, value) in overrides {
@@ -716,7 +611,7 @@ fn apply_option_overrides_to_text(
         let mut replaced = false;
         for line in &mut lines[table_start + 1..table_end] {
             if option_assignment_key(line) == Some(option_name) {
-                *line = replace_boolean_assignment_value(line, *value);
+                *line = replace_boolean_assignment_value(line, value);
                 replaced = true;
                 break;
             }
@@ -728,6 +623,47 @@ fn apply_option_overrides_to_text(
     }
 
     Ok(lines.concat())
+}
+
+fn update_forge_ignore_option(lines: &mut [String], option_name: &str, enabled: bool) -> bool {
+    let Some((start, end)) = table_range(&lines.concat(), "tool.forge") else {
+        return false;
+    };
+    for line in &mut lines[start + 1..end] {
+        if option_assignment_key(line) == Some("ignore") {
+            let Some((_, value)) = line.split_once('=') else {
+                return false;
+            };
+            let mut entries = value
+                .trim()
+                .trim_end_matches(',')
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|entry| entry.trim().trim_matches('"').to_string())
+                .filter(|entry| !entry.is_empty())
+                .collect::<Vec<_>>();
+            let had_option = entries.iter().any(|entry| entry == option_name);
+            if enabled {
+                if !had_option {
+                    return false;
+                }
+                entries.retain(|entry| entry != option_name);
+            } else if !had_option {
+                entries.push(option_name.to_string());
+            }
+            *line = format!(
+                "ignore = [{}]\n",
+                entries
+                    .iter()
+                    .map(|entry| format!("\"{entry}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            return true;
+        }
+    }
+    false
 }
 
 fn append_option_table(pyproject: &str, overrides: &[(ManagedOption, bool)]) -> Result<String> {
@@ -863,7 +799,11 @@ fn clean_optional_files_for_blueprint(
     root: &Path,
     pyproject: &str,
 ) -> Result<()> {
-    blueprint.clean_optional_files_from_pyproject(root, pyproject)
+    blueprint.clean_optional_files_from_pyproject(root, pyproject)?;
+    if blueprint == BlueprintName::PythonLibrary {
+        remove_managed_file_if_exists(&root.join(".cspell.json"))?;
+    }
+    Ok(())
 }
 
 fn print_actions(actions: &[ManagedFileAction]) {
@@ -1103,6 +1043,9 @@ fn cleanup_actions_for_blueprint(
     pyproject: &str,
 ) -> Result<Vec<ManagedFileAction>> {
     let mut paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
+    if blueprint == BlueprintName::PythonLibrary {
+        paths.push(PathBuf::from(".cspell.json"));
+    }
     paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
 
     let mut cleanup_actions: Vec<ManagedFileAction> = paths

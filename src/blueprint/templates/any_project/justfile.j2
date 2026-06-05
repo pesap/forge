@@ -3,14 +3,15 @@ set dotenv-load := false
 default:
     @just --list
 
+{{ docs_recipe }}
+format:
+{{ format_steps }}hooks-install:
+    uv run prek install
+
 sync:
     uv sync --all-groups
 
-hooks-install:
-    uv run prek install
-{{ docs_recipe }}
-format:
-{{ format_steps }}verify:
+verify:
     uv lock --check
     uv run --locked prek run --all-files
     forge sync --path . --check

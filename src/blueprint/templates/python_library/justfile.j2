@@ -3,28 +3,28 @@ set dotenv-load := false
 default:
     @just --list
 
-sync:
-    uv sync --all-groups
-
-hooks-install:
-    uv run prek install
-
-setup: hooks-install sync
+build:
+    uv build
 {{ docs_recipe }}
 format:
     uv run ruff format .
-{{ component_format_steps }}lint:
+{{ component_format_steps }}hooks-install:
+    uv run prek install
+
+lint:
     uv run ruff check --fix .
     uv run ty check
 
-test:
-    uv run pytest -q
+setup: hooks-install sync
 
 smoke:
     uv run python -c "import {{ package_name_unquoted }}"
 
-build:
-    uv build
+sync:
+    uv sync --all-groups
+
+test:
+    uv run pytest -q
 
 verify:
     uv lock --check

@@ -3,16 +3,17 @@ set dotenv-load := false
 default:
     @just --list
 
-sync:
-    uv sync --all-groups
-
-hooks-install:
-    uv run prek install
 {{ docs_recipe }}
 format:
     cargo fmt --all
-{{ component_format_steps }}lint:
+{{ component_format_steps }}hooks-install:
+    uv run prek install
+
+lint:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+sync:
+    uv sync --all-groups
 
 test:
     cargo test

@@ -27,7 +27,6 @@ fn generated_python_project_configs_are_structurally_valid() {
             "ada@example.com",
             "--python-min",
             "3.12",
-            "--prettier",
             "--pypi-publish",
         ],
     );
@@ -59,10 +58,6 @@ fn generated_python_project_configs_are_structurally_valid() {
         &["release-type", "packages"],
     );
     assert_json_file(project_path.join(".release-please-manifest.json"), &["."]);
-    assert_json_file(
-        project_path.join(".prettierrc.json"),
-        &["printWidth", "proseWrap", "singleQuote"],
-    );
     assert_update_check_is_current(&project_path);
 }
 
@@ -162,7 +157,7 @@ fn generated_any_project_configs_are_structurally_valid() {
 fn generate_project(project_path: &Path, args: &[&str]) {
     let mut command = Command::cargo_bin("forge").expect("forge binary should build");
     command
-        .arg("new")
+        .arg("init")
         .arg("--path")
         .arg(project_path)
         .args(args)

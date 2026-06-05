@@ -14,8 +14,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, managed_option_enabled,
-    render_forge_overrides_table, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, ManagedOption, apply_ignored_files, managed_option_enabled,
+    render_forge_ignore, render_forge_overrides_table, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "any-project";
@@ -27,6 +27,7 @@ pub struct ProjectConfig {
     pub description: String,
     pub docs: bool,
     pub components: ComponentSelection,
+    pub ignored_files: Vec<String>,
 }
 
 impl ProjectConfig {
@@ -103,6 +104,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         );
     }
     files.extend(config.components.render_files());
+    apply_ignored_files(&mut files, &config.ignored_files);
 
     files
 }
@@ -180,6 +182,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
         project_name: String,
         description: String,
         docs_group: &'a str,
+        forge_ignore: String,
         forge_overrides: String,
     }
 
@@ -191,6 +194,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             project_name: toml_value::string_literal(&config.project_name),
             description: toml_value::string_literal(&config.description),
             docs_group: render_docs_dependency_group(config.docs),
+            forge_ignore: render_forge_ignore(&config.ignored_files),
             forge_overrides: render_forge_overrides_table(
                 BlueprintName::AnyProject,
                 &[
@@ -224,17 +228,19 @@ fn render_justfile(config: &ProjectConfig) -> String {
         format_steps: String,
     }
 
-    template_engine::render_template(
+    let mut justfile = template_engine::render_template(
         "any_project/justfile.j2",
         Context {
             docs_recipe: if config.docs {
-                "\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"
+                "docs:\n    cd docs && npm install\n    cd docs && npm run dev\n"
             } else {
                 ""
             },
             format_steps: render_component_format_steps(config),
         },
-    )
+    );
+    justfile.push('\n');
+    justfile
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
@@ -352,10 +358,9 @@ struct ForgeSection {
     blueprint: String,
     #[serde(rename = "blueprint_version")]
     _blueprint_version: Option<String>,
-    #[serde(rename = "managed_pyproject")]
-    _managed_pyproject: Option<bool>,
     project_name: String,
     description: String,
+    ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
 }
@@ -378,6 +383,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         description: forge.description,
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         components: ComponentSelection::from_options(&options)?,
+        ignored_files: forge.ignore.unwrap_or_default(),
     };
     config.validate()?;
     Ok(config)
@@ -398,6 +404,7 @@ mod tests {
             description: "A test project".to_string(),
             docs: false,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
 
         let pyproject = render_pyproject(&config);
@@ -430,6 +437,7 @@ mod tests {
             description: "A test project".to_string(),
             docs: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         });
 
         assert!(justfile.contains("verify:\n    uv lock --check"));
@@ -443,6 +451,7 @@ mod tests {
             description: "A test project".to_string(),
             docs: true,
             components: ComponentSelection::from_prettier(true),
+            ignored_files: Vec::new(),
         };
 
         let justfile = render_justfile(&config);
@@ -460,6 +469,7 @@ mod tests {
             description: "A test project".to_string(),
             docs: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
 
         let precommit = render_precommit_config(&config);

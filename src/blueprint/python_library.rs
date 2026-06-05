@@ -14,8 +14,8 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, DEFAULT_LICENSE, ManagedOption, is_supported_license,
-    managed_option_enabled, render_forge_overrides_table, supported_license_message,
+    BlueprintName, BlueprintSpec, DEFAULT_LICENSE, ManagedOption, apply_ignored_files,
+    is_supported_license, managed_option_enabled, render_forge_ignore, supported_license_message,
     validate_managed_overrides_from_metadata,
 };
 
@@ -41,6 +41,7 @@ pub struct ProjectConfig {
     pub pypi_publish: bool,
     pub python_rules: bool,
     pub components: ComponentSelection,
+    pub ignored_files: Vec<String>,
 }
 
 impl ProjectConfig {
@@ -180,8 +181,8 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.insert(
-        PathBuf::from(".cspell.json"),
-        GeneratedFile::text(render_cspell_config()),
+        PathBuf::from("typos.toml"),
+        GeneratedFile::text(render_typos_config()),
     );
     files.insert(
         PathBuf::from("CONTRIBUTING.md"),
@@ -242,6 +243,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         );
     }
     files.extend(config.components.render_files());
+    apply_ignored_files(&mut files, &config.ignored_files);
     files
 }
 
@@ -337,13 +339,6 @@ fn render_authors(config: &ProjectConfig) -> String {
     }
 }
 
-fn render_optional_forge_field(name: &str, value: &Option<String>) -> String {
-    value
-        .as_ref()
-        .map(|value| format!("{name} = {}\n", toml_value::string_literal(value)))
-        .unwrap_or_default()
-}
-
 fn author_display_name(config: &ProjectConfig) -> String {
     config
         .author_name
@@ -352,34 +347,8 @@ fn author_display_name(config: &ProjectConfig) -> String {
         .unwrap_or_else(|| "the authors".to_string())
 }
 
-fn pytest_cache_dir(project_name: &str) -> PathBuf {
-    cache_home_dir()
-        .map(|cache_dir| cache_dir.join("pytest").join(project_name))
-        .unwrap_or_else(|| PathBuf::from(".pytest_cache").join(project_name))
-}
-
-#[cfg(target_os = "windows")]
-fn cache_home_dir() -> Option<PathBuf> {
-    env_path("LOCALAPPDATA")
-        .or_else(|| env_path("USERPROFILE").map(|home| home.join("AppData").join("Local")))
-}
-
-#[cfg(target_os = "macos")]
-fn cache_home_dir() -> Option<PathBuf> {
-    env_path("HOME").map(|home| home.join("Library").join("Caches"))
-}
-
-#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-fn cache_home_dir() -> Option<PathBuf> {
-    env_path("XDG_CACHE_HOME")
-        .filter(|path| path.is_absolute())
-        .or_else(|| env_path("HOME").map(|home| home.join(".cache")))
-}
-
-fn env_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+fn pytest_cache_dir(project_name: &str) -> String {
+    format!("$XDG_CACHE_HOME/pytest/{project_name}")
 }
 
 fn render_pyproject(config: &ProjectConfig) -> String {
@@ -387,7 +356,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
         "python_library/pyproject.toml.j2",
         serde_json::json!({
             "project_name": toml_value::string_literal(&config.project_name),
-            "pytest_cache_dir": toml_value::string_literal(&pytest_cache_dir(&config.project_name).to_string_lossy()),
+            "pytest_cache_dir": toml_value::string_literal(&pytest_cache_dir(&config.project_name)),
             "description": toml_value::string_literal(&config.description),
             "authors": render_authors(config),
             "requires_python": toml_value::string_literal(&format!(">={},<3.15", config.python_min)),
@@ -396,54 +365,94 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "coverage_arg": toml_value::string_literal(&format!("--cov={}", config.package_name)),
             "blueprint_name": BLUEPRINT_NAME,
             "blueprint_version": BLUEPRINT_VERSION,
-            "author_name": render_optional_forge_field("author_name", &config.author_name),
-            "author_email": render_optional_forge_field("author_email", &config.author_email),
-            "license": toml_value::string_literal(&config.license),
-            "python_min": toml_value::string_literal(&config.python_min),
-            "gitignore_profile": toml_value::string_literal(&config.gitignore_profile),
-            "forge_overrides": render_forge_overrides_table(
-                BlueprintName::PythonLibrary,
-                &[
-                    (ManagedOption::Docs, config.docs),
-                    (ManagedOption::Codecov, config.codecov),
-                    (ManagedOption::PypiPublish, config.pypi_publish),
-                    (ManagedOption::PythonRules, config.python_rules),
-                    (
-                        ManagedOption::Prettier,
-                        config.components.is_enabled(ManagedComponent::Prettier),
-                    ),
-                    (
-                        ManagedOption::Editorconfig,
-                        config.components.is_enabled(ManagedComponent::Editorconfig),
-                    ),
-                    (
-                        ManagedOption::Markdownlint,
-                        config.components.is_enabled(ManagedComponent::Markdownlint),
-                    ),
-                ],
-            )
+            "license": render_forge_field_if_not_default("license", &config.license, "BSD-3-Clause"),
+            "gitignore_profile": render_gitignore_profile_metadata(&config.gitignore_profile),
+            "forge_ignore": render_python_forge_ignore(config),
+            "forge_overrides": render_python_forge_overrides(config)
         }),
     )
+}
+
+fn render_forge_field_if_not_default(name: &str, value: &str, default: &str) -> String {
+    if value == default {
+        String::new()
+    } else {
+        format!("{name} = {}\n", toml_value::string_literal(value))
+    }
+}
+
+fn render_gitignore_profile_metadata(profile: &str) -> String {
+    let entries = profile
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(toml_value::string_literal)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{entries}]")
+}
+
+fn fn_gitignore_profile_from_metadata(profile: GitignoreProfileMetadata) -> String {
+    match profile {
+        GitignoreProfileMetadata::String(value) => value,
+        GitignoreProfileMetadata::List(values) => values.join(","),
+    }
 }
 
 fn render_docs_dependency_group(_enabled: bool) -> &'static str {
     ""
 }
 
+fn render_python_forge_overrides(config: &ProjectConfig) -> String {
+    if config.pypi_publish {
+        "\n[tool.forge.overrides]\npypi-publish = true\n".to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn render_python_forge_ignore(config: &ProjectConfig) -> String {
+    let mut ignored = config.ignored_files.clone();
+    for (option, enabled) in [
+        (ManagedOption::Docs, config.docs),
+        (ManagedOption::Codecov, config.codecov),
+        (ManagedOption::PythonRules, config.python_rules),
+        (
+            ManagedOption::Editorconfig,
+            config.components.is_enabled(ManagedComponent::Editorconfig),
+        ),
+    ] {
+        if BlueprintName::PythonLibrary.option_default_enabled(option) && !enabled {
+            let option_name = option.as_str();
+            if !ignored.iter().any(|entry| entry == option_name) {
+                ignored.push(option_name.to_string());
+            }
+        }
+    }
+    render_forge_ignore(&ignored)
+}
+
 fn render_justfile(config: &ProjectConfig) -> String {
-    template_engine::render_template(
+    let mut justfile = template_engine::render_template(
         "python_library/justfile.j2",
         serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config), "package_name_unquoted": config.package_name}),
-    )
+    );
+    justfile.push('\n');
+    justfile
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
-    config
-        .components
-        .format_commands()
+    let commands = config.components.format_commands();
+    if commands.is_empty() {
+        return "\n".to_string();
+    }
+
+    let mut output = commands
         .into_iter()
         .map(|command| format!("    {command}\n"))
-        .collect::<String>()
+        .collect::<String>();
+    output.push('\n');
+    output
 }
 
 fn render_precommit_config(config: &ProjectConfig) -> String {
@@ -453,8 +462,8 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_cspell_config() -> String {
-    template_engine::render_template("python_library/cspell.json.j2", ())
+fn render_typos_config() -> String {
+    template_engine::render_template("python_library/typos.toml.j2", ())
 }
 
 fn render_contributing() -> String {
@@ -605,8 +614,15 @@ struct PyprojectFile {
 struct ProjectSection {
     name: Option<String>,
     description: Option<String>,
+    authors: Option<Vec<ProjectAuthor>>,
     #[serde(rename = "requires-python")]
     requires_python: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectAuthor {
+    name: Option<String>,
+    email: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -633,8 +649,6 @@ struct ForgeSection {
     blueprint: String,
     #[serde(rename = "blueprint_version")]
     _blueprint_version: Option<String>,
-    #[serde(rename = "managed_pyproject")]
-    _managed_pyproject: Option<bool>,
     project_name: Option<String>,
     package_name: Option<String>,
     description: Option<String>,
@@ -642,9 +656,17 @@ struct ForgeSection {
     author_email: Option<String>,
     license: Option<String>,
     python_min: Option<String>,
-    gitignore_profile: Option<String>,
+    gitignore_profile: Option<GitignoreProfileMetadata>,
+    ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum GitignoreProfileMetadata {
+    String(String),
+    List(Vec<String>),
 }
 
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
@@ -666,7 +688,16 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         ErrorCode::Env,
     )?;
 
-    let overrides = forge.overrides.unwrap_or_default();
+    let mut overrides = forge.overrides.unwrap_or_default();
+    if let Some(ignore) = &forge.ignore {
+        for entry in ignore {
+            if let Ok(option) = ManagedOption::parse_with_error_code(entry, ErrorCode::Env)
+                && BlueprintName::PythonLibrary.supports_option(option)
+            {
+                overrides.insert(option.as_str().to_string(), false);
+            }
+        }
+    }
     let options =
         validate_managed_overrides_from_metadata(BlueprintName::PythonLibrary, overrides)?;
 
@@ -696,23 +727,31 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
                 .and_then(minimum_python_from_requires_python)
         })
         .unwrap_or_else(|| "3.11".to_string());
+    let (project_author_name, project_author_email) = project
+        .as_ref()
+        .and_then(|project| project.authors.as_ref())
+        .and_then(|authors| authors.first())
+        .map(|author| (author.name.clone(), author.email.clone()))
+        .unwrap_or((None, None));
 
     let config = ProjectConfig {
         project_name,
         package_name,
         description,
-        author_name: forge.author_name,
-        author_email: forge.author_email,
+        author_name: forge.author_name.or(project_author_name),
+        author_email: forge.author_email.or(project_author_email),
         license: forge.license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min,
         gitignore_profile: forge
             .gitignore_profile
+            .map(fn_gitignore_profile_from_metadata)
             .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
         python_rules: managed_option_enabled(&options, ManagedOption::PythonRules)?,
         components: ComponentSelection::from_options(&options)?,
+        ignored_files: forge.ignore.unwrap_or_default(),
     };
     config.validate()?;
     Ok(config)
@@ -811,6 +850,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
 
         let workflow = render_ci_workflow(&config);
@@ -867,6 +907,18 @@ mod tests {
     }
 
     #[test]
+    fn precommit_config_uses_typos_for_spell_checking() {
+        let precommit = render_precommit_config(&test_config(true));
+        let typos = render_typos_config();
+
+        assert!(precommit.contains("repo: https://github.com/crate-ci/typos"));
+        assert!(precommit.contains("id: typos"));
+        assert!(!precommit.contains("cspell"));
+        assert!(typos.contains("[default.extend-words]"));
+        assert!(typos.contains("prek = \"prek\""));
+    }
+
+    #[test]
     fn precommit_config_uses_non_mutating_locked_python_checks() {
         let precommit = render_precommit_config(&test_config(true));
 
@@ -916,6 +968,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         }
     }
 
@@ -953,6 +1006,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
         assert!(config.validate().is_ok());
     }
@@ -973,6 +1027,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -993,6 +1048,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -1013,6 +1069,7 @@ mod tests {
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -1107,6 +1164,7 @@ prettier = true
             pypi_publish: false,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
 
         let files = render_project_files(&config);
@@ -1123,6 +1181,8 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
+        assert!(files.contains_key(&PathBuf::from("typos.toml")));
+        assert!(!files.contains_key(&PathBuf::from(".cspell.json")));
         assert_eq!(
             files
                 .get(&PathBuf::from("CLAUDE.md"))
@@ -1201,6 +1261,7 @@ prettier = true
             pypi_publish: true,
             python_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         };
 
         let files = render_project_files(&config);
@@ -1209,9 +1270,18 @@ prettier = true
             .and_then(GeneratedFile::as_text)
             .unwrap();
 
-        // Verify forge metadata is embedded
-        assert!(pyproject.contains("[tool.forge]"));
+        // Verify Forge metadata is embedded after project metadata without duplicating it.
+        assert!(pyproject.starts_with("[build-system]\n"));
         assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
-        assert!(pyproject.contains("project_name = \"meta-test\""));
+        assert!(!pyproject.contains("project_name = \"meta-test\""));
+        assert!(!pyproject.contains("python_min = \"3.12\""));
+        assert!(
+            pyproject
+                .find("[project]")
+                .expect("project section should exist")
+                < pyproject
+                    .find("[tool.forge]")
+                    .expect("forge section should exist")
+        );
     }
 }

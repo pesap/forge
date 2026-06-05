@@ -14,9 +14,9 @@ use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, is_supported_license, managed_option_enabled,
-    render_forge_overrides_table, supported_license_message,
-    validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, ManagedOption, apply_ignored_files, is_supported_license,
+    managed_option_enabled, render_forge_ignore, render_forge_overrides_table,
+    supported_license_message, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "rust-library";
@@ -34,6 +34,7 @@ pub struct ProjectConfig {
     pub docs: bool,
     pub rust_rules: bool,
     pub components: ComponentSelection,
+    pub ignored_files: Vec<String>,
 }
 
 impl ProjectConfig {
@@ -160,6 +161,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         );
     }
     files.extend(config.components.render_files());
+    apply_ignored_files(&mut files, &config.ignored_files);
 
     files
 }
@@ -277,6 +279,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "license": toml_value::string_literal(&config.license),
             "rust_edition": toml_value::string_literal(&config.rust_edition),
             "docs_group": render_docs_dependency_group(config.docs),
+            "forge_ignore": render_forge_ignore(&config.ignored_files),
             "forge_overrides": render_forge_overrides_table(
                 BlueprintName::RustLibrary,
                 &[
@@ -305,19 +308,26 @@ fn render_docs_dependency_group(_enabled: bool) -> &'static str {
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
-    template_engine::render_template(
+    let mut justfile = template_engine::render_template(
         "rust_library/justfile.j2",
-        serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
-    )
+        serde_json::json!({"docs_recipe": if config.docs {"docs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
+    );
+    justfile.push('\n');
+    justfile
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
-    config
-        .components
-        .format_commands()
+    let commands = config.components.format_commands();
+    if commands.is_empty() {
+        return "\n".to_string();
+    }
+
+    let mut output = commands
         .into_iter()
         .map(|command| format!("    {command}\n"))
-        .collect::<String>()
+        .collect::<String>();
+    output.push('\n');
+    output
 }
 
 fn render_precommit_config(config: &ProjectConfig) -> String {
@@ -379,8 +389,6 @@ struct ForgeSection {
     blueprint: String,
     #[serde(rename = "blueprint_version")]
     _blueprint_version: Option<String>,
-    #[serde(rename = "managed_pyproject")]
-    _managed_pyproject: Option<bool>,
     project_name: String,
     crate_name: String,
     description: String,
@@ -388,6 +396,7 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     rust_edition: String,
+    ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
 }
@@ -416,6 +425,7 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         rust_rules: managed_option_enabled(&options, ManagedOption::RustRules)?,
         components: ComponentSelection::from_options(&options)?,
+        ignored_files: forge.ignore.unwrap_or_default(),
     };
     config.validate()?;
     Ok(config)
@@ -482,6 +492,7 @@ mod tests {
             docs,
             rust_rules: true,
             components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
         }
     }
 

@@ -356,6 +356,31 @@ pub fn validate_managed_overrides_from_metadata(
     validate_managed_options_with_error_code(blueprint, overrides, ErrorCode::Env, true)
 }
 
+pub fn apply_ignored_files(files: &mut GeneratedFiles, ignored_files: &[String]) {
+    files.retain(|path, _| {
+        let path = path.to_string_lossy();
+        !ignored_files.iter().any(|ignored| {
+            path == ignored.as_str()
+                || ignored
+                    .strip_suffix('/')
+                    .is_some_and(|prefix| path.starts_with(&format!("{prefix}/")))
+        })
+    });
+}
+
+pub fn render_forge_ignore(ignored_files: &[String]) -> String {
+    if ignored_files.is_empty() {
+        return String::new();
+    }
+
+    let ignored = ignored_files
+        .iter()
+        .map(|path| toml_value::string_literal(path))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("ignore = [{ignored}]\n")
+}
+
 pub fn render_forge_overrides_table(
     blueprint: BlueprintName,
     options: &[(ManagedOption, bool)],
@@ -417,7 +442,56 @@ pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Strin
         "[tool.forge]\nblueprint = {}\n",
         toml_value::string_literal(&blueprint)
     );
-    metadata.push_str(overrides.trim_start_matches('\n'));
+    if let Ok(parsed) = toml::from_str::<Value>(forge_metadata)
+        && let Some(forge) = parsed
+            .get("tool")
+            .and_then(Value::as_table)
+            .and_then(|tool| tool.get("forge"))
+            .and_then(Value::as_table)
+    {
+        if let Some(license) = forge.get("license").and_then(Value::as_str)
+            && license != "BSD-3-Clause"
+        {
+            metadata.push_str(&format!(
+                "license = {}\n",
+                toml_value::string_literal(license)
+            ));
+        }
+        if let Some(profile) = forge.get("gitignore_profile") {
+            if let Some(profile) = profile.as_str() {
+                metadata.push_str(&format!(
+                    "gitignore_profile = {}\n",
+                    toml_value::string_literal(profile)
+                ));
+            } else if let Some(entries) = profile.as_array() {
+                let entries = entries
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(toml_value::string_literal)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if !entries.is_empty() {
+                    metadata.push_str(&format!("gitignore_profile = [{entries}]\n"));
+                }
+            }
+        }
+        if let Some(ignore) = forge.get("ignore").and_then(Value::as_array) {
+            let ignored = ignore
+                .iter()
+                .filter_map(Value::as_str)
+                .map(toml_value::string_literal)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if !ignored.is_empty() {
+                metadata.push_str(&format!("ignore = [{ignored}]\n"));
+            }
+        }
+    }
+    let overrides = overrides.trim_start_matches('\n');
+    if !overrides.is_empty() && !metadata.ends_with("\n\n") {
+        metadata.push('\n');
+    }
+    metadata.push_str(overrides);
     metadata
 }
 

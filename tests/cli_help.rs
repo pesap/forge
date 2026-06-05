@@ -60,7 +60,7 @@ fn top_level_help_lists_expected_commands() {
         .stdout(contains("components"))
         .stdout(contains("completions"))
         .stdout(contains("init"))
-        .stdout(contains("new"))
+        .stdout(contains("init"))
         .stdout(contains("sync"))
         .stdout(contains("self"))
         .stdout(contains("upgrade").not())
@@ -83,7 +83,7 @@ fn legacy_upgrade_subcommand_is_rejected() {
 fn legacy_plain_flag_is_rejected() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
 
-    cmd.args(["--plain", "new", "--help"])
+    cmd.args(["--plain", "init", "--help"])
         .assert()
         .failure()
         .stderr(contains("unexpected argument '--plain'"))
@@ -97,7 +97,7 @@ fn top_level_without_args_shows_help_and_exits_success() {
     cmd.assert()
         .success()
         .stdout(contains(
-            "Create projects and sync repository infrastructure from blueprints",
+            "Initialize projects and sync repository infrastructure from blueprints",
         ))
         .stdout(contains("Usage: forge [OPTIONS] [COMMAND]"))
         .stdout(contains("Quickstart:"));
@@ -340,7 +340,7 @@ fn blueprints_lists_available_blueprints() {
             "package-name (default: derived from project-name)",
         ))
         .stdout(contains(
-            "create: forge new --blueprint python-library --yes ...",
+            "create: forge init --blueprint python-library --yes ...",
         ))
         .stdout(contains(
             "init: forge init --path . --blueprint python-library",
@@ -385,7 +385,7 @@ fn blueprints_can_emit_json() {
         blueprint["name"] == "any-project"
             && blueprint["version"] == "0.1.0"
             && blueprint["summary"] == "managed infrastructure for any repository"
-            && blueprint["create_command"] == "forge new --blueprint any-project --yes ..."
+            && blueprint["create_command"] == "forge init --blueprint any-project --yes ..."
             && blueprint["init_command"] == "forge init --path . --blueprint any-project"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
@@ -427,7 +427,7 @@ fn blueprints_can_emit_json() {
     }));
     assert!(blueprints.iter().any(|blueprint| {
         blueprint["name"] == "python-library"
-            && blueprint["create_command"] == "forge new --blueprint python-library --yes ..."
+            && blueprint["create_command"] == "forge init --blueprint python-library --yes ..."
             && blueprint["init_command"] == "forge init --path . --blueprint python-library"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["fields"]
@@ -464,7 +464,7 @@ fn blueprints_can_emit_json() {
     }));
     assert!(blueprints.iter().any(|blueprint| {
         blueprint["name"] == "rust-library"
-            && blueprint["create_command"] == "forge new --blueprint rust-library --yes ..."
+            && blueprint["create_command"] == "forge init --blueprint rust-library --yes ..."
             && blueprint["init_command"] == "forge init --path . --blueprint rust-library"
             && blueprint["sync_check_command"] == "forge sync --path . --check"
             && blueprint["required_tools"]
@@ -521,7 +521,7 @@ fn self_update_requires_standalone_installer_receipt() {
 fn new_help_exposes_blueprint_selection() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
 
-    cmd.args(["new", "--help"])
+    cmd.args(["init", "--help"])
         .assert()
         .success()
         .stdout(contains("--blueprint"))
@@ -534,7 +534,7 @@ fn new_help_exposes_blueprint_selection() {
         .stdout(contains("Defaults to 3.11"))
         .stdout(contains("Defaults to public when --github is enabled"))
         .stdout(contains("Examples:"))
-        .stdout(contains("forge new --blueprint rust-library"))
+        .stdout(contains("forge init tools --blueprint rust-library"))
         .stdout(contains("--package-name tools"))
         .stdout(contains("--description \"Internal tools\""))
         .stdout(contains("any-project"))
@@ -549,11 +549,10 @@ fn init_help_exposes_existing_repo_setup() {
     cmd.args(["init", "--help"])
         .assert()
         .success()
-        .stdout(contains("Initialize Forge-managed infrastructure"))
+        .stdout(contains("Initialize a new or existing project"))
         .stdout(contains("--blueprint"))
         .stdout(contains("--dry-run"))
         .stdout(contains("--diff"))
-        .stdout(contains("--force"))
         .stdout(contains("--json"))
         .stdout(contains("--yes"));
 }
@@ -564,7 +563,7 @@ fn new_help_yes_mode_examples_are_valid_as_dry_runs() {
 
     let examples = [
         vec![
-            "new".to_string(),
+            "init".to_string(),
             "--blueprint".to_string(),
             "python-library".to_string(),
             "--path".to_string(),
@@ -581,7 +580,7 @@ fn new_help_yes_mode_examples_are_valid_as_dry_runs() {
             "--dry-run".to_string(),
         ],
         vec![
-            "new".to_string(),
+            "init".to_string(),
             "--blueprint".to_string(),
             "rust-library".to_string(),
             "--path".to_string(),
@@ -600,7 +599,7 @@ fn new_help_yes_mode_examples_are_valid_as_dry_runs() {
             "--dry-run".to_string(),
         ],
         vec![
-            "new".to_string(),
+            "init".to_string(),
             "--blueprint".to_string(),
             "any-project".to_string(),
             "--path".to_string(),
@@ -856,13 +855,6 @@ fn doctor_json_reports_path_scoped_tool_contract() {
             .iter()
             .all(|tool| tool["name"] != "cargo")
     );
-    assert!(
-        report["tools"]
-            .as_array()
-            .expect("tools should be an array")
-            .iter()
-            .all(|tool| tool["name"] != "npx")
-    );
 }
 
 #[test]
@@ -998,7 +990,7 @@ fn doctor_path_missing_pyproject_suggests_init_or_new() {
         canonical_display(&project_path)
     )))
     .stderr(contains(format!(
-        "forge new --path '{}'",
+        "forge init --path '{}'",
         canonical_display(&project_path)
     )));
 }

@@ -59,7 +59,7 @@ fn build_environment() -> Environment<'static> {
         "python_library/pyproject.toml.j2" => "templates/python_library/pyproject.toml.j2",
         "python_library/justfile.j2" => "templates/python_library/justfile.j2",
         "python_library/pre-commit-config.yaml.j2" => "templates/python_library/pre-commit-config.yaml.j2",
-        "python_library/cspell.json.j2" => "templates/python_library/cspell.json.j2",
+        "python_library/typos.toml.j2" => "templates/python_library/typos.toml.j2",
         "python_library/contributing.md.j2" => "templates/python_library/contributing.md.j2",
         "python_library/changelog.md.j2" => "templates/python_library/changelog.md.j2",
         "python_library/ci.yaml.j2" => "templates/python_library/ci.yaml.j2",
