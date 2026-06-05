@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/pesap/forge/compare/v0.3.2...v0.4.0) (2026-06-05)
+
+
+### Features
+
+* **license:** expand library license selection ([#68](https://github.com/pesap/forge/issues/68)) ([5876597](https://github.com/pesap/forge/commit/587659767503001d48edb4f6a9ca7b52b5c4d3a6))
+
+
+### Bug Fixes
+
+* **python:** sync generated project tooling ([#71](https://github.com/pesap/forge/issues/71)) ([85bb70e](https://github.com/pesap/forge/commit/85bb70eadc511086ee75414b5cee0d8c4bebec78))
+
+
+### Documentation
+
+* **agents:** refine generated guidance ([#70](https://github.com/pesap/forge/issues/70)) ([cf55b23](https://github.com/pesap/forge/commit/cf55b23d634b28214693c5b520181b36400717a8))
+
 ## [0.3.2](https://github.com/pesap/forge/compare/v0.3.1...v0.3.2) (2026-06-04)
 
 
