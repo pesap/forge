@@ -115,7 +115,7 @@ fn generated_rust_project_configs_are_structurally_valid() {
     );
     assert_file_contains(
         project_path.join("docs/astro.config.mjs"),
-        &["starlight(", "title:"],
+        &["starlight(", "title:", "head: []"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
@@ -158,7 +158,7 @@ fn generated_any_project_configs_are_structurally_valid() {
     );
     assert_file_contains(
         project_path.join("docs/astro.config.mjs"),
-        &["starlight(", "title:"],
+        &["starlight(", "title:", "head: []"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
