@@ -1179,7 +1179,7 @@ fn managed_file_prompt_options(blueprint: BlueprintName) -> Vec<ManagedFilePromp
         BlueprintName::PythonLibrary => paths.extend([
             "LICENSE.txt",
             ".python-version",
-            "typos.toml",
+            ".typos.toml",
             "CONTRIBUTING.md",
             "CHANGELOG.md",
             ".release-please-config.json",

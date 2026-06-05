@@ -181,7 +181,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.insert(
-        PathBuf::from("typos.toml"),
+        PathBuf::from(".typos.toml"),
         GeneratedFile::text(render_typos_config()),
     );
     files.insert(
@@ -1181,7 +1181,8 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
-        assert!(files.contains_key(&PathBuf::from("typos.toml")));
+        assert!(files.contains_key(&PathBuf::from(".typos.toml")));
+        assert!(!files.contains_key(&PathBuf::from("typos.toml")));
         assert!(!files.contains_key(&PathBuf::from(".cspell.json")));
         assert_eq!(
             files

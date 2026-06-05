@@ -207,9 +207,10 @@ fn new_generates_python_project_with_metadata() {
     assert!(!precommit.contains("cspell"));
     assert!(!precommit.contains("uv run ruff check --fix"));
 
-    let typos = fs::read_to_string(project_path.join("typos.toml"))
+    let typos = fs::read_to_string(project_path.join(".typos.toml"))
         .expect("typos config should be generated");
     assert!(typos.contains("[default.extend-words]"));
+    assert!(!project_path.join("typos.toml").exists());
     assert!(!project_path.join(".cspell.json").exists());
 }
 

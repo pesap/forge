@@ -1599,6 +1599,8 @@ dependencies = ["click>=8"]
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
     fs::write(project_path.join(".cspell.json"), "{}\n")
         .expect("legacy cspell config should write");
+    fs::write(project_path.join("typos.toml"), "[default.extend-words]\n")
+        .expect("legacy typos config should write");
     let drifted = pyproject
         .replace("ruff~=0.14.0", "ruff~=0.1.0")
         .replace("line-length = 110", "line-length = 100")
@@ -1659,7 +1661,8 @@ dependencies = ["click>=8"]
         "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
     ));
     assert!(!pyproject.contains("Library/Caches/pytest"));
-    assert!(project_path.join("typos.toml").exists());
+    assert!(project_path.join(".typos.toml").exists());
+    assert!(!project_path.join("typos.toml").exists());
     assert!(!project_path.join(".cspell.json").exists());
 }
 
