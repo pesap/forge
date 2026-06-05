@@ -1182,8 +1182,8 @@ fn managed_file_prompt_options(blueprint: BlueprintName) -> Vec<ManagedFilePromp
             ".typos.toml",
             "CONTRIBUTING.md",
             "CHANGELOG.md",
-            ".release-please-config.json",
-            ".release-please-manifest.json",
+            ".github/release-please-config.json",
+            ".github/release-please-manifest.json",
         ]),
         BlueprintName::RustLibrary => paths.extend(["LICENSE", "Cargo.toml"]),
     }

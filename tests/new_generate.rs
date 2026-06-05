@@ -1513,6 +1513,20 @@ fn new_accepts_value_less_optional_workflow_flags() {
             .expect("release-please workflow should be generated");
     assert!(release_please.contains("publish-pypi:"));
     assert!(release_please.contains("needs: release-please"));
+    assert!(release_please.contains("config-file: .github/release-please-config.json"));
+    assert!(release_please.contains("manifest-file: .github/release-please-manifest.json"));
+    assert!(
+        project_path
+            .join(".github/release-please-config.json")
+            .exists()
+    );
+    assert!(
+        project_path
+            .join(".github/release-please-manifest.json")
+            .exists()
+    );
+    assert!(!project_path.join(".release-please-config.json").exists());
+    assert!(!project_path.join(".release-please-manifest.json").exists());
 }
 
 #[test]

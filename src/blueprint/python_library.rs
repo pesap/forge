@@ -217,11 +217,11 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(github_actions::render_forge_sync_workflow()),
     );
     files.insert(
-        PathBuf::from(".release-please-config.json"),
+        PathBuf::from(".github/release-please-config.json"),
         GeneratedFile::text(render_release_please_config()),
     );
     files.insert(
-        PathBuf::from(".release-please-manifest.json"),
+        PathBuf::from(".github/release-please-manifest.json"),
         GeneratedFile::text(render_release_please_manifest()),
     );
 
@@ -288,6 +288,8 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
 
     files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
     files.push(PathBuf::from(".github/workflows/publish.yaml"));
+    files.push(PathBuf::from(".release-please-config.json"));
+    files.push(PathBuf::from(".release-please-manifest.json"));
 
     files.extend(config.components.disabled_file_paths());
     files
@@ -1282,6 +1284,8 @@ prettier = true
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
             )
         );
+        assert!(release_please.contains("config-file: .github/release-please-config.json"));
+        assert!(release_please.contains("manifest-file: .github/release-please-manifest.json"));
         assert!(!release_please.contains("publish is handled"));
 
         let mut with_publish = test_config(true);
