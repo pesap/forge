@@ -15,38 +15,7 @@ fn write_executable(path: &std::path::Path, content: &str) {
 }
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
-    let cache_root = if cfg!(target_os = "macos") {
-        std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .map(|home| home.join("Library").join("Caches"))
-            .unwrap_or_else(|| std::path::PathBuf::from("Library").join("Caches"))
-    } else if cfg!(target_os = "windows") {
-        std::env::var_os("LOCALAPPDATA")
-            .filter(|value| !value.is_empty())
-            .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("USERPROFILE")
-                    .map(std::path::PathBuf::from)
-                    .map(|home| home.join("AppData").join("Local"))
-            })
-            .unwrap_or_else(|| std::path::PathBuf::from("AppData").join("Local"))
-    } else {
-        std::env::var_os("XDG_CACHE_HOME")
-            .filter(|value| !value.is_empty())
-            .map(std::path::PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(std::path::PathBuf::from)
-                    .map(|home| home.join(".cache"))
-            })
-            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
-    };
-    cache_root
-        .join("pytest")
-        .join(project_name)
-        .to_string_lossy()
-        .into_owned()
+    format!(".cache/pytest/{project_name}")
 }
 
 #[test]

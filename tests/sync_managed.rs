@@ -6,38 +6,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
-    let cache_root = if cfg!(target_os = "macos") {
-        std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .map(|home| home.join("Library").join("Caches"))
-            .unwrap_or_else(|| std::path::PathBuf::from("Library").join("Caches"))
-    } else if cfg!(target_os = "windows") {
-        std::env::var_os("LOCALAPPDATA")
-            .filter(|value| !value.is_empty())
-            .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("USERPROFILE")
-                    .map(std::path::PathBuf::from)
-                    .map(|home| home.join("AppData").join("Local"))
-            })
-            .unwrap_or_else(|| std::path::PathBuf::from("AppData").join("Local"))
-    } else {
-        std::env::var_os("XDG_CACHE_HOME")
-            .filter(|value| !value.is_empty())
-            .map(std::path::PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(std::path::PathBuf::from)
-                    .map(|home| home.join(".cache"))
-            })
-            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
-    };
-    cache_root
-        .join("pytest")
-        .join(project_name)
-        .to_string_lossy()
-        .into_owned()
+    format!(".cache/pytest/{project_name}")
 }
 
 fn generate_project(project_path: &std::path::Path) {
@@ -1690,7 +1659,11 @@ dependencies = ["click>=8"]
     );
     assert!(!pyproject.contains("line-length = 100"));
     assert!(!pyproject.contains("all = \"warn\""));
-    assert!(pyproject.contains(&format!("cache_dir = \"{expected_cache_dir}\"")));
+    let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
+    let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
+        .as_str()
+        .expect("pytest cache_dir should be a string");
+    assert_eq!(pytest_cache_dir, expected_cache_dir);
     assert!(!pyproject.contains("[tool.pytest_env]"));
     assert!(!pyproject.contains("XDG_CACHE_HOME"));
     assert!(!pyproject.contains("pytest-env"));

@@ -136,7 +136,7 @@ mod tests {
     use crate::commands::pyproject_sections::sync_pytest_sections;
 
     const GENERATED: &str = r#"[tool.pytest.ini_options]
-cache_dir = "/Users/example/Library/Caches/pytest/test"
+cache_dir = ".cache/pytest/test"
 
 [tool.ruff]
 line-length = 110
@@ -162,7 +162,7 @@ name = "test"
 XDG_CACHE_HOME = "/tmp/cache"
 
 [tool.pytest.ini_options]
-cache_dir = "/Users/example/Library/Caches/pytest/test"
+cache_dir = ".cache/pytest/test"
 
 [tool.ruff]
 line-length = 100
@@ -190,7 +190,7 @@ blueprint = "python-library>=0.1.0"
 
         assert!(ini_index < ruff_lint_index);
         assert!(ruff_lint_index < ty_rules_index);
-        assert!(synced.contains("cache_dir = \"/Users/example/Library/Caches/pytest/test\""));
+        assert!(synced.contains("cache_dir = \".cache/pytest/test\""));
         assert!(synced.contains("line-length = 110"));
         assert!(synced.contains("all = \"error\""));
         assert!(!synced.contains("[tool.pytest_env]"));
