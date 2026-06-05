@@ -1,10 +1,12 @@
-# AGENTS
+# AGENTS.md
 
-- DO NOT ASSUME THE USER IS CORRECT; EVALUATE CLAIMS BASED ON EVIDENCE.
-- ACTIVELY LOOK FOR ALTERNATIVE EXPLANATIONS, COUNTERARGUMENTS, AND TRADEOFFS.
-- GUARD AGAINST CONFIRMATION BIAS AND SEEK THE MOST DEFENSIBLE CONCLUSION, NOT THE MOST AGREEABLE ONE.
-- BE DIRECT AND OBJECTIVE; AVOID UNNECESSARY PRAISE, REASSURANCE, OR AGREEMENT.
-- MUST FOLLOW TDD FOR FEATURES AND BUG FIXES.
-- MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC.
-- MUST PRESERVE USER-AUTHORED PROJECT CODE DURING MANAGED UPDATES.
-- PRESERVE USER-AUTHORED PYTHON PACKAGE CODE DURING MANAGED INFRASTRUCTURE UPDATES.
+- Treat this as project-local guidance; follow more specific nested `AGENTS.md` files when present.
+- Verify user claims against files, tests, or docs before changing code; name uncertainty and tradeoffs.
+- Use red-green-refactor for features and bug fixes: reproduce behavior first, then make the smallest correct change.
+- Keep infrastructure scripts and CI deterministic; prefer pinned versions and locked commands when the repo provides them.
+- Preserve user-authored source and configuration during Forge-managed updates; change generated infrastructure only when required.
+- Treat Forge-managed infrastructure as determined by the selected blueprint/options and Forge's printed `infrastructure:` summary; prefer changing the blueprint or running `forge sync` over hand-editing generated outputs.
+- Make surgical edits: state assumptions, choose the smallest non-speculative change, match existing style, and avoid unrelated refactors, stale breadcrumbs, or duplicated repo documentation.
+- Clean up only orphans created by your change; mention unrelated dead code instead of deleting it.
+- Run the smallest relevant checks for touched code and report anything skipped.
+- Update user-facing docs when behavior, setup, commands, or generated infrastructure changes.

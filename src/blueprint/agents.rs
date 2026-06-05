@@ -29,18 +29,21 @@ mod tests {
     fn agent_instructions_include_shared_safety_guidance() {
         let instructions = render_agent_instructions(&[]);
 
-        assert!(instructions.contains("# AGENTS"));
-        assert!(instructions.contains("MUST FOLLOW TDD"));
-        assert!(instructions.contains("MUST KEEP INFRASTRUCTURE SCRIPTS AND CI DETERMINISTIC"));
-        assert!(instructions.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
+        assert!(instructions.contains("# AGENTS.md"));
+        assert!(instructions.contains("Use red-green-refactor for features and bug fixes"));
+        assert!(instructions.contains("Keep infrastructure scripts and CI deterministic"));
+        assert!(instructions.contains("Preserve user-authored source and configuration"));
+        assert!(instructions.contains("selected blueprint/options"));
+        assert!(instructions.contains("infrastructure:"));
+        assert!(!instructions.contains("files recorded in `[tool.forge]` metadata"));
     }
 
     #[test]
     fn agent_instructions_include_requested_rules() {
         let instructions = render_agent_instructions(&[]);
 
-        assert!(instructions.contains("DO NOT ASSUME THE USER IS CORRECT"));
-        assert!(instructions.contains("BE DIRECT AND OBJECTIVE"));
+        assert!(instructions.contains("Verify user claims against files, tests, or docs"));
+        assert!(instructions.contains("Make surgical edits"));
     }
 
     #[test]
