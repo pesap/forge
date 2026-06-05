@@ -122,8 +122,8 @@ fn new_generates_python_project_with_metadata() {
 
     assert!(project_path.join("src/grid_tools/__init__.py").exists());
     let agents = fs::read_to_string(project_path.join("AGENTS.md")).expect("AGENTS should exist");
-    assert!(agents.contains("MUST FOLLOW TDD"));
-    assert!(agents.contains("MUST PRESERVE USER-AUTHORED PROJECT CODE"));
+    assert!(agents.contains("Use red-green-refactor for features and bug fixes"));
+    assert!(agents.contains("Preserve user-authored source and configuration"));
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
