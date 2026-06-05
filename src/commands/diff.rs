@@ -1,7 +1,10 @@
 use std::fs;
+use std::io::{IsTerminal, Write};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
+use similar::TextDiff;
 
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles, ManagedFileAction};
 use crate::ui;
@@ -21,11 +24,60 @@ pub fn print_diffs(
     }
 
     ui::section("Managed diff");
-    for diff in diffs {
-        print!("{diff}");
+    let diff_text = diffs.concat();
+    if !page_diff(&diff_text)? {
+        print!("{diff_text}");
     }
 
     Ok(())
+}
+
+fn page_diff(diff_text: &str) -> Result<bool> {
+    let Some(pager) = pager_from_env(std::io::stdout().is_terminal()) else {
+        return Ok(false);
+    };
+
+    let mut child = pager_command(&pager)
+        .stdin(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("failed to start pager `{pager}`"))?;
+
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(error) = stdin.write_all(diff_text.as_bytes())
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(error).context("failed to write diff to pager");
+    }
+
+    child
+        .wait()
+        .with_context(|| format!("failed to wait for pager `{pager}`"))?;
+    Ok(true)
+}
+
+fn pager_from_env(stdout_is_terminal: bool) -> Option<String> {
+    if !stdout_is_terminal {
+        return None;
+    }
+
+    std::env::var("PAGER")
+        .ok()
+        .map(|pager| pager.trim().to_string())
+        .filter(|pager| !pager.is_empty())
+}
+
+#[cfg(unix)]
+fn pager_command(pager: &str) -> Command {
+    let mut command = Command::new("sh");
+    command.arg("-c").arg(pager);
+    command
+}
+
+#[cfg(windows)]
+fn pager_command(pager: &str) -> Command {
+    let mut command = Command::new("cmd");
+    command.arg("/C").arg(pager);
+    command
 }
 
 fn diff_for_action(
@@ -103,14 +155,13 @@ fn render_removed_text_diff(path: &Path, old_content: &str) -> String {
 }
 
 fn render_text_diff(path: &Path, old_content: &str, new_content: &str) -> String {
-    render_diff(
-        format!("a/{}", path.display()),
-        format!("b/{}", path.display()),
-        diff_line_count(old_content),
-        diff_line_count(new_content),
-        old_content,
-        new_content,
-    )
+    TextDiff::from_lines(old_content, new_content)
+        .unified_diff()
+        .header(
+            &format!("a/{}", path.display()),
+            &format!("b/{}", path.display()),
+        )
+        .to_string()
 }
 
 fn render_diff(
@@ -155,23 +206,54 @@ fn diff_line_count(content: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use crate::commands::diff::{
-        diff_line_count, render_created_text_diff, render_removed_text_diff, render_text_diff,
+        diff_line_count, pager_from_env, render_created_text_diff, render_removed_text_diff,
+        render_text_diff,
     };
     use std::path::Path;
 
     #[test]
-    fn render_text_diff_uses_whole_file_unified_hunk_ranges() {
+    fn pager_from_env_requires_terminal_and_non_empty_pager() {
+        assert_eq!(pager_from_env(false), None);
+        assert_eq!(
+            pager_from_env(true),
+            std::env::var("PAGER")
+                .ok()
+                .map(|pager| pager.trim().to_string())
+                .filter(|pager| !pager.is_empty())
+        );
+    }
+
+    #[test]
+    fn render_text_diff_aligns_repeated_blocks() {
         let diff = render_text_diff(
             Path::new("justfile"),
-            "BROKEN\n",
-            "set dotenv-load := false\n\nverify:\n",
+            "format:\n    uv run ruff format .\n    npx --yes prettier@3.8.3 --write --ignore-unknown .\nlint:\n    uv run ruff check --fix .\n    uv run ty check\n\ntest:\n    uv run pytest -q\n\nsmoke:\n    uv run python -c \"import test\"\n\nbuild:\n    uv build\n",
+            "format:\n    uv run ruff format .\nlint:\n    uv run ruff check --fix .\n    uv run ty check\n\ntest:\n    uv run pytest -q\n\nsmoke:\n    uv run python -c \"import sandbox\"\n\nbuild:\n    uv build\n",
+        );
+
+        assert!(diff.contains("-    npx --yes prettier@3.8.3 --write --ignore-unknown .\n"));
+        assert!(diff.contains("-    uv run python -c \"import test\"\n"));
+        assert!(diff.contains("+    uv run python -c \"import sandbox\"\n"));
+        assert!(!diff.contains("-lint:\n-lint:"));
+        assert!(!diff.contains("+lint:\n+lint:"));
+    }
+
+    #[test]
+    fn render_text_diff_shows_only_changed_hunk_with_context() {
+        let diff = render_text_diff(
+            Path::new("justfile"),
+            "set dotenv-load := false\n\ndefault:\n    @just --list\n\nsmoke:\n    uv run python -c \"import test\"\n\nbuild:\n    uv build\n",
+            "set dotenv-load := false\n\ndefault:\n    @just --list\n\nsmoke:\n    uv run python -c \"import sandbox\"\n\nbuild:\n    uv build\n",
         );
 
         assert!(diff.contains("--- a/justfile\n"));
         assert!(diff.contains("+++ b/justfile\n"));
-        assert!(diff.contains("@@ -1,1 +1,3 @@\n"));
-        assert!(diff.contains("-BROKEN\n"));
-        assert!(diff.contains("+set dotenv-load := false\n"));
+        assert!(diff.contains("@@ "));
+        assert!(diff.contains("     @just --list\n"));
+        assert!(diff.contains("-    uv run python -c \"import test\"\n"));
+        assert!(diff.contains("+    uv run python -c \"import sandbox\"\n"));
+        assert!(!diff.contains("-set dotenv-load := false\n"));
+        assert!(!diff.contains("+set dotenv-load := false\n"));
     }
 
     #[test]

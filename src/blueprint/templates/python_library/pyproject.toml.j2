@@ -1,3 +1,7 @@
+[build-system]
+requires = ["uv_build~=0.11.7"]
+build-backend = "uv_build"
+
 [project]
 name = {{ project_name }}
 version = "0.1.0"
@@ -8,24 +12,15 @@ requires-python = {{ requires_python }}
 dependencies = []
 
 [dependency-groups]
-dev = [
-    "prek>=0.4.1,<0.5.0",
-    "pytest>=9.0.0,<10.0.0",
-    "pytest-cov>=7.0.0,<8.0.0",
-    "pytest-xdist>=3.2.0,<4.0.0",
-    "pytest-env<=0.8.0",
-    "pytest-xdg>=0.2.0,<1.0.0",
-    "ruff>=0.14.0,<0.15.0",
-    "ty>=0.0.1,<0.1.0",
-]
-build = [
-    "build>=1.2.2,<2.0.0",
+dev = [{ include-group = "code-quality" }, { include-group = "test" }]
+code-quality = ["prek~=0.4.1", "ruff~=0.14.0", "ty~=0.0.1"]
+test = [
+  "pytest~=9.0.0",
+  "pytest-cov~=7.0.0",
+  "pytest-xdist~=3.2.0",
+  "pytest-env~=0.8.0",
 ]
 {{ docs_group }}
-[build-system]
-requires = ["uv_build>=0.9.5,<0.10.0"]
-build-backend = "uv_build"
-
 [tool.uv.build-backend]
 module-name = {{ package_name }}
 module-root = "src"
@@ -34,22 +29,47 @@ module-root = "src"
 minversion = "9.0"
 pythonpath = ["src"]
 testpaths = ["tests"]
-addopts = ["-ra", "-q", {{ coverage_arg }}, "--cov-report=term-missing:skip-covered"]
+norecursedirs = [".git", ".venv", "build", "dist", "node_modules"]
+addopts = [
+  "-ra",
+  "-q",
+  {{ coverage_arg }},
+  "--cov-report=term-missing:skip-covered",
+]
+strict = true
 cache_dir = {{ pytest_cache_dir }}
 
+[tool.pytest_env]
+XDG_CACHE_HOME = { value = "{HOME}/.cache", transform = true, skip_if_set = true }
+
 [tool.ruff]
-line-length = 100
+line-length = 110
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "RUF",
+  "ARG",
+  "C4",
+  "PIE",
+  "PTH",
+  "RET",
+  "TID",
+  "TC",
+  "PERF",
+]
 ignore = ["E501"]
+fixable = ["ALL"]
+
+[tool.ty.rules]
+all = "error"
 
 [tool.forge]
 blueprint = "{{ blueprint_name }}>={{ blueprint_version }}"
-project_name = {{ project_name }}
-package_name = {{ package_name }}
-description = {{ description }}
-{{ author_name }}{{ author_email }}license = {{ license }}
-python_min = {{ python_min }}
-gitignore_profile = {{ gitignore_profile }}
-{{ forge_overrides }}
+{{ license }}gitignore_profile = {{ gitignore_profile }}
+{{ forge_ignore }}{{ forge_overrides }}

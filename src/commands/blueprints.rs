@@ -93,7 +93,7 @@ fn format_field(field: &BlueprintField) -> String {
 }
 
 fn create_command(blueprint_name: &str) -> String {
-    format!("forge new --blueprint {blueprint_name} --yes ...")
+    format!("forge init --blueprint {blueprint_name} --yes ...")
 }
 
 fn init_command(blueprint_name: &str) -> String {

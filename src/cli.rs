@@ -9,8 +9,8 @@ use crate::blueprint::BlueprintName;
 #[command(
     name = "forge",
     version,
-    about = "Create projects and sync repository infrastructure from blueprints",
-    after_help = "Quickstart:\n  forge blueprints\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge sync --path ./my-lib --check"
+    about = "Initialize projects and sync repository infrastructure from blueprints",
+    after_help = "Quickstart:\n  forge blueprints\n  forge init my-lib --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge sync --path ./my-lib --check"
 )]
 pub struct Cli {
     /// Colorized terminal output policy
@@ -37,16 +37,11 @@ pub enum Commands {
     Components(ComponentsArgs),
     /// Generate shell completion scripts
     Completions(CompletionsArgs),
-    /// Initialize Forge-managed infrastructure in an existing repository
+    /// Initialize a new or existing project with Forge-managed infrastructure
     #[command(
-        after_help = "Examples:\n  forge init --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge init --blueprint any-project --path . --project-name infra --description \"Shared repo infrastructure\" --dry-run"
+        after_help = "Examples:\n  forge init my-lib --blueprint python-library --project-name my-lib --description \"My library\" --yes\n  forge init . --blueprint any-project --project-name infra --description \"Shared repo infrastructure\" --dry-run\n  forge init tools --blueprint rust-library --project-name tools --package-name tools --description \"Internal tools\" --yes"
     )]
-    Init(InitArgs),
-    /// Create a new project from a blueprint
-    #[command(
-        after_help = "Examples:\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge new --blueprint python-library --project-name my-lib --description \"My library\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes --dry-run --diff\n  forge new --blueprint rust-library --project-name tools --package-name tools --description \"Internal tools\" --author-name \"Ada Lovelace\" --author-email ada@example.com --yes\n  forge new --blueprint any-project --project-name infra --description \"Shared repo infrastructure\" --yes"
-    )]
-    New(NewArgs),
+    Init(Box<InitArgs>),
     /// Sync managed infrastructure files with the project blueprint
     #[command(
         after_help = "Examples:\n  forge sync --path . --yes\n  forge sync --path . --dry-run\n  forge sync --path . --check\n  forge sync --path . --set prettier=true --yes"
@@ -101,9 +96,12 @@ pub struct InitArgs {
     /// Blueprint to initialize
     #[arg(long, value_enum)]
     pub blueprint: Option<BlueprintName>,
-    /// Existing repository path to initialize
-    #[arg(long, default_value = ".")]
+    /// Project path to initialize. Missing or empty paths create a new project; non-empty paths adopt an existing repository.
+    #[arg(value_name = "PATH", default_value = ".")]
     pub path: PathBuf,
+    /// Project path to initialize. Prefer the positional PATH argument.
+    #[arg(long = "path", value_name = "PATH", hide = true)]
+    pub path_flag: Option<PathBuf>,
     /// Project distribution name, for example my-library
     #[arg(long)]
     pub project_name: Option<String>,
@@ -186,6 +184,28 @@ pub struct InitArgs {
         default_value_t = false
     )]
     pub markdownlint: bool,
+    /// Forge-managed file path or directory prefix to ignore. May be repeated.
+    #[arg(long = "ignore", value_name = "PATH")]
+    pub ignored_files: Vec<String>,
+    /// Skip git repository initialization when creating a new project.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_git_history: bool,
+    /// Create and push the GitHub repository after creating a new project.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = false
+    )]
+    pub github: bool,
+    /// GitHub owner (user or org). Defaults to authenticated user.
+    #[arg(long)]
+    pub github_owner: Option<String>,
+    /// GitHub repository visibility. Defaults to public when --github is enabled.
+    #[arg(long, value_enum)]
+    pub github_visibility: Option<GithubVisibility>,
     /// Emit a machine-readable JSON init report
     #[arg(long, action = ArgAction::SetTrue)]
     pub json: bool,
@@ -195,9 +215,6 @@ pub struct InitArgs {
     /// Show a text diff for managed file changes in human output
     #[arg(long, action = ArgAction::SetTrue, conflicts_with = "json")]
     pub diff: bool,
-    /// Overwrite existing files that are selected as Forge-managed infrastructure
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub force: bool,
     /// Non-interactive mode
     #[arg(long, action = ArgAction::SetTrue)]
     pub yes: bool,
@@ -293,6 +310,9 @@ pub struct NewArgs {
         default_value_t = false
     )]
     pub markdownlint: bool,
+    /// Forge-managed file path or directory prefix to ignore. May be repeated.
+    #[arg(long = "ignore", value_name = "PATH")]
+    pub ignored_files: Vec<String>,
     /// Skip git repository initialization to avoid creating local git history.
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git_history: bool,

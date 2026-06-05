@@ -36,7 +36,7 @@ Current blueprints: `any-project`, `python-library`, `rust-library`.
 Create a Python library project:
 
 ```bash
-forge new \
+forge init \
   --blueprint python-library \
   --path ./demo-lib \
   --project-name demo-lib \
@@ -92,7 +92,7 @@ with that package manager instead.
 
 | Command             | What it does                                                                      |
 | ------------------- | --------------------------------------------------------------------------------- |
-| `forge new`         | Create a new project from a blueprint                                             |
+| `forge init`         | Create a new project from a blueprint                                             |
 | `forge init`        | Adopt Forge-managed infrastructure in an existing repository                      |
 | `forge sync`      | Refresh managed infrastructure in a Forge-managed project                         |
 | `forge self update` | Update a standalone-installer Forge binary                                        |
@@ -125,7 +125,7 @@ forge blueprints --json
 Forge writes two kinds of files:
 
 - **Project files** -- starter source code, package metadata, agent instructions.
-  Generated once by `forge new`.
+  Generated once by `forge init`.
 - **Managed files** -- CI workflows, hook configs, documentation config, editor
   settings. Regenerated on every `forge sync` run, so they stay current with
   the latest templates.
@@ -160,13 +160,13 @@ Interactive mode prompts for the blueprint and its fields, shows a review
 summary, then asks for confirmation before writing files.
 
 ```bash
-forge new
+forge init
 ```
 
 Non-interactive mode requires `--blueprint` and `--yes`:
 
 ```bash
-forge new --blueprint python-library --path ./my-pkg --project-name my-pkg --yes
+forge init --blueprint python-library --path ./my-pkg --project-name my-pkg --yes
 ```
 
 Other useful flags:
@@ -213,7 +213,7 @@ GitHub flags: `--github-owner` and `--github-visibility` require `--github`.
 Visibility defaults to public.
 
 In interactive mode, prompts include editable defaults and the review summary
-includes a copyable `forge new ... --yes` command so the same setup can be
+includes a copyable `forge init ... --yes` command so the same setup can be
 reused in automation. When stdin is not a terminal, prompt-driven setup fails
 fast with a `--yes` hint. Use `--yes`, `--json`, or `--dry-run` to bypass the
 confirmation step.
@@ -255,8 +255,8 @@ forge init \
 `forge init` writes Forge-managed infrastructure and `[tool.forge]` metadata, not
 starter source files. When adopting an existing `pyproject.toml`, Forge preserves
 its current project metadata and appends only Forge metadata. Other files that
-already exist at managed paths are reported as conflicts unless you review the
-plan and opt in with `--force`.
+already exist at managed paths are shown as overwrites; interactive runs ask for
+confirmation after showing the plan, and non-interactive runs use `--yes` to opt in.
 
 Use a dry run first when adopting a repository that already has infrastructure
 such as `pyproject.toml`, `README.md`, CI workflows, hooks, or a `justfile`:
@@ -269,8 +269,8 @@ forge init --path . --blueprint python-library --project-name my-library --descr
 | ----------- | ---------------------------------------- |
 | `--dry-run` | Preview what would be written            |
 | `--json`    | Machine-readable init report             |
-| `--diff`    | Include text diffs for conflicting files |
-| `--force`   | Overwrite conflicting managed paths      |
+| `--diff`    | Include text diffs for managed file changes |
+| `--yes`     | Confirm prompts and overwrite managed paths |
 
 After init succeeds, future changes flow through `forge sync --path .`.
 

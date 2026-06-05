@@ -15,30 +15,7 @@ fn write_executable(path: &std::path::Path, content: &str) {
 }
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
-    match cache_home_dir() {
-        Some(cache_dir) => cache_dir.join("pytest").join(project_name),
-        None => std::path::PathBuf::from(".pytest_cache").join(project_name),
-    }
-    .to_string_lossy()
-    .into_owned()
-}
-
-#[cfg(target_os = "macos")]
-fn cache_home_dir() -> Option<std::path::PathBuf> {
-    env_path("HOME").map(|home| home.join("Library").join("Caches"))
-}
-
-#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-fn cache_home_dir() -> Option<std::path::PathBuf> {
-    env_path("XDG_CACHE_HOME")
-        .filter(|path| path.is_absolute())
-        .or_else(|| env_path("HOME").map(|home| home.join(".cache")))
-}
-
-fn env_path(name: &str) -> Option<std::path::PathBuf> {
-    std::env::var_os(name)
-        .filter(|value| !value.is_empty())
-        .map(std::path::PathBuf::from)
+    format!("$XDG_CACHE_HOME/pytest/{project_name}")
 }
 
 #[test]
@@ -48,7 +25,7 @@ fn new_generates_python_project_with_metadata() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -86,17 +63,90 @@ fn new_generates_python_project_with_metadata() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("[tool.forge]"));
-    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
-    assert!(pyproject.contains("blueprint = \"python-library>=0.1.0\""));
-    assert!(pyproject.contains("project_name = \"grid-tools\""));
+    assert!(pyproject.starts_with("[build-system]\n"));
+    assert!(pyproject.contains("[tool.forge]\nblueprint = \"python-library>=0.1.0\""));
+    assert!(!pyproject.contains("project_name = \"grid-tools\""));
+    assert!(!pyproject.contains("package_name = \"grid_tools\""));
+    assert!(!pyproject.contains("license = \"BSD-3-Clause\""));
+    assert!(!pyproject.contains("python_min = \"3.11\""));
+    assert!(pyproject.contains(
+        "gitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
+    ));
+    assert!(!pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("ignore = [\"editorconfig\"]"));
+    assert!(
+        pyproject
+            .find("[project]")
+            .expect("project section should exist")
+            < pyproject
+                .find("[tool.forge]")
+                .expect("forge section should exist")
+    );
+    let forge_index = pyproject
+        .rfind("[tool.forge]")
+        .expect("forge section should exist");
+    let forge_tail = &pyproject[forge_index..];
+    assert!(!forge_tail.contains("\n[project]"));
+    assert!(!forge_tail.contains("\n[tool.ruff]"));
+    assert!(!forge_tail.contains("\n[tool.pytest.ini_options]"));
+    assert!(!pyproject.contains("{ include-group = \"build\" }"));
+    assert!(!pyproject.contains("\nbuild = ["));
 
     let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
     let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
         .as_str()
         .expect("pytest cache_dir should be a string");
     assert_eq!(pytest_cache_dir, expected_pytest_cache_dir("grid-tools"));
-    assert!(!pytest_cache_dir.contains("XDG_CACHE_HOME"));
+    assert_eq!(
+        pyproject_toml["tool"]["ruff"]["line-length"].as_integer(),
+        Some(110)
+    );
+    let ruff_select = pyproject_toml["tool"]["ruff"]["lint"]["select"]
+        .as_array()
+        .expect("ruff select should be an array")
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .expect("ruff select entries should be strings")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ruff_select,
+        [
+            "E", "F", "I", "UP", "B", "SIM", "RUF", "ARG", "C4", "PIE", "PTH", "RET", "TID", "TC",
+            "PERF",
+        ]
+    );
+    assert!(pyproject.contains("[tool.ty.rules]\nall = \"error\""));
+    assert!(
+        pyproject
+            .find("[tool.ruff.lint]")
+            .expect("ruff lint section should exist")
+            < pyproject
+                .find("[tool.ty.rules]")
+                .expect("ty rules section should exist")
+    );
+    assert!(pyproject.contains("strict = true"));
+    assert!(
+        pyproject.contains(
+            "norecursedirs = [\".git\", \".venv\", \"build\", \"dist\", \"node_modules\"]"
+        )
+    );
+    assert!(pyproject.contains(
+        "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
+    ));
+    let dev_dependencies = pyproject_toml["dependency-groups"]["dev"]
+        .as_array()
+        .expect("dev dependency group should be an array");
+    assert!(!dev_dependencies.iter().any(|dependency| {
+        dependency
+            .as_str()
+            .is_some_and(|value| value.starts_with("pytest-xdg"))
+    }));
+    assert!(pyproject.contains(
+        "[build-system]\nrequires = [\"uv_build~=0.11.7\"]\nbuild-backend = \"uv_build\""
+    ));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
     assert!(readme.contains("forge sync --path ."));
@@ -152,7 +202,15 @@ fn new_generates_python_project_with_metadata() {
     assert!(precommit.contains("entry: uv run --locked ruff format --check"));
     assert!(precommit.contains("entry: uv run --locked ruff check"));
     assert!(precommit.contains("entry: uv run --locked pytest -q --maxfail=1"));
+    assert!(precommit.contains("repo: https://github.com/crate-ci/typos"));
+    assert!(precommit.contains("id: typos"));
+    assert!(!precommit.contains("cspell"));
     assert!(!precommit.contains("uv run ruff check --fix"));
+
+    let typos = fs::read_to_string(project_path.join("typos.toml"))
+        .expect("typos config should be generated");
+    assert!(typos.contains("[default.extend-words]"));
+    assert!(!project_path.join(".cspell.json").exists());
 }
 
 #[test]
@@ -162,7 +220,7 @@ fn new_can_emit_json_report_without_human_output() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -245,7 +303,7 @@ fn new_json_quotes_cd_next_step_for_paths_with_spaces() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -288,7 +346,7 @@ fn new_dry_run_previews_files_without_writing() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -319,7 +377,7 @@ fn new_dry_run_previews_files_without_writing() {
         .stdout(contains("github actions ("))
         .stdout(contains("create  pyproject.toml"))
         .stdout(contains(format!(
-            "forge new --path {} --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --yes",
+            "forge init --path {} --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --yes",
             project_path.display()
         )));
 
@@ -335,7 +393,7 @@ fn new_dry_run_color_always_forces_ansi_styles() {
     cmd.args([
         "--color",
         "always",
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -369,7 +427,7 @@ fn new_dry_run_reports_component_required_tools() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -398,7 +456,7 @@ fn new_dry_run_color_never_disables_ansi_styles() {
     cmd.args([
         "--color",
         "never",
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -432,7 +490,7 @@ fn new_dry_run_diff_shows_generated_text_without_writing() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -470,7 +528,7 @@ fn new_diff_requires_dry_run() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -503,7 +561,7 @@ fn new_dry_run_can_emit_json_report_without_writing() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -555,7 +613,7 @@ fn new_dry_run_can_emit_json_report_without_writing() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge new --path {} --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --yes",
+            "forge init --path {} --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --yes",
             project_path.display()
         )])
     );
@@ -570,7 +628,7 @@ fn new_dry_run_json_quotes_apply_command_path_with_spaces() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -600,7 +658,7 @@ fn new_dry_run_json_quotes_apply_command_path_with_spaces() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge new --path '{}' --blueprint any-project --project-name grid-tools --description 'Grid toolchain' --prettier --github --github-owner example-org --github-visibility private --yes",
+            "forge init --path '{}' --blueprint any-project --project-name grid-tools --description 'Grid toolchain' --prettier --github --github-owner example-org --github-visibility private --yes",
             project_path.display()
         )])
     );
@@ -614,7 +672,7 @@ fn new_dry_run_reports_github_intent_without_requiring_gh() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -644,7 +702,7 @@ fn new_dry_run_json_reports_github_visibility() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -712,7 +770,7 @@ fn new_github_creation_locks_dependencies_before_initial_commit() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.env("PATH", path);
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -728,7 +786,7 @@ fn new_github_creation_locks_dependencies_before_initial_commit() {
         "--json",
     ]);
 
-    let output = cmd.output().expect("new --github should run");
+    let output = cmd.output().expect("init --github should run");
     assert!(output.status.success());
 
     assert!(project_path.join("uv.lock").exists());
@@ -793,7 +851,7 @@ fn new_github_lock_failure_reports_local_recovery_context() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.env("PATH", path);
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -863,7 +921,7 @@ fn new_github_creation_failure_reports_local_recovery_context() {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.env("PATH", path);
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -901,7 +959,7 @@ fn new_defaults_python_package_name_from_project_name() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -921,7 +979,8 @@ fn new_defaults_python_package_name_from_project_name() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("package_name = \"grid_tools\""));
+    assert!(pyproject.contains("module-name = \"grid_tools\""));
+    assert!(!pyproject.contains("package_name = \"grid_tools\""));
     assert!(project_path.join("src/grid_tools/__init__.py").exists());
     assert!(project_path.join("tests/test_grid_tools.py").exists());
 }
@@ -933,7 +992,7 @@ fn new_yes_mode_uses_library_defaults_without_requiring_defaulted_fields() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -949,8 +1008,9 @@ fn new_yes_mode_uses_library_defaults_without_requiring_defaulted_fields() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("license = \"BSD-3-Clause\""));
-    assert!(pyproject.contains("python_min = \"3.11\""));
+    assert!(pyproject.contains("license = { file = \"LICENSE.txt\" }"));
+    assert!(!pyproject.contains("license = \"BSD-3-Clause\""));
+    assert!(!pyproject.contains("python_min = \"3.11\""));
     assert!(pyproject.contains("requires-python = \">=3.11,<3.15\""));
     assert!(!pyproject.contains("authors ="));
     assert!(!pyproject.contains("author_name ="));
@@ -964,7 +1024,7 @@ fn new_explains_invalid_default_python_package_name() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -994,7 +1054,7 @@ fn new_yes_mode_reports_all_missing_required_fields() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1021,7 +1081,7 @@ fn new_json_yes_mode_missing_required_keeps_stdout_empty() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1054,7 +1114,7 @@ fn new_yes_mode_required_field_validation_uses_selected_blueprint() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1079,7 +1139,7 @@ fn new_non_tty_dry_run_can_run_without_yes_when_flags_are_explicit() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1106,7 +1166,7 @@ fn new_non_tty_requires_blueprint_when_interactive_setup_is_unavailable() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--path",
         project_path.to_str().expect("valid UTF-8 path"),
         "--project-name",
@@ -1135,7 +1195,7 @@ fn new_escapes_toml_metadata_without_losing_user_input() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1165,18 +1225,9 @@ fn new_escapes_toml_metadata_without_losing_user_input() {
             .expect("project description should be a string"),
         description
     );
-    assert_eq!(
-        parsed["tool"]["forge"]["description"]
-            .as_str()
-            .expect("forge description should be a string"),
-        description
-    );
-    assert_eq!(
-        parsed["tool"]["forge"]["author_name"]
-            .as_str()
-            .expect("forge author_name should be a string"),
-        author_name
-    );
+    assert!(parsed["tool"]["forge"].get("description").is_none());
+    assert!(parsed["tool"]["forge"].get("author_name").is_none());
+    assert!(parsed["tool"]["forge"].get("author_email").is_none());
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
@@ -1199,7 +1250,7 @@ fn new_escapes_rust_toml_metadata_without_losing_user_input() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -1268,7 +1319,7 @@ fn new_can_generate_prettier_component() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1291,7 +1342,8 @@ fn new_can_generate_prettier_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("prettier = true"));
+    assert!(!pyproject.contains("prettier = true"));
+    assert!(!pyproject.contains("[tool.forge.overrides]"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
@@ -1313,7 +1365,7 @@ fn new_accepts_explicit_false_for_prettier_component() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1348,7 +1400,7 @@ fn new_can_generate_editorconfig_component() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1382,7 +1434,7 @@ fn new_can_generate_markdownlint_component() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1405,7 +1457,8 @@ fn new_can_generate_markdownlint_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("[tool.forge.overrides]"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -1425,7 +1478,7 @@ fn new_accepts_value_less_optional_workflow_flags() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1463,7 +1516,7 @@ fn new_dry_run_warns_when_pypi_publishing_is_selected() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1501,7 +1554,7 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1525,8 +1578,9 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("docs = false"));
-    assert!(pyproject.contains("codecov = false"));
+    assert!(pyproject.contains("ignore = [\"docs\", \"codecov\", \"editorconfig\"]"));
+    assert!(!pyproject.contains("docs = false"));
+    assert!(!pyproject.contains("codecov = false"));
     assert!(!pyproject.contains("@astrojs/starlight"));
 
     let justfile =
@@ -1552,7 +1606,7 @@ fn new_rejects_python_only_managed_options_for_rust_blueprint() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -1582,7 +1636,7 @@ fn new_rejects_python_only_managed_options_for_any_project_blueprint() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1608,7 +1662,7 @@ fn new_rejects_language_specific_options_for_any_project_blueprint() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1635,7 +1689,7 @@ fn new_json_rejects_unsupported_option_keeps_stdout_empty() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1662,6 +1716,26 @@ fn new_json_rejects_unsupported_option_keeps_stdout_empty() {
 }
 
 #[test]
+fn new_path_rejects_nonempty_destination_before_interactive_setup() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("repo-infra");
+    fs::create_dir(&project_path).expect("destination directory should create");
+    fs::write(project_path.join("README.md"), "existing").expect("existing file should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+
+    cmd.assert()
+        .failure()
+        .stderr(contains("interactive confirmation requires a terminal"))
+        .stderr(contains("error_code: FORGE_E_INPUT"));
+}
+
+#[test]
 fn new_file_path_explains_destination_directory_requirement() {
     let temp = TempDir::new().expect("temp dir should create");
     let destination_file = temp.path().join("not-a-directory");
@@ -1669,7 +1743,7 @@ fn new_file_path_explains_destination_directory_requirement() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1683,9 +1757,9 @@ fn new_file_path_explains_destination_directory_requirement() {
 
     cmd.assert()
         .failure()
-        .stderr(contains("destination path is not a directory"))
+        .stderr(contains("repository path is not a directory"))
         .stderr(contains(destination_file.display().to_string()))
-        .stderr(contains("error_code: FORGE_E_INPUT"));
+        .stderr(contains("error_code: FORGE_E_ENV"));
 }
 
 #[test]
@@ -1696,7 +1770,7 @@ fn new_json_file_path_keeps_stdout_empty() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1716,8 +1790,8 @@ fn new_json_file_path_keeps_stdout_empty() {
     assert!(stdout.is_empty());
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("destination path is not a directory"));
-    assert!(stderr.contains("error_code: FORGE_E_INPUT"));
+    assert!(stderr.contains("repository path is not a directory"));
+    assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
 #[test]
@@ -1727,7 +1801,7 @@ fn new_rejects_python_version_for_rust_blueprint() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -1758,7 +1832,7 @@ fn new_rejects_invalid_python_min_before_writing_files() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1791,7 +1865,7 @@ fn new_rejects_python_min_that_conflicts_with_generated_upper_bound() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1824,7 +1898,7 @@ fn new_generates_python_ci_matrix_without_versions_below_python_min() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1860,7 +1934,7 @@ fn new_rejects_github_owner_without_github_creation() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1887,7 +1961,7 @@ fn new_rejects_github_visibility_without_github_creation() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1914,7 +1988,7 @@ fn new_generates_language_agnostic_infra_project() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -1987,7 +2061,7 @@ fn new_generates_rust_library_project() {
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",

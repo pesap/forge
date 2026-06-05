@@ -27,11 +27,9 @@
     hooks:
       - id: commitizen
       - id: commitizen-branch
-  - repo: local
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.47.2
     hooks:
-      - id: cspell
-        name: cspell
-        entry: uvx cspell --no-progress --no-must-find-files
-        language: system
-        files: \.(md|txt|py|toml|ya?ml|json)$
+      - id: typos
+        args: []
 {{ uv_lock_hook }}

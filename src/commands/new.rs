@@ -10,7 +10,9 @@ use toml::Value;
 
 use crate::blueprint::any_project;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
-use crate::blueprint::files::{GeneratedFiles, plan_generated_files, write_generated_files};
+use crate::blueprint::files::{
+    GeneratedFiles, ManagedFileAction, count_conflicts, plan_generated_files, write_generated_files,
+};
 use crate::blueprint::python_library;
 use crate::blueprint::rust_library;
 use crate::blueprint::{
@@ -26,8 +28,15 @@ const DEFAULT_PYTHON_MIN: &str = "3.11";
 
 pub fn run(args: NewArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
-    ensure_interactive_setup_allowed(args.yes, args.json, args.dry_run, stdin_is_terminal)?;
     crate::commands::validate_diff_mode(args.diff, args.dry_run, false)?;
+    if let Some(destination) = &args.path {
+        validate_explicit_destination_before_setup(
+            destination,
+            should_confirm_interactive_setup(args.yes, args.json, args.dry_run)
+                && stdin_is_terminal,
+        )?;
+    }
+    ensure_interactive_setup_allowed(args.yes, args.json, args.dry_run, stdin_is_terminal)?;
     let blueprint = select_blueprint(args.blueprint, args.yes)?;
     validate_explicit_options(blueprint, &args)?;
     validate_required_fields_for_yes(blueprint, &args)?;
@@ -37,7 +46,15 @@ pub fn run(args: NewArgs) -> Result<()> {
     let destination = destination_path(&project.project_name, &args.path)?;
     let replay_command =
         preview_new_command(&args, blueprint, &destination, &project, stdin_is_terminal);
-    validate_destination_is_available(&destination)?;
+    if args.path.is_none() {
+        validate_destination_is_available(&destination)?;
+    } else if should_confirm_interactive_setup(args.yes, args.json, args.dry_run)
+        && !confirm_destination_overwrites(&destination, &project.files)?
+    {
+        ui::section("Project creation canceled");
+        ui::success("no files changed");
+        return Ok(());
+    }
     let review_context = new_setup_review_context(&args, blueprint, &project, &replay_command);
     if !confirm_interactive_setup(
         args.yes,
@@ -496,10 +513,17 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
         .get("python_min")
         .and_then(Value::as_str)
         .map(str::to_string);
-    resolved.gitignore_profile = forge
-        .get("gitignore_profile")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    resolved.gitignore_profile = forge.get("gitignore_profile").and_then(|value| {
+        value.as_str().map(str::to_string).or_else(|| {
+            value.as_array().map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+        })
+    });
 
     resolved.docs = option_flag(options, "docs").unwrap_or(resolved.docs);
     resolved.codecov = option_flag(options, "codecov");
@@ -518,7 +542,7 @@ fn option_flag(options: &toml::Table, key: &str) -> Option<bool> {
 fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> String {
     let mut parts = vec![
         "forge".to_string(),
-        "new".to_string(),
+        "init".to_string(),
         "--path".to_string(),
         ui::shell_arg(destination.display().to_string()),
         "--blueprint".to_string(),
@@ -826,9 +850,11 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
     let mut project_name = args.project_name.clone();
     let mut description = args.description.clone();
     let mut docs = docs_enabled(args);
+    let mut ignored_files = args.ignored_files.clone();
     let mut components = component_selection_from_args(args);
 
     if !args.yes && std::io::stdin().is_terminal() {
+        prompt_managed_files(&mut ignored_files, BlueprintName::AnyProject)?;
         prompt_if_missing_validated(
             &mut project_name,
             "Project name",
@@ -850,6 +876,7 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
         description: require_field("description", description)?,
         docs,
         components,
+        ignored_files,
     })
 }
 
@@ -865,9 +892,11 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
     let mut docs = docs_enabled(args);
     let mut codecov = codecov_enabled(args);
     let mut pypi_publish = pypi_publish_enabled(args);
+    let mut ignored_files = args.ignored_files.clone();
     let mut components = component_selection_from_args(args);
 
     if !args.yes && std::io::stdin().is_terminal() {
+        prompt_managed_files(&mut ignored_files, BlueprintName::PythonLibrary)?;
         prompt_if_missing_validated(
             &mut project_name,
             "Project name",
@@ -928,6 +957,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         pypi_publish,
         python_rules: true,
         components,
+        ignored_files,
     })
 }
 
@@ -939,9 +969,11 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
     let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut docs = docs_enabled(args);
+    let mut ignored_files = args.ignored_files.clone();
     let mut components = component_selection_from_args(args);
 
     if !args.yes && std::io::stdin().is_terminal() {
+        prompt_managed_files(&mut ignored_files, BlueprintName::RustLibrary)?;
         prompt_if_missing_validated(
             &mut project_name,
             "Project name",
@@ -986,6 +1018,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         docs,
         rust_rules: true,
         components,
+        ignored_files,
     })
 }
 
@@ -1083,15 +1116,86 @@ fn default_python_package_name(project_name: &str) -> Result<String> {
     Ok(package_name)
 }
 
-fn prompt_bool(prompt: &str, default: bool) -> Result<bool> {
+pub(crate) fn confirm_yes_no(prompt: &str, default: bool) -> Result<bool> {
     Ok(Confirm::new()
         .with_prompt(prompt)
         .default(default)
         .interact()?)
 }
 
+fn prompt_bool(prompt: &str, default: bool) -> Result<bool> {
+    confirm_yes_no(prompt, default)
+}
+
 fn component_selection_from_args(args: &NewArgs) -> ComponentSelection {
     ComponentSelection::from_flags(args.prettier, args.editorconfig, args.markdownlint)
+}
+
+fn prompt_managed_files(ignored_files: &mut Vec<String>, blueprint: BlueprintName) -> Result<()> {
+    let options = managed_file_prompt_options(blueprint);
+    let labels = options
+        .iter()
+        .map(|option| option.label.clone())
+        .collect::<Vec<_>>();
+    let defaults = options
+        .iter()
+        .map(|option| !ignored_files.contains(&option.path))
+        .collect::<Vec<_>>();
+
+    let selected = MultiSelect::new()
+        .with_prompt("Managed infrastructure files (space to toggle)")
+        .items(&labels)
+        .defaults(&defaults)
+        .interact()?;
+
+    *ignored_files = options
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !selected.contains(index))
+        .map(|(_, option)| option.path.clone())
+        .collect();
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ManagedFilePromptOption {
+    path: String,
+    label: String,
+}
+
+fn managed_file_prompt_options(blueprint: BlueprintName) -> Vec<ManagedFilePromptOption> {
+    let mut paths = vec![
+        "README.md",
+        ".gitignore",
+        "pyproject.toml",
+        "justfile",
+        ".pre-commit-config.yaml",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/workflows/",
+    ];
+    match blueprint {
+        BlueprintName::AnyProject => {}
+        BlueprintName::PythonLibrary => paths.extend([
+            "LICENSE.txt",
+            ".python-version",
+            "typos.toml",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            ".release-please-config.json",
+            ".release-please-manifest.json",
+        ]),
+        BlueprintName::RustLibrary => paths.extend(["LICENSE", "Cargo.toml"]),
+    }
+
+    paths.sort_unstable();
+    paths
+        .into_iter()
+        .map(|path| ManagedFilePromptOption {
+            path: path.to_string(),
+            label: path.to_string(),
+        })
+        .collect()
 }
 
 fn prompt_supported_components(
@@ -1298,33 +1402,106 @@ fn destination_path(project_name: &str, path: &Option<PathBuf>) -> Result<PathBu
     }
 }
 
-fn validate_destination_is_available(path: &Path) -> Result<()> {
-    if path.exists() {
-        let metadata = fs::metadata(path)
-            .with_context(|| format!("failed to read destination {}", path.display()))?;
-        if !metadata.is_dir() {
-            return Err(coded_error(
-                ErrorCode::Input,
-                format!(
-                    "destination path is not a directory: {}; choose a directory path",
-                    path.display()
-                ),
-            ));
-        }
-
-        let mut entries = fs::read_dir(path)
-            .with_context(|| format!("failed to read destination {}", path.display()))?;
-        if entries.next().is_some() {
-            return Err(coded_error(
-                ErrorCode::Conflict,
-                format!(
-                    "destination already exists and is not empty: {}",
-                    path.display()
-                ),
-            ));
-        }
+fn validate_explicit_destination_before_setup(path: &Path, interactive_review: bool) -> Result<()> {
+    validate_destination_path_shape(path)?;
+    if !interactive_review && destination_has_entries(path)? {
+        return Err(nonempty_destination_error(path));
     }
     Ok(())
+}
+
+fn validate_destination_is_available(path: &Path) -> Result<()> {
+    validate_destination_path_shape(path)?;
+    if destination_has_entries(path)? {
+        return Err(nonempty_destination_error(path));
+    }
+    Ok(())
+}
+
+fn validate_destination_path_shape(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("failed to read destination {}", path.display()))?;
+    if !metadata.is_dir() {
+        return Err(coded_error(
+            ErrorCode::Input,
+            format!(
+                "destination path is not a directory: {}; choose a directory path",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn destination_has_entries(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let mut entries = fs::read_dir(path)
+        .with_context(|| format!("failed to read destination {}", path.display()))?;
+    Ok(entries.next().is_some())
+}
+
+fn nonempty_destination_error(path: &Path) -> anyhow::Error {
+    coded_error(
+        ErrorCode::Conflict,
+        format!(
+            "destination already exists and is not empty: {}",
+            path.display()
+        ),
+    )
+}
+
+fn confirm_destination_overwrites(root: &Path, files: &GeneratedFiles) -> Result<bool> {
+    if !destination_has_entries(root)? {
+        return Ok(true);
+    }
+
+    let actions = plan_generated_files(root, files);
+    let overwrites = actions
+        .iter()
+        .filter(|action| {
+            matches!(
+                action,
+                ManagedFileAction::Update(_) | ManagedFileAction::Relink(_)
+            )
+        })
+        .collect::<Vec<_>>();
+    let conflict_count = count_conflicts(&actions);
+
+    if overwrites.is_empty() && conflict_count == 0 {
+        return Ok(true);
+    }
+
+    ui::section("Destination conflicts");
+    ui::info("path", root.display());
+    for action in &overwrites {
+        ui::action(action.label(), action.path().display());
+    }
+    for action in actions.iter().filter(|action| action.blocks_update()) {
+        ui::action("conflict", action.path().display());
+        if let Some(reason) = action.reason() {
+            ui::info("reason", reason);
+        }
+    }
+    diff::print_diffs(root, &actions, files)?;
+
+    if conflict_count > 0 {
+        return Err(coded_error(
+            ErrorCode::Conflict,
+            "destination has conflicts that cannot be overwritten safely",
+        ));
+    }
+
+    Ok(Confirm::new()
+        .with_prompt("Overwrite conflicting destination files?")
+        .default(false)
+        .interact()?)
 }
 
 fn ensure_destination_directory_exists(path: &Path) -> Result<()> {
@@ -1621,6 +1798,44 @@ mod tests {
     }
 
     #[test]
+    fn explicit_destination_validation_defers_nonempty_directory_for_interactive_review() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let destination = temp.path().join("existing");
+        fs::create_dir_all(&destination).expect("destination dir should create");
+        fs::write(destination.join("README.md"), "existing").expect("file should write");
+
+        validate_explicit_destination_before_setup(&destination, true)
+            .expect("interactive setup should review non-empty destinations after prompts");
+
+        let error = validate_explicit_destination_before_setup(&destination, false)
+            .expect_err("non-interactive setup should fail before prompts");
+        assert!(
+            error
+                .to_string()
+                .contains("destination already exists and is not empty")
+        );
+    }
+
+    #[test]
+    fn destination_overwrite_review_detects_generated_file_updates() {
+        let temp = TempDir::new().expect("temp dir should create");
+        fs::write(temp.path().join("README.md"), "existing\n").expect("file should write");
+        let mut files = GeneratedFiles::new();
+        files.insert(
+            PathBuf::from("README.md"),
+            crate::blueprint::files::GeneratedFile::text("generated\n"),
+        );
+
+        let actions = plan_generated_files(temp.path(), &files);
+
+        assert!(
+            actions
+                .iter()
+                .any(|action| matches!(action, ManagedFileAction::Update(path) if path == Path::new("README.md")))
+        );
+    }
+
+    #[test]
     fn ensure_destination_directory_exists_creates_missing_directory() {
         let temp = TempDir::new().expect("temp dir should create");
         let destination = temp.path().join("new-project");
@@ -1708,6 +1923,7 @@ mod tests {
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: true,
             github_owner: Some("example-org".to_string()),
@@ -1726,7 +1942,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge new --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
+            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -1801,6 +2017,7 @@ mod tests {
             prettier: true,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -1900,6 +2117,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -1942,6 +2160,7 @@ mod tests {
             prettier: true,
             editorconfig: true,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -1987,6 +2206,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -2057,7 +2277,7 @@ mod tests {
                 blueprint: BlueprintName::AnyProject,
                 options: &options,
                 prompt: "Create this project?",
-                context: vec![SetupReviewItem::new("apply", "forge new --yes ...")],
+                context: vec![SetupReviewItem::new("apply", "forge init --yes ...")],
             },
         )
         .expect("dry-run confirmation should be bypassed");
@@ -2084,6 +2304,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -2128,7 +2349,7 @@ mod tests {
             &args,
             BlueprintName::AnyProject,
             &project,
-            "forge new --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infrastructure' --yes",
+            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infrastructure' --yes",
         );
 
         assert!(context.iter().any(|item| item.label == "files"));
@@ -2154,7 +2375,7 @@ mod tests {
             .expect("apply command should be present");
         assert_eq!(
             apply.value,
-            "forge new --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infrastructure' --yes"
+            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infrastructure' --yes"
         );
     }
 
@@ -2190,6 +2411,7 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
             no_git_history: false,
             github: false,
             github_owner: None,

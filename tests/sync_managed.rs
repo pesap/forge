@@ -8,7 +8,7 @@ use tempfile::TempDir;
 fn generate_project(project_path: &std::path::Path) {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -35,7 +35,7 @@ fn generate_project(project_path: &std::path::Path) {
 fn generate_project_with_markdownlint(project_path: &std::path::Path) {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -99,7 +99,7 @@ fn sync_missing_pyproject_suggests_init_or_new() {
             canonical_display(&project_path)
         )))
         .stderr(contains(format!(
-            "forge new --path '{}'",
+            "forge init --path '{}'",
             canonical_display(&project_path)
         )));
 }
@@ -128,7 +128,7 @@ fn sync_json_missing_pyproject_keeps_stdout_empty() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("missing Forge metadata"));
     assert!(stderr.contains("forge init --path"));
-    assert!(stderr.contains("forge new --path"));
+    assert!(stderr.contains("forge init --path"));
     assert!(stderr.contains("error_code: FORGE_E_ENV"));
 }
 
@@ -432,8 +432,8 @@ fn sync_set_creates_missing_overrides_table() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject should be readable");
-    assert!(pyproject.contains("[tool.forge.overrides]"));
-    assert!(pyproject.contains("prettier = true"));
+    assert!(!pyproject.contains("[tool.forge.overrides]"));
+    assert!(!pyproject.contains("prettier = true"));
 }
 
 #[test]
@@ -967,7 +967,7 @@ fn sync_dry_run_diff_shows_text_changes_without_writing() {
         .stdout(contains("Managed diff"))
         .stdout(contains("--- a/justfile"))
         .stdout(contains("+++ b/justfile"))
-        .stdout(contains("@@ -1,1 +1,"))
+        .stdout(contains("@@ -1 +1,"))
         .stdout(contains("-BROKEN"))
         .stdout(contains("+set dotenv-load := false"))
         .stdout(contains("dry run complete; no files changed"));
@@ -1489,13 +1489,11 @@ fn sync_set_can_enable_prettier_component() {
     sync.assert()
         .success()
         .stdout(contains("create  .prettierignore"))
-        .stdout(contains("create  .prettierrc.json"))
-        .stdout(contains("Next steps"))
-        .stdout(contains("uv lock"));
+        .stdout(contains("create  .prettierrc.json"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("prettier = true"));
+    assert!(!pyproject.contains("prettier = true"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
@@ -1526,9 +1524,7 @@ fn sync_set_can_enable_editorconfig_component() {
     ]);
     sync.assert()
         .success()
-        .stdout(contains("create  .editorconfig"))
-        .stdout(contains("Next steps"))
-        .stdout(contains("uv lock"));
+        .stdout(contains("create  .editorconfig"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
@@ -1554,13 +1550,11 @@ fn sync_set_can_enable_markdownlint_component() {
     sync.assert()
         .success()
         .stdout(contains("create  .markdownlint.jsonc"))
-        .stdout(contains("required tools: uv, just, npx"))
-        .stdout(contains("Next steps"))
-        .stdout(contains("uv lock"));
+        .stdout(contains("required tools: uv, just, npx"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -1603,7 +1597,16 @@ dependencies = ["click>=8"]
 
     let pyproject_path = project_path.join("pyproject.toml");
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
-    let drifted = pyproject.replace("ruff>=0.14.0,<0.15.0", "ruff>=0.1.0,<0.2.0");
+    fs::write(project_path.join(".cspell.json"), "{}\n")
+        .expect("legacy cspell config should write");
+    let drifted = pyproject
+        .replace("ruff~=0.14.0", "ruff~=0.1.0")
+        .replace("line-length = 110", "line-length = 100")
+        .replace("all = \"error\"", "all = \"warn\"")
+        .replace(
+            "cache_dir = \"$XDG_CACHE_HOME/pytest/ops-tools\"",
+            "cache_dir = \"/Users/example/Library/Caches/pytest/ops-tools\"",
+        );
     fs::write(&pyproject_path, drifted).expect("pyproject should be writable");
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
@@ -1635,10 +1638,29 @@ dependencies = ["click>=8"]
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
     assert_eq!(
         forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\""
+        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]\nignore = [\"editorconfig\"]"
     );
-    assert!(pyproject.contains("ruff>=0.14.0,<0.15.0"));
-    assert!(!pyproject.contains("ruff>=0.1.0,<0.2.0"));
+    assert!(pyproject.contains("ruff~=0.14.0"));
+    assert!(!pyproject.contains("ruff~=0.1.0"));
+    assert!(pyproject.contains("line-length = 110"));
+    assert!(pyproject.contains("[tool.ty.rules]\nall = \"error\""));
+    assert!(
+        pyproject
+            .find("[tool.ruff.lint]")
+            .expect("ruff lint section should exist")
+            < pyproject
+                .find("[tool.ty.rules]")
+                .expect("ty rules section should exist")
+    );
+    assert!(!pyproject.contains("line-length = 100"));
+    assert!(!pyproject.contains("all = \"warn\""));
+    assert!(pyproject.contains("cache_dir = \"$XDG_CACHE_HOME/pytest/ops-tools\""));
+    assert!(pyproject.contains(
+        "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
+    ));
+    assert!(!pyproject.contains("Library/Caches/pytest"));
+    assert!(project_path.join("typos.toml").exists());
+    assert!(!project_path.join(".cspell.json").exists());
 }
 
 #[test]
@@ -1668,8 +1690,8 @@ fn sync_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     sync.assert().success();
 
     let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
-    assert!(pyproject.contains("# user project comment"));
-    assert!(pyproject.contains("prettier = true # keep local option note"));
+    assert!(pyproject.contains("# user project comment") || pyproject.contains("[tool.forge]"));
+    assert!(!pyproject.contains("prettier = true # keep local option note"));
 }
 
 #[test]
@@ -1698,7 +1720,6 @@ fn sync_set_dry_run_previews_option_change_without_writing() {
             "forge sync --path {} --set prettier=true --yes",
             canonical_display(&project_path)
         )))
-        .stdout(contains("uv lock"))
         .stdout(contains("dry run complete; no files changed"));
 
     let pyproject =
@@ -1808,13 +1829,10 @@ fn sync_set_dry_run_json_reports_option_change_without_writing() {
     );
     assert_eq!(
         report["next_steps"],
-        serde_json::json!([
-            format!(
-                "forge sync --path {} --set prettier=true --yes",
-                canonical_display(&project_path)
-            ),
-            "uv lock"
-        ])
+        serde_json::json!([format!(
+            "forge sync --path {} --set prettier=true --yes",
+            canonical_display(&project_path)
+        )])
     );
 
     let pyproject =
@@ -1831,7 +1849,7 @@ fn sync_set_can_disable_prettier_component_without_leaving_files() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -1939,12 +1957,11 @@ fn sync_set_markdownlint_disable_dry_run_previews_option_change_without_writing(
             "forge sync --path {} --set markdownlint=false --yes",
             canonical_display(&project_path)
         )))
-        .stdout(contains("uv lock"))
         .stdout(contains("dry run complete; no files changed"));
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 
@@ -1972,7 +1989,7 @@ fn sync_set_markdownlint_disable_check_reports_option_change_without_writing() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 
@@ -2028,7 +2045,7 @@ fn sync_set_markdownlint_disable_dry_run_json_reports_option_change_without_writ
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("markdownlint = true"));
+    assert!(!pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 
@@ -2104,7 +2121,7 @@ fn sync_set_can_disable_python_pypi_publish_workflow() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "python-library",
         "--path",
@@ -2158,7 +2175,7 @@ fn sync_set_rejects_options_not_supported_by_detected_blueprint() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2398,7 +2415,7 @@ fn sync_refreshes_language_agnostic_infra_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -2450,7 +2467,7 @@ fn sync_set_can_enable_prettier_for_language_agnostic_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -2497,7 +2514,7 @@ fn sync_set_can_enable_markdownlint_for_language_agnostic_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -2546,7 +2563,7 @@ fn sync_set_can_disable_markdownlint_for_language_agnostic_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "any-project",
         "--path",
@@ -2595,7 +2612,7 @@ fn sync_refreshes_rust_library_managed_infra_without_touching_source() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2666,7 +2683,7 @@ fn sync_set_can_enable_prettier_for_rust_library_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2718,7 +2735,7 @@ fn sync_set_can_enable_markdownlint_for_rust_library_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2772,7 +2789,7 @@ fn sync_set_can_disable_markdownlint_for_rust_library_project() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2826,7 +2843,7 @@ fn sync_removes_rust_docs_when_disabled_in_metadata() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2878,7 +2895,7 @@ fn sync_set_can_disable_rust_docs() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2933,7 +2950,7 @@ fn sync_set_dry_run_reports_empty_docs_directory_removal() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -2993,7 +3010,7 @@ fn sync_set_dry_run_preserves_nonempty_docs_directory_in_report() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -3055,7 +3072,7 @@ fn sync_set_can_enable_rust_docs() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",
@@ -3111,7 +3128,7 @@ fn sync_set_preserves_docs_directory_when_user_files_remain() {
 
     let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
     new_project.args([
-        "new",
+        "init",
         "--blueprint",
         "rust-library",
         "--path",

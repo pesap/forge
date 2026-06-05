@@ -148,7 +148,7 @@ fn read_pyproject_for_path_scope(root: &Path) -> Result<String> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Err(coded_error(
             ErrorCode::Env,
             format!(
-                "missing Forge metadata at {}; use `forge init --path {}` to adopt this repository or `forge new --path {}` to create a new project",
+                "missing Forge metadata at {}; use `forge init --path {}` to adopt this repository or `forge init --path {}` to create a new project",
                 pyproject_path.display(),
                 ui::shell_arg(root.display().to_string()),
                 ui::shell_arg(root.display().to_string())

@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::Path;
@@ -7,23 +6,30 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::blueprint::files::{
-    GeneratedFile, GeneratedFiles, ManagedFileAction, ManagedFileConflict, count_changes,
-    count_conflicts, plan_generated_files, write_generated_files,
+    GeneratedFile, GeneratedFiles, ManagedFileAction, count_changes, count_conflicts,
+    plan_generated_files, write_generated_files,
 };
 use crate::blueprint::{
     BlueprintName, detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
     minimal_external_pyproject_metadata, python_library, rust_library,
 };
-use crate::cli::{GithubVisibility, InitArgs, NewArgs};
+use crate::cli::{InitArgs, NewArgs};
+use crate::commands::dependency_groups::sync_dependency_groups;
 use crate::commands::diff;
 use crate::commands::new::{self, ProjectRender, RenderScope};
+use crate::commands::pyproject_sections::{sync_build_system, sync_pytest_sections};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
 const PYPROJECT_TOML: &str = "pyproject.toml";
-const FORGE_DEPENDENCY_GROUP: &str = "forge";
 
 pub fn run(mut args: InitArgs) -> Result<()> {
+    if let Some(path) = args.path_flag.take() {
+        args.path = path;
+    }
+    if should_create_project(&args.path)? {
+        return new::run(new_args_from_init_args(&args));
+    }
     let stdin_is_terminal = std::io::stdin().is_terminal();
     new::ensure_interactive_setup_allowed(args.yes, args.json, args.dry_run, stdin_is_terminal)?;
     crate::commands::validate_diff_mode(args.diff, args.dry_run, false)?;
@@ -39,12 +45,9 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
     let adopted_existing_pyproject = adopt_existing_pyproject(&args.path, &mut project.files)?;
     let infrastructure = new::managed_infrastructure_summary(&project.files);
-    let apply_command =
-        preview_init_command(&args, blueprint, &project, args.force, stdin_is_terminal);
-    let mut actions = plan_generated_files(&args.path, &project.files);
-    if !args.force {
-        mark_existing_files_as_conflicts(&mut actions, adopted_existing_pyproject);
-    }
+    let apply_command = preview_init_command(&args, blueprint, &project, stdin_is_terminal);
+    let actions = plan_generated_files(&args.path, &project.files);
+    let overwrites = count_overwrites(&actions, adopted_existing_pyproject);
     let changes = count_changes(&actions);
     let conflicts = count_conflicts(&actions);
 
@@ -54,7 +57,6 @@ pub fn run(mut args: InitArgs) -> Result<()> {
             &args.path,
             blueprint,
             args.dry_run,
-            args.force,
             &project,
             &actions,
         )?;
@@ -67,13 +69,13 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         ui::info("path", args.path.display());
         ui::info("blueprint", blueprint.as_str());
         ui::info("blueprint version", blueprint.version());
+        print_detected_package_name(&args);
         ui::info("options", new::format_selected_options(&project.options));
         ui::info(
             "required tools",
             new::required_tools_summary_for_options(blueprint, &project.options),
         );
         ui::info("infrastructure", &infrastructure);
-        ui::info("force", args.force);
         print_actions(&actions);
         if args.diff {
             diff::print_diffs(&args.path, &actions, &project.files)?;
@@ -86,31 +88,50 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         }
         return Err(coded_error(
             ErrorCode::Conflict,
-            "existing files would be overwritten; rerun with --force after reviewing the plan",
+            "managed paths cannot be updated safely; resolve conflicts and retry",
         ));
     }
 
-    if !new::confirm_interactive_setup(
-        args.yes,
-        args.json,
-        args.dry_run,
-        new::SetupReview {
-            section_title: "Repository setup review",
-            path: &args.path,
-            blueprint,
-            options: &project.options,
-            prompt: "Apply Forge-managed infrastructure to this repository?",
-            context: init_setup_review_context(
-                &args,
+    let mut overwrites_confirmed = false;
+    if overwrites > 0 && !args.dry_run && !args.json && !args.yes {
+        ui::section("Destination overwrites");
+        ui::info("overwrites", overwrites);
+        let overwrite_actions = overwrite_actions(&actions, adopted_existing_pyproject);
+        diff::print_diffs(&args.path, &overwrite_actions, &project.files)?;
+        if !new::confirm_yes_no(
+            "Apply Forge-managed infrastructure and overwrite conflicting managed files?",
+            false,
+        )? {
+            ui::section("Repository initialization canceled");
+            ui::success("no files changed");
+            return Ok(());
+        }
+        overwrites_confirmed = true;
+    }
+
+    if should_confirm_setup(&args, overwrites_confirmed)
+        && !new::confirm_interactive_setup(
+            args.yes,
+            args.json,
+            args.dry_run,
+            new::SetupReview {
+                section_title: "Repository setup review",
+                path: &args.path,
                 blueprint,
-                &project.options,
-                &project.files,
-                changes,
-                conflicts,
-                &apply_command,
-            ),
-        },
-    )? {
+                options: &project.options,
+                prompt: "Apply Forge-managed infrastructure to this repository?",
+                context: init_setup_review_context(
+                    blueprint,
+                    &project.options,
+                    &project.files,
+                    changes,
+                    conflicts,
+                    &apply_command,
+                    overwrites,
+                ),
+            },
+        )?
+    {
         if !args.json {
             ui::section("Repository initialization canceled");
             ui::success("no files changed");
@@ -145,6 +166,21 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     Ok(())
 }
 
+fn should_create_project(path: &Path) -> Result<bool> {
+    match fs::metadata(path) {
+        Ok(metadata) if !metadata.is_dir() => Ok(false),
+        Ok(_) => {
+            let mut entries = fs::read_dir(path)
+                .with_context(|| format!("failed to read project path {}", path.display()))?;
+            Ok(entries.next().is_none())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to read project path {}", path.display()))
+        }
+    }
+}
+
 fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName) -> Result<()> {
     match blueprint {
         BlueprintName::AnyProject | BlueprintName::PythonLibrary => {
@@ -154,6 +190,7 @@ fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName
             apply_cargo_package_defaults(args)?;
         }
     }
+    apply_existing_path_fallbacks(args, blueprint);
     Ok(())
 }
 
@@ -173,10 +210,17 @@ fn apply_pyproject_project_defaults(args: &mut InitArgs, infer_python_min: bool)
     };
 
     fill_if_missing(&mut args.project_name, project_string(project, "name"));
+    if infer_python_min {
+        fill_if_missing(
+            &mut args.package_name,
+            python_package_name(&parsed, &args.path),
+        );
+    }
     fill_if_missing(
         &mut args.description,
         project_string(project, "description"),
     );
+    fill_if_missing(&mut args.license, project_license(project));
     if infer_python_min
         && args.python_min.is_none()
         && let Some(requires_python) = project_string(project, "requires-python")
@@ -207,6 +251,7 @@ fn apply_cargo_package_defaults(args: &mut InitArgs) -> Result<()> {
         &mut args.description,
         project_string(package, "description"),
     );
+    fill_if_missing(&mut args.license, project_string(package, "license"));
     if args.package_name.is_none()
         && let Some(project_name) = args.project_name.as_deref()
     {
@@ -214,6 +259,106 @@ fn apply_cargo_package_defaults(args: &mut InitArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn apply_existing_path_fallbacks(args: &mut InitArgs, blueprint: BlueprintName) {
+    let fallback_name = args
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("project")
+        .to_string();
+    fill_if_missing(&mut args.project_name, Some(fallback_name.clone()));
+    fill_if_missing(
+        &mut args.description,
+        Some(format!("Existing {fallback_name} project")),
+    );
+
+    match blueprint {
+        BlueprintName::AnyProject => {}
+        BlueprintName::PythonLibrary => {
+            fill_if_missing(&mut args.license, existing_license(&args.path));
+            if args.package_name.is_none() {
+                args.package_name = Some(python_library::default_package_name(&fallback_name));
+            }
+            fill_if_missing(&mut args.python_min, Some("3.11".to_string()));
+        }
+        BlueprintName::RustLibrary => {
+            fill_if_missing(&mut args.license, existing_license(&args.path));
+            if args.package_name.is_none() {
+                args.package_name = Some(rust_library::default_crate_name(&fallback_name));
+            }
+        }
+    }
+}
+
+fn python_package_name(parsed: &toml::Value, path: &Path) -> Option<String> {
+    uv_build_backend_module_name(parsed).or_else(|| package_name_from_src_layout(path))
+}
+
+fn uv_build_backend_module_name(parsed: &toml::Value) -> Option<String> {
+    parsed
+        .get("tool")
+        .and_then(|tool| tool.get("uv"))
+        .and_then(|uv| uv.get("build-backend"))
+        .and_then(|build_backend| project_string(build_backend.as_table()?, "module-name"))
+        .filter(|name| python_library::is_valid_package_name(name))
+}
+
+fn package_name_from_src_layout(path: &Path) -> Option<String> {
+    let src_path = path.join("src");
+    let entries = fs::read_dir(src_path).ok()?;
+    let packages = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join("__init__.py").is_file())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| python_library::is_valid_package_name(name))
+        .collect::<Vec<_>>();
+
+    match packages.as_slice() {
+        [package_name] => Some(package_name.clone()),
+        _ => None,
+    }
+}
+
+fn project_license(project: &toml::Table) -> Option<String> {
+    project
+        .get("license")
+        .and_then(|license| {
+            license.as_str().map(str::to_string).or_else(|| {
+                license
+                    .as_table()
+                    .and_then(|license| project_string(license, "text"))
+            })
+        })
+        .filter(|license| matches!(license.as_str(), "BSD-3-Clause" | "MIT" | "Apache-2.0"))
+}
+
+fn existing_license(path: &Path) -> Option<String> {
+    for filename in ["LICENSE", "LICENSE.txt", "LICENCE", "LICENCE.txt"] {
+        let Ok(content) = fs::read_to_string(path.join(filename)) else {
+            continue;
+        };
+        if let Some(license) = detect_supported_license(&content) {
+            return Some(license.to_string());
+        }
+        return Some("BSD-3-Clause".to_string());
+    }
+    None
+}
+
+fn detect_supported_license(content: &str) -> Option<&'static str> {
+    if content.contains("MIT License") {
+        return Some("MIT");
+    }
+    if content.contains("Apache License") && content.contains("Version 2.0") {
+        return Some("Apache-2.0");
+    }
+    if content.contains("Redistribution and use in source and binary forms") {
+        return Some("BSD-3-Clause");
+    }
+    None
 }
 
 fn project_string(table: &toml::Table, key: &str) -> Option<String> {
@@ -274,9 +419,17 @@ fn adopt_existing_pyproject(path: &Path, files: &mut GeneratedFiles) -> Result<b
 }
 
 fn forge_metadata_block(pyproject: &str) -> Option<&str> {
-    pyproject
-        .find("[tool.forge]")
-        .map(|start| &pyproject[start..])
+    let start = pyproject.find("[tool.forge]")?;
+    let metadata = &pyproject[start..];
+    let end = metadata
+        .match_indices("\n[")
+        .find_map(|(index, _)| {
+            let header = metadata[index + 1..].lines().next()?.trim();
+            let table = header.strip_prefix('[')?.strip_suffix(']')?;
+            (!table.starts_with("tool.forge.")).then_some(index)
+        })
+        .unwrap_or(metadata.len());
+    Some(&metadata[..end])
 }
 
 fn append_forge_metadata(
@@ -284,7 +437,9 @@ fn append_forge_metadata(
     forge_metadata: &str,
     generated_pyproject: &str,
 ) -> Result<String> {
-    let mut adopted = append_forge_dependency_group(existing, generated_pyproject)?;
+    let adopted = sync_dependency_groups(existing, generated_pyproject)?;
+    let adopted = sync_build_system(&adopted, generated_pyproject)?;
+    let mut adopted = sync_pytest_sections(&adopted, generated_pyproject)?;
     if !adopted.ends_with('\n') {
         adopted.push('\n');
     }
@@ -295,113 +450,12 @@ fn append_forge_metadata(
     Ok(adopted)
 }
 
-fn append_forge_dependency_group(existing: &str, generated_pyproject: &str) -> Result<String> {
-    let dependencies = forge_dependency_group_values(generated_pyproject)?;
-    if dependencies.is_empty() || dependency_group_exists(existing, FORGE_DEPENDENCY_GROUP)? {
-        return Ok(existing.to_string());
-    }
-
-    let group = render_dependency_group(FORGE_DEPENDENCY_GROUP, &dependencies);
-    if let Some((start, end)) = table_range(existing, "dependency-groups") {
-        let mut adopted = String::with_capacity(existing.len() + group.len() + 1);
-        adopted.push_str(&existing[..end]);
-        if !existing[start..end].ends_with('\n') {
-            adopted.push('\n');
-        }
-        adopted.push_str(&group);
-        adopted.push_str(&existing[end..]);
-        return Ok(adopted);
-    }
-
-    let mut adopted = existing.to_string();
-    if !adopted.ends_with('\n') {
-        adopted.push('\n');
-    }
-    if !adopted.ends_with("\n\n") {
-        adopted.push('\n');
-    }
-    adopted.push_str("[dependency-groups]\n");
-    adopted.push_str(&group);
-    Ok(adopted)
-}
-
-fn forge_dependency_group_values(generated_pyproject: &str) -> Result<Vec<String>> {
-    let parsed: toml::Value =
-        toml::from_str(generated_pyproject).context("failed to parse generated pyproject.toml")?;
-    let Some(groups) = parsed
-        .get("dependency-groups")
-        .and_then(toml::Value::as_table)
-    else {
-        return Ok(Vec::new());
-    };
-
-    let mut seen = BTreeSet::new();
-    let mut dependencies = Vec::new();
-    for group in groups.values() {
-        let Some(group_dependencies) = group.as_array() else {
-            continue;
-        };
-        for dependency in group_dependencies {
-            let Some(dependency) = dependency.as_str() else {
-                continue;
-            };
-            if seen.insert(dependency.to_string()) {
-                dependencies.push(dependency.to_string());
-            }
-        }
-    }
-    Ok(dependencies)
-}
-
-fn dependency_group_exists(pyproject: &str, group_name: &str) -> Result<bool> {
-    let parsed: toml::Value =
-        toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
-    Ok(parsed
-        .get("dependency-groups")
-        .and_then(toml::Value::as_table)
-        .and_then(|groups| groups.get(group_name))
-        .is_some())
-}
-
-fn render_dependency_group(name: &str, dependencies: &[String]) -> String {
-    let mut group = format!("{name} = [\n");
-    for dependency in dependencies {
-        group.push_str("    ");
-        group.push_str(&crate::blueprint::toml_value::string_literal(dependency));
-        group.push_str(",\n");
-    }
-    group.push_str("]\n");
-    group
-}
-
-fn table_range(content: &str, table_name: &str) -> Option<(usize, usize)> {
-    let header = format!("[{table_name}]");
-    let start = content.find(&header)?;
-    let after_header = start + header.len();
-    let relative_end = content[after_header..]
-        .find("\n[")
-        .map(|index| after_header + index + 1)
-        .unwrap_or(content.len());
-    Some((start, relative_end))
-}
-
 fn external_pyproject_metadata(existing: &str, forge_metadata: &str) -> String {
     if existing_has_project_table(existing) && forge_metadata_is_python_library(forge_metadata) {
         return minimal_external_pyproject_metadata(forge_metadata);
     }
 
-    let marker = "\n[tool.forge.overrides]";
-    if let Some(index) = forge_metadata.find(marker) {
-        let (forge_table, overrides) = forge_metadata.split_at(index);
-        format!("{forge_table}managed_pyproject = false\n{overrides}")
-    } else {
-        let mut metadata = forge_metadata.to_string();
-        if !metadata.ends_with('\n') {
-            metadata.push('\n');
-        }
-        metadata.push_str("managed_pyproject = false\n");
-        metadata
-    }
+    forge_metadata.to_string()
 }
 
 fn existing_has_project_table(existing: &str) -> bool {
@@ -429,10 +483,11 @@ fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
         prettier: args.prettier,
         editorconfig: args.editorconfig,
         markdownlint: args.markdownlint,
-        no_git_history: false,
-        github: false,
-        github_owner: None,
-        github_visibility: None::<GithubVisibility>,
+        ignored_files: args.ignored_files.clone(),
+        no_git_history: args.no_git_history,
+        github: args.github,
+        github_owner: args.github_owner.clone(),
+        github_visibility: args.github_visibility,
         json: args.json,
         dry_run: args.dry_run,
         diff: args.diff,
@@ -447,7 +502,7 @@ fn ensure_existing_directory(path: &Path) -> Result<()> {
             return Err(coded_error(
                 ErrorCode::Env,
                 format!(
-                    "repository path does not exist: {}; create it first or use `forge new --path {}`",
+                    "repository path does not exist: {}; create it first or use `forge init --path {}`",
                     path.display(),
                     ui::shell_arg(path.display().to_string())
                 ),
@@ -462,7 +517,7 @@ fn ensure_existing_directory(path: &Path) -> Result<()> {
         return Err(coded_error(
             ErrorCode::Env,
             format!(
-                "repository path is not a directory: {}; choose an existing repository directory or use `forge new --path {}`",
+                "repository path is not a directory: {}; choose an existing repository directory or use `forge init --path {}`",
                 path.display(),
                 ui::shell_arg(path.display().to_string())
             ),
@@ -512,26 +567,45 @@ fn ensure_not_already_managed(path: &Path) -> Result<()> {
     ))
 }
 
-fn mark_existing_files_as_conflicts(
-    actions: &mut [ManagedFileAction],
+fn should_confirm_setup(args: &InitArgs, overwrites_confirmed: bool) -> bool {
+    !overwrites_confirmed && !args.yes && !args.json && !args.dry_run
+}
+
+fn count_overwrites(actions: &[ManagedFileAction], adopted_existing_pyproject: bool) -> usize {
+    actions
+        .iter()
+        .filter(|action| should_review_overwrite(action, adopted_existing_pyproject))
+        .count()
+}
+
+fn overwrite_actions(
+    actions: &[ManagedFileAction],
     adopted_existing_pyproject: bool,
-) {
-    for action in actions {
-        if adopted_existing_pyproject
-            && matches!(action, ManagedFileAction::Update(path) if path == Path::new("pyproject.toml"))
-        {
-            continue;
-        }
-        if matches!(
-            action,
-            ManagedFileAction::Update(_) | ManagedFileAction::Relink(_)
-        ) {
-            let path = action.path().to_path_buf();
-            *action = ManagedFileAction::Conflict {
-                path,
-                reason: ManagedFileConflict::ExistingFile,
-            };
-        }
+) -> Vec<ManagedFileAction> {
+    actions
+        .iter()
+        .filter(|action| should_review_overwrite(action, adopted_existing_pyproject))
+        .cloned()
+        .collect()
+}
+
+fn should_review_overwrite(action: &ManagedFileAction, adopted_existing_pyproject: bool) -> bool {
+    if adopted_existing_pyproject && is_pyproject_update(action) {
+        return false;
+    }
+    matches!(
+        action,
+        ManagedFileAction::Update(_) | ManagedFileAction::Relink(_)
+    )
+}
+
+fn is_pyproject_update(action: &ManagedFileAction) -> bool {
+    matches!(action, ManagedFileAction::Update(path) if path == Path::new(PYPROJECT_TOML))
+}
+
+fn print_detected_package_name(args: &InitArgs) {
+    if let Some(package_name) = args.package_name.as_deref() {
+        ui::info("detected package", package_name);
     }
 }
 
@@ -567,7 +641,6 @@ fn print_json_report(
     path: &Path,
     blueprint: BlueprintName,
     dry_run: bool,
-    force: bool,
     project: &ProjectRender,
     actions: &[ManagedFileAction],
 ) -> Result<()> {
@@ -579,7 +652,6 @@ fn print_json_report(
         blueprint_version: blueprint.version(),
         status_code: init_status_code(dry_run, conflicts),
         dry_run,
-        force,
         managed_sync: "forge sync --path .",
         infrastructure: new::managed_infrastructure_summary(&project.files),
         required_tools: new::required_tools_summary_for_options(blueprint, &project.options),
@@ -609,9 +681,9 @@ fn next_steps_for_report(
     conflicts: usize,
 ) -> Vec<String> {
     if conflicts > 0 {
-        vec![force_init_command(args, blueprint)]
+        Vec::new()
     } else if dry_run {
-        vec![init_command(args, blueprint, args.force)]
+        vec![init_command(args, blueprint)]
     } else {
         vec![
             format!("cd {}", ui::shell_arg(args.path.display().to_string())),
@@ -621,22 +693,18 @@ fn next_steps_for_report(
     }
 }
 
-fn force_init_command(args: &InitArgs, blueprint: BlueprintName) -> String {
-    init_command(args, blueprint, true)
-}
-
 fn init_setup_review_context(
-    args: &InitArgs,
     blueprint: BlueprintName,
     options: &[new::SelectedOption],
     files: &GeneratedFiles,
     changes: usize,
     conflicts: usize,
     apply_command: &str,
+    overwrites: usize,
 ) -> Vec<new::SetupReviewItem> {
     vec![
-        new::SetupReviewItem::new("force", args.force.to_string()),
         new::SetupReviewItem::new("changes", changes.to_string()),
+        new::SetupReviewItem::new("overwrites", overwrites.to_string()),
         new::SetupReviewItem::new("conflicts", conflicts.to_string()),
         new::SetupReviewItem::new("infrastructure", new::managed_infrastructure_summary(files)),
         new::SetupReviewItem::new(
@@ -651,18 +719,17 @@ fn preview_init_command(
     args: &InitArgs,
     blueprint: BlueprintName,
     project: &ProjectRender,
-    force: bool,
     stdin_is_terminal: bool,
 ) -> String {
     if args.yes || !stdin_is_terminal {
-        return init_command(args, blueprint, force);
+        return init_command(args, blueprint);
     }
 
     let render_args = new_args_from_init_args(args);
     let Some(resolved_new_args) =
         new::resolved_new_args_from_rendered_pyproject(&render_args, project)
     else {
-        return init_command(args, blueprint, force);
+        return init_command(args, blueprint);
     };
 
     let mut resolved = args.clone();
@@ -681,10 +748,10 @@ fn preview_init_command(
     resolved.editorconfig = resolved_new_args.editorconfig;
     resolved.markdownlint = resolved_new_args.markdownlint;
 
-    init_command(&resolved, blueprint, force)
+    init_command(&resolved, blueprint)
 }
 
-fn init_command(args: &InitArgs, blueprint: BlueprintName, force: bool) -> String {
+fn init_command(args: &InitArgs, blueprint: BlueprintName) -> String {
     let mut parts = vec![
         "forge".to_string(),
         "init".to_string(),
@@ -719,9 +786,6 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName, force: bool) -> Strin
         },
     );
 
-    if force {
-        parts.push("--force".to_string());
-    }
     if args.yes {
         parts.push("--yes".to_string());
     }
@@ -747,7 +811,6 @@ struct InitReport<'a> {
     blueprint_version: &'a str,
     status_code: &'static str,
     dry_run: bool,
-    force: bool,
     managed_sync: &'a str,
     infrastructure: String,
     required_tools: String,
@@ -771,67 +834,97 @@ struct InitAction<'a> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
-    fn mark_existing_files_as_conflicts_preserves_creates_and_keeps() {
-        let mut actions = vec![
+    fn overwrite_count_preserves_creates_keeps_and_adopted_pyproject() {
+        let actions = vec![
             ManagedFileAction::Create(PathBuf::from("pyproject.toml")),
             ManagedFileAction::Keep(PathBuf::from("justfile")),
             ManagedFileAction::Update(PathBuf::from("README.md")),
             ManagedFileAction::Relink(PathBuf::from("CLAUDE.md")),
+            ManagedFileAction::Update(PathBuf::from("pyproject.toml")),
         ];
 
-        mark_existing_files_as_conflicts(&mut actions, false);
-
-        assert_eq!(
-            actions,
-            vec![
-                ManagedFileAction::Create(PathBuf::from("pyproject.toml")),
-                ManagedFileAction::Keep(PathBuf::from("justfile")),
-                ManagedFileAction::Conflict {
-                    path: PathBuf::from("README.md"),
-                    reason: ManagedFileConflict::ExistingFile,
-                },
-                ManagedFileAction::Conflict {
-                    path: PathBuf::from("CLAUDE.md"),
-                    reason: ManagedFileConflict::ExistingFile,
-                },
-            ]
-        );
+        assert_eq!(count_overwrites(&actions, false), 3);
+        assert_eq!(count_overwrites(&actions, true), 2);
     }
 
     #[test]
-    fn force_init_command_preserves_setup_flags() {
-        let args = InitArgs {
-            blueprint: Some(BlueprintName::PythonLibrary),
-            path: PathBuf::from("/tmp/my repo"),
-            project_name: Some("grid-tools".to_string()),
-            package_name: Some("grid_tools".to_string()),
-            description: Some("Grid toolchain".to_string()),
-            author_name: Some("Ada Lovelace".to_string()),
-            author_email: Some("ada@example.com".to_string()),
-            license: Some("MIT".to_string()),
-            python_min: Some("3.12".to_string()),
-            gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
-            docs: false,
-            codecov: Some(false),
-            pypi_publish: Some(true),
-            prettier: true,
-            editorconfig: true,
+    fn overwrite_confirmation_skips_second_setup_confirmation() {
+        let mut args = InitArgs {
+            blueprint: Some(BlueprintName::AnyProject),
+            path: PathBuf::from("/tmp/repo"),
+            path_flag: None,
+            project_name: Some("repo-infra".to_string()),
+            package_name: None,
+            description: Some("Shared infra".to_string()),
+            author_name: None,
+            author_email: None,
+            license: None,
+            python_min: None,
+            gitignore_profile: None,
+            docs: true,
+            codecov: None,
+            pypi_publish: None,
+            prettier: false,
+            editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
+            no_git_history: false,
+            github: false,
+            github_owner: None,
+            github_visibility: None,
+            json: false,
+            dry_run: false,
+            diff: false,
+            yes: false,
+        };
+
+        assert!(should_confirm_setup(&args, false));
+        assert!(!should_confirm_setup(&args, true));
+        args.yes = true;
+        assert!(!should_confirm_setup(&args, false));
+    }
+
+    #[test]
+    fn init_command_drops_preview_flags_and_uses_yes_for_noninteractive_apply() {
+        let args = InitArgs {
+            blueprint: Some(BlueprintName::AnyProject),
+            path: PathBuf::from("/tmp/repo"),
+            path_flag: None,
+            project_name: Some("repo-infra".to_string()),
+            package_name: None,
+            description: Some("Shared infra".to_string()),
+            author_name: None,
+            author_email: None,
+            license: None,
+            python_min: None,
+            gitignore_profile: None,
+            docs: true,
+            codecov: None,
+            pypi_publish: None,
+            prettier: false,
+            editorconfig: false,
+            markdownlint: false,
+            ignored_files: Vec::new(),
+            no_git_history: false,
+            github: false,
+            github_owner: None,
+            github_visibility: None,
             json: true,
             dry_run: true,
             diff: true,
-            force: false,
             yes: true,
         };
 
-        let command = force_init_command(&args, BlueprintName::PythonLibrary);
+        let command = init_command(&args, BlueprintName::AnyProject);
 
         assert_eq!(
             command,
-            "forge init --path '/tmp/my repo' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --force --yes"
+            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --yes"
         );
+        assert!(!command.contains("--force"));
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
         assert!(!command.contains("--diff"));
@@ -845,69 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn init_command_drops_preview_flags_and_preserves_force_state() {
-        let args = InitArgs {
-            blueprint: Some(BlueprintName::AnyProject),
-            path: PathBuf::from("/tmp/repo"),
-            project_name: Some("repo-infra".to_string()),
-            package_name: None,
-            description: Some("Shared infra".to_string()),
-            author_name: None,
-            author_email: None,
-            license: None,
-            python_min: None,
-            gitignore_profile: None,
-            docs: true,
-            codecov: None,
-            pypi_publish: None,
-            prettier: false,
-            editorconfig: false,
-            markdownlint: false,
-            json: true,
-            dry_run: true,
-            diff: true,
-            force: false,
-            yes: true,
-        };
-
-        let command = init_command(&args, BlueprintName::AnyProject, false);
-
-        assert_eq!(
-            command,
-            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --yes"
-        );
-        assert!(!command.contains("--force"));
-        assert!(!command.contains("--json"));
-        assert!(!command.contains("--dry-run"));
-        assert!(!command.contains("--diff"));
-    }
-
-    #[test]
     fn setup_review_context_includes_apply_command_and_counts() {
-        let args = InitArgs {
-            blueprint: Some(BlueprintName::AnyProject),
-            path: PathBuf::from("/tmp/repo"),
-            project_name: Some("repo-infra".to_string()),
-            package_name: None,
-            description: Some("Shared infra".to_string()),
-            author_name: None,
-            author_email: None,
-            license: None,
-            python_min: None,
-            gitignore_profile: None,
-            docs: true,
-            codecov: None,
-            pypi_publish: None,
-            prettier: false,
-            editorconfig: false,
-            markdownlint: false,
-            json: false,
-            dry_run: false,
-            diff: false,
-            force: true,
-            yes: true,
-        };
-
         let files = GeneratedFiles::from([
             (
                 PathBuf::from("pyproject.toml"),
@@ -947,19 +978,19 @@ mod tests {
         ];
 
         let context = init_setup_review_context(
-            &args,
             BlueprintName::AnyProject,
             &options,
             &files,
             12,
             0,
-            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --force --yes",
+            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --yes",
+            3,
         );
 
         assert!(
             context
                 .iter()
-                .any(|item| item.label == "force" && item.value == "true")
+                .any(|item| item.label == "overwrites" && item.value == "3")
         );
         assert!(
             context
@@ -992,15 +1023,21 @@ mod tests {
             .expect("apply command should be present");
         assert_eq!(
             apply.value,
-            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --force --yes"
+            "forge init --path /tmp/repo --blueprint any-project --project-name repo-infra --description 'Shared infra' --yes"
         );
     }
 
     #[test]
-    fn preview_init_command_prefers_rendered_metadata_in_interactive_mode() {
-        let args = InitArgs {
+    fn existing_path_defaults_prevent_interactive_metadata_prompts_without_pyproject() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let project_path = temp.path().join("grid-tools");
+        fs::create_dir(&project_path).expect("project dir should create");
+        fs::write(project_path.join("LICENSE"), "MIT License\n")
+            .expect("license file should write");
+        let mut args = InitArgs {
             blueprint: Some(BlueprintName::PythonLibrary),
-            path: PathBuf::from("/tmp/repo"),
+            path: project_path,
+            path_flag: None,
             project_name: None,
             package_name: None,
             description: None,
@@ -1015,10 +1052,58 @@ mod tests {
             prettier: false,
             editorconfig: false,
             markdownlint: false,
+            ignored_files: Vec::new(),
+            no_git_history: false,
+            github: false,
+            github_owner: None,
+            github_visibility: None,
+            json: false,
+            dry_run: false,
+            diff: false,
+            yes: false,
+        };
+
+        apply_existing_project_defaults(&mut args, BlueprintName::PythonLibrary)
+            .expect("existing path defaults should apply");
+
+        assert_eq!(args.project_name.as_deref(), Some("grid-tools"));
+        assert_eq!(args.package_name.as_deref(), Some("grid_tools"));
+        assert_eq!(
+            args.description.as_deref(),
+            Some("Existing grid-tools project")
+        );
+        assert_eq!(args.python_min.as_deref(), Some("3.11"));
+        assert_eq!(args.license.as_deref(), Some("MIT"));
+    }
+
+    #[test]
+    fn preview_init_command_prefers_rendered_metadata_in_interactive_mode() {
+        let args = InitArgs {
+            blueprint: Some(BlueprintName::PythonLibrary),
+            path: PathBuf::from("/tmp/repo"),
+            path_flag: None,
+            project_name: None,
+            package_name: None,
+            description: None,
+            author_name: None,
+            author_email: None,
+            license: None,
+            python_min: None,
+            gitignore_profile: None,
+            docs: true,
+            codecov: None,
+            pypi_publish: None,
+            prettier: false,
+            editorconfig: false,
+            markdownlint: false,
+            ignored_files: Vec::new(),
+            no_git_history: false,
+            github: false,
+            github_owner: None,
+            github_visibility: None,
             json: false,
             dry_run: true,
             diff: false,
-            force: false,
             yes: false,
         };
         let project = new::ProjectRender {
@@ -1049,8 +1134,7 @@ markdownlint = true
             )]),
         };
 
-        let command =
-            preview_init_command(&args, BlueprintName::PythonLibrary, &project, false, true);
+        let command = preview_init_command(&args, BlueprintName::PythonLibrary, &project, true);
 
         assert!(command.contains("--project-name grid-tools"));
         assert!(command.contains("--package-name grid_tools"));
