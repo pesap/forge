@@ -15,6 +15,7 @@ pub mod agents;
 pub mod any_project;
 pub mod components;
 pub mod files;
+pub mod gitattributes;
 pub mod github_actions;
 pub mod precommit;
 pub mod python_library;

@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file_if_exists};
+use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::readme;
@@ -163,6 +164,10 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     files.insert(
         PathBuf::from(".gitignore"),
         GeneratedFile::text(render_gitignore(&config.gitignore_profile)),
+    );
+    files.insert(
+        PathBuf::from(".gitattributes"),
+        GeneratedFile::text(gitattributes::render_line_ending_policy()),
     );
     files.insert(
         PathBuf::from(".python-version"),
@@ -1234,6 +1239,14 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
+        assert_eq!(
+            files
+                .get(&PathBuf::from(".gitattributes"))
+                .and_then(GeneratedFile::as_text),
+            Some(
+                "# Normalize text files to LF in Git checkouts and commits.\n* text=auto eol=lf\n"
+            )
+        );
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
         assert!(files.contains_key(&PathBuf::from(".typos.toml")));
         assert!(!files.contains_key(&PathBuf::from("typos.toml")));

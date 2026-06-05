@@ -33,6 +33,7 @@ fn build_environment() -> Environment<'static> {
         "shared/prettierrc.json.j2" => "templates/shared/prettierrc.json.j2",
         "shared/prettierignore.j2" => "templates/shared/prettierignore.j2",
         "shared/editorconfig.j2" => "templates/shared/editorconfig.j2",
+        "shared/gitattributes.j2" => "templates/shared/gitattributes.j2",
         "shared/markdownlint.jsonc.j2" => "templates/shared/markdownlint.jsonc.j2",
         "shared/forge-sync.yaml.j2" => "templates/shared/forge-sync.yaml.j2",
         "shared/py.typed.j2" => "templates/shared/py.typed.j2",
