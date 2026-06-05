@@ -577,10 +577,14 @@ fn render_docs_tsconfig() -> String {
 }
 
 fn render_json_template(context_name: &str, context: impl serde::Serialize) -> String {
-    format!(
-        "{}\n",
-        template_engine::render_template(context_name, context)
-    )
+    ensure_trailing_newline(template_engine::render_template(context_name, context))
+}
+
+fn ensure_trailing_newline(mut rendered: String) -> String {
+    if !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    rendered
 }
 
 fn render_docs_index(config: &ProjectConfig) -> String {
@@ -967,6 +971,18 @@ mod tests {
 
         assert!(package_json.contains("\"name\": \"test-project-docs\""));
         assert!(package_json.contains("\"@astrojs/starlight\""));
+    }
+
+    #[test]
+    fn ensure_trailing_newline_only_appends_when_missing() {
+        assert_eq!(
+            ensure_trailing_newline("{\"a\":1}".to_string()),
+            "{\"a\":1}\n"
+        );
+        assert_eq!(
+            ensure_trailing_newline("{\"a\":1}\n".to_string()),
+            "{\"a\":1}\n"
+        );
     }
 
     #[test]
