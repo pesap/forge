@@ -1599,6 +1599,10 @@ dependencies = ["click>=8"]
     let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
     fs::write(project_path.join(".cspell.json"), "{}\n")
         .expect("legacy cspell config should write");
+    fs::write(project_path.join(".release-please-config.json"), "{}\n")
+        .expect("legacy release-please config should write");
+    fs::write(project_path.join(".release-please-manifest.json"), "{}\n")
+        .expect("legacy release-please manifest should write");
     let drifted = pyproject
         .replace("ruff~=0.14.0", "ruff~=0.1.0")
         .replace("line-length = 110", "line-length = 100")
@@ -1631,7 +1635,9 @@ dependencies = ["click>=8"]
     ]);
     sync.assert()
         .success()
-        .stdout(contains("update  pyproject.toml"));
+        .stdout(contains("update  pyproject.toml"))
+        .stdout(contains("remove  .release-please-config.json"))
+        .stdout(contains("remove  .release-please-manifest.json"));
 
     let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
     assert!(pyproject.contains("version = \"2.3.4\""));
@@ -1660,7 +1666,19 @@ dependencies = ["click>=8"]
     ));
     assert!(!pyproject.contains("Library/Caches/pytest"));
     assert!(project_path.join("typos.toml").exists());
+    assert!(
+        project_path
+            .join(".github/release-please-config.json")
+            .exists()
+    );
+    assert!(
+        project_path
+            .join(".github/release-please-manifest.json")
+            .exists()
+    );
     assert!(!project_path.join(".cspell.json").exists());
+    assert!(!project_path.join(".release-please-config.json").exists());
+    assert!(!project_path.join(".release-please-manifest.json").exists());
 }
 
 #[test]

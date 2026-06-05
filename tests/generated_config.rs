@@ -53,11 +53,23 @@ fn generated_python_project_configs_are_structurally_valid() {
         project_path.join("docs/astro.config.mjs"),
         &["starlight(", "title:"],
     );
+    assert_file_contains(
+        project_path.join(".github/workflows/release-please.yaml"),
+        &[
+            "config-file: .github/release-please-config.json",
+            "manifest-file: .github/release-please-manifest.json",
+        ],
+    );
     assert_json_file(
-        project_path.join(".release-please-config.json"),
+        project_path.join(".github/release-please-config.json"),
         &["release-type", "packages"],
     );
-    assert_json_file(project_path.join(".release-please-manifest.json"), &["."]);
+    assert_json_file(
+        project_path.join(".github/release-please-manifest.json"),
+        &["."],
+    );
+    assert!(!project_path.join(".release-please-config.json").exists());
+    assert!(!project_path.join(".release-please-manifest.json").exists());
     assert_update_check_is_current(&project_path);
 }
 
