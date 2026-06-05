@@ -458,7 +458,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n", "component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -554,15 +554,15 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
 }
 
 fn render_release_please_config() -> String {
-    template_engine::render_template("python_library/release-please-config.json.j2", ())
+    render_json_template("python_library/release-please-config.json.j2", ())
 }
 
 fn render_release_please_manifest() -> String {
-    template_engine::render_template("python_library/release-please-manifest.json.j2", ())
+    render_json_template("python_library/release-please-manifest.json.j2", ())
 }
 
 fn render_docs_package_json(config: &ProjectConfig) -> String {
-    template_engine::render_template(
+    render_json_template(
         "python_library/docs-package.json.j2",
         serde_json::json!({"project_name": config.project_name}),
     )
@@ -573,7 +573,14 @@ fn render_docs_astro_config() -> String {
 }
 
 fn render_docs_tsconfig() -> String {
-    template_engine::render_template("python_library/docs-tsconfig.json.j2", ())
+    render_json_template("python_library/docs-tsconfig.json.j2", ())
+}
+
+fn render_json_template(context_name: &str, context: impl serde::Serialize) -> String {
+    format!(
+        "{}\n",
+        template_engine::render_template(context_name, context)
+    )
 }
 
 fn render_docs_index(config: &ProjectConfig) -> String {
@@ -904,6 +911,28 @@ mod tests {
 
         assert!(precommit.contains("repo: https://github.com/astral-sh/uv-pre-commit"));
         assert!(precommit.contains("id: uv-lock"));
+    }
+
+    #[test]
+    fn precommit_config_uses_prek_builtin_pretty_format_json() {
+        let precommit = render_precommit_config(&test_config(true));
+
+        let builtin_repo = precommit
+            .find("repo: builtin")
+            .expect("precommit config should include builtin repo");
+        let pretty_format_json = precommit
+            .find("id: pretty-format-json")
+            .expect("precommit config should include JSON formatter");
+        let meta_repo = precommit
+            .find("repo: meta")
+            .expect("precommit config should include meta repo");
+        let local_repo = precommit
+            .find("repo: local")
+            .expect("precommit config should include local repo");
+
+        assert!(builtin_repo < pretty_format_json);
+        assert!(pretty_format_json < meta_repo);
+        assert!(pretty_format_json < local_repo);
     }
 
     #[test]
