@@ -24,7 +24,7 @@ repos:
       - id: detect-private-key
       - id: check-added-large-files
         args: ["--maxkb=1000"]
-
+{% if builtin_hooks is defined %}{{ builtin_hooks }}{% endif %}
   - repo: meta
     hooks:
       - id: check-hooks-apply

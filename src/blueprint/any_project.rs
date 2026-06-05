@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file_if_exists};
+use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::readme;
@@ -63,6 +64,10 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     files.insert(
         PathBuf::from(".gitignore"),
         GeneratedFile::text(render_gitignore()),
+    );
+    files.insert(
+        PathBuf::from(".gitattributes"),
+        GeneratedFile::text(gitattributes::render_line_ending_policy()),
     );
     files.insert(
         PathBuf::from("pyproject.toml"),
@@ -431,6 +436,26 @@ mod tests {
     }
 
     #[test]
+    fn render_creates_gitattributes_line_ending_policy() {
+        let files = render_project_files(&ProjectConfig {
+            project_name: "repo-infra".to_string(),
+            description: "A test project".to_string(),
+            docs: true,
+            components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
+        });
+
+        assert_eq!(
+            files
+                .get(&PathBuf::from(".gitattributes"))
+                .and_then(GeneratedFile::as_text),
+            Some(
+                "# Normalize text files to LF in Git checkouts and commits.\n* text=auto eol=lf\n"
+            )
+        );
+    }
+
+    #[test]
     fn just_verify_uses_locked_uv_commands() {
         let justfile = render_justfile(&ProjectConfig {
             project_name: "repo-infra".to_string(),
@@ -442,6 +467,7 @@ mod tests {
 
         assert!(justfile.contains("verify:\n    uv lock --check"));
         assert!(justfile.contains("uv run --locked prek run --all-files"));
+        assert!(!justfile.contains("forge sync --path . --check"));
     }
 
     #[test]

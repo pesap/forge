@@ -397,7 +397,7 @@ All blueprints generate:
 
 | Component       | What it adds                                                                                 |
 | --------------- | -------------------------------------------------------------------------------------------- |
-| Prettier        | `.prettierrc`, `prek` hook for JSON/YAML/Markdown formatting                                 |
+| Prettier        | `.prettierrc.json`, `.prettierignore`, and pre-commit hook for JSON/YAML/Markdown formatting |
 | EditorConfig    | `.editorconfig` baseline for cross-editor whitespace consistency                             |
 | MkDocs          | Documentation scaffold, `just docs` recipe                                                   |
 | Codecov         | CI integration for coverage reporting (where supported)                                      |
