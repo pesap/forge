@@ -450,7 +450,7 @@ mod tests {
                 .contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
         );
         assert!(justfile.contains("uv run --locked prek run --all-files"));
-        assert!(justfile.contains("forge sync --path . --check"));
+        assert!(!justfile.contains("forge sync --path . --check"));
         assert!(justfile.contains("cargo test"));
     }
 

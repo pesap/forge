@@ -867,7 +867,7 @@ mod tests {
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
         assert!(justfile.contains("uv run --locked ty check"));
-        assert!(justfile.contains("forge sync --path . --check"));
+        assert!(!justfile.contains("forge sync --path . --check"));
         assert!(justfile.contains("uv run --locked pytest --tb=short"));
         assert!(justfile.contains("uv build --locked"));
     }
