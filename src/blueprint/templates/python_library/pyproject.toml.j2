@@ -14,12 +14,7 @@ dependencies = []
 [dependency-groups]
 dev = [{ include-group = "code-quality" }, { include-group = "test" }]
 code-quality = ["prek~=0.4.1", "ruff~=0.14.0", "ty~=0.0.1"]
-test = [
-  "pytest~=9.0.0",
-  "pytest-cov~=7.0.0",
-  "pytest-xdist~=3.2.0",
-  "pytest-env~=0.8.0",
-]
+test = ["pytest~=9.0.0", "pytest-cov~=7.0.0", "pytest-xdist~=3.2.0"]
 {{ docs_group }}
 [tool.uv.build-backend]
 module-name = {{ package_name }}
@@ -38,9 +33,6 @@ addopts = [
 ]
 strict = true
 cache_dir = {{ pytest_cache_dir }}
-
-[tool.pytest_env]
-XDG_CACHE_HOME = { value = "{HOME}/.cache", transform = true, skip_if_set = true }
 
 [tool.ruff]
 line-length = 110

@@ -360,7 +360,7 @@ fn author_display_name(config: &ProjectConfig) -> String {
 }
 
 fn pytest_cache_dir(project_name: &str) -> String {
-    format!("$XDG_CACHE_HOME/pytest/{project_name}")
+    format!(".cache/pytest/{project_name}")
 }
 
 fn render_pyproject(config: &ProjectConfig) -> String {
@@ -827,6 +827,16 @@ mod tests {
         assert!(!is_valid_package_name("my-package")); // Hyphen not allowed
         assert!(!is_valid_package_name("my.package")); // Dot not allowed
         assert!(!is_valid_package_name("my package")); // Space not allowed
+    }
+
+    #[test]
+    fn pytest_cache_dir_uses_portable_project_relative_path() {
+        let cache_dir = pytest_cache_dir("grid-tools");
+
+        assert_eq!(cache_dir, ".cache/pytest/grid-tools");
+        assert!(!cache_dir.starts_with('/'));
+        assert!(!cache_dir.contains(':'));
+        assert!(!cache_dir.contains('$'));
     }
 
     #[test]

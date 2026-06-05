@@ -5,6 +5,10 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
+fn expected_pytest_cache_dir(project_name: &str) -> String {
+    format!(".cache/pytest/{project_name}")
+}
+
 fn generate_project(project_path: &std::path::Path) {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
@@ -1605,13 +1609,14 @@ dependencies = ["click>=8"]
         .expect("legacy release-please manifest should write");
     fs::write(project_path.join("typos.toml"), "[default.extend-words]\n")
         .expect("legacy typos config should write");
+    let expected_cache_dir = expected_pytest_cache_dir("ops-tools");
     let drifted = pyproject
         .replace("ruff~=0.14.0", "ruff~=0.1.0")
         .replace("line-length = 110", "line-length = 100")
         .replace("all = \"error\"", "all = \"warn\"")
         .replace(
-            "cache_dir = \"$XDG_CACHE_HOME/pytest/ops-tools\"",
-            "cache_dir = \"/Users/example/Library/Caches/pytest/ops-tools\"",
+            &format!("cache_dir = \"{expected_cache_dir}\""),
+            "cache_dir = \"/tmp/pytest-cache-drift/ops-tools\"",
         );
     fs::write(&pyproject_path, drifted).expect("pyproject should be writable");
 
@@ -1662,11 +1667,15 @@ dependencies = ["click>=8"]
     );
     assert!(!pyproject.contains("line-length = 100"));
     assert!(!pyproject.contains("all = \"warn\""));
-    assert!(pyproject.contains("cache_dir = \"$XDG_CACHE_HOME/pytest/ops-tools\""));
-    assert!(pyproject.contains(
-        "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
-    ));
-    assert!(!pyproject.contains("Library/Caches/pytest"));
+    let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
+    let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
+        .as_str()
+        .expect("pytest cache_dir should be a string");
+    assert_eq!(pytest_cache_dir, expected_cache_dir);
+    assert!(!pyproject.contains("[tool.pytest_env]"));
+    assert!(!pyproject.contains("XDG_CACHE_HOME"));
+    assert!(!pyproject.contains("pytest-env"));
+    assert!(!pyproject.contains("/tmp/pytest-cache-drift"));
     assert!(project_path.join(".typos.toml").exists());
     assert!(!project_path.join("typos.toml").exists());
     assert!(
