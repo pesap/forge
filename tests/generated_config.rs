@@ -121,6 +121,10 @@ fn generated_rust_project_configs_are_structurally_valid() {
         project_path.join(".prettierrc.json"),
         &["printWidth", "proseWrap", "singleQuote"],
     );
+    assert_file_contains(
+        project_path.join(".prettierignore"),
+        &["dist/", "build/", "site/", ".venv/", ".coverage", "uv.lock"],
+    );
     assert_update_check_is_current(&project_path);
 }
 
@@ -163,6 +167,10 @@ fn generated_any_project_configs_are_structurally_valid() {
     assert_json_file(
         project_path.join(".prettierrc.json"),
         &["printWidth", "proseWrap", "singleQuote"],
+    );
+    assert_file_contains(
+        project_path.join(".prettierignore"),
+        &["dist/", "build/", "site/", ".venv/", ".coverage", "uv.lock"],
     );
     assert_update_check_is_current(&project_path);
 }
