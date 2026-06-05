@@ -290,7 +290,7 @@ fn sync_only_rewrites_managed_infra_files() {
     assert!(just_after.contains("uv lock --check"));
     assert!(just_after.contains("uv run --locked ruff check ."));
     assert!(just_after.contains("uv run --locked prek run --all-files"));
-    assert!(just_after.contains("forge sync --path . --check"));
+    assert!(!just_after.contains("forge sync --path . --check"));
     assert_eq!(
         fs::read_link(claude_file).expect("update should restore CLAUDE.md as a symlink"),
         std::path::PathBuf::from("AGENTS.md")
@@ -1257,7 +1257,7 @@ fn sync_can_emit_json_report_while_applying_changes() {
 
     let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
     assert!(!just_after.contains("BROKEN"));
-    assert!(just_after.contains("forge sync --path . --check"));
+    assert!(!just_after.contains("forge sync --path . --check"));
 }
 
 #[test]
@@ -2452,7 +2452,7 @@ fn sync_refreshes_language_agnostic_infra_project() {
     assert!(!just_after.contains("BROKEN"));
     assert!(just_after.contains("uv run --locked prek run --all-files"));
     assert!(just_after.contains("uv lock --check"));
-    assert!(just_after.contains("forge sync --path . --check"));
+    assert!(!just_after.contains("forge sync --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
     assert!(ci_after.contains("forge sync --path . --check"));
     assert!(project_path.join("docs/package.json").exists());
@@ -2663,7 +2663,7 @@ fn sync_refreshes_rust_library_managed_infra_without_touching_source() {
     assert!(
         just_after.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
-    assert!(just_after.contains("forge sync --path . --check"));
+    assert!(!just_after.contains("forge sync --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
     assert!(ci_after.contains("cargo fmt --all --check"));
     assert!(ci_after.contains("uv lock --check"));

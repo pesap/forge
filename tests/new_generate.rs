@@ -167,7 +167,7 @@ fn new_generates_python_project_with_metadata() {
     assert!(justfile.contains("uv run --locked ruff format --check ."));
     assert!(justfile.contains("uv run --locked ruff check ."));
     assert!(justfile.contains("uv run --locked prek run --all-files"));
-    assert!(justfile.contains("forge sync --path . --check"));
+    assert!(!justfile.contains("forge sync --path . --check"));
     assert!(justfile.contains("uv build --locked"));
 
     assert!(project_path.join("src/grid_tools/__init__.py").exists());
@@ -2030,7 +2030,7 @@ fn new_generates_language_agnostic_infra_project() {
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
     assert!(justfile.contains("uv run --locked prek run --all-files"));
     assert!(justfile.contains("uv lock --check"));
-    assert!(justfile.contains("forge sync --path . --check"));
+    assert!(!justfile.contains("forge sync --path . --check"));
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join("docs/package.json").exists());
     assert!(
@@ -2110,7 +2110,7 @@ fn new_generates_rust_library_project() {
         justfile.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
     assert!(justfile.contains("uv run --locked prek run --all-files"));
-    assert!(justfile.contains("forge sync --path . --check"));
+    assert!(!justfile.contains("forge sync --path . --check"));
 
     assert!(project_path.join("src/lib.rs").exists());
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
