@@ -206,6 +206,11 @@ fn new_generates_python_project_with_metadata() {
     assert!(precommit.contains("id: typos"));
     assert!(!precommit.contains("cspell"));
     assert!(!precommit.contains("uv run ruff check --fix"));
+    let pretty_format_json = precommit
+        .find("id: pretty-format-json")
+        .expect("precommit config should include JSON formatter");
+    assert!(precommit.find("repo: builtin").expect("builtin repo") < pretty_format_json);
+    assert!(pretty_format_json < precommit.find("repo: meta").expect("meta repo"));
 
     let typos = fs::read_to_string(project_path.join(".typos.toml"))
         .expect("typos config should be generated");
