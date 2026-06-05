@@ -348,7 +348,48 @@ fn author_display_name(config: &ProjectConfig) -> String {
 }
 
 fn pytest_cache_dir(project_name: &str) -> String {
-    format!("$XDG_CACHE_HOME/pytest/{project_name}")
+    let mut cache_dir = pytest_cache_root();
+    cache_dir.push("pytest");
+    cache_dir.push(project_name);
+    cache_dir.to_string_lossy().into_owned()
+}
+
+#[cfg(target_os = "macos")]
+fn pytest_cache_root() -> std::path::PathBuf {
+    home_dir()
+        .map(|home| home.join("Library").join("Caches"))
+        .unwrap_or_else(|| std::path::PathBuf::from("Library").join("Caches"))
+}
+
+#[cfg(target_os = "windows")]
+fn pytest_cache_root() -> std::path::PathBuf {
+    env_path("LOCALAPPDATA")
+        .or_else(|| home_dir().map(|home| home.join("AppData").join("Local")))
+        .unwrap_or_else(|| std::path::PathBuf::from("AppData").join("Local"))
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn pytest_cache_root() -> std::path::PathBuf {
+    env_path("XDG_CACHE_HOME")
+        .filter(|path| path.is_absolute())
+        .or_else(|| home_dir().map(|home| home.join(".cache")))
+        .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
+}
+
+fn env_path(name: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+#[cfg(target_os = "windows")]
+fn home_dir() -> Option<std::path::PathBuf> {
+    env_path("USERPROFILE")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn home_dir() -> Option<std::path::PathBuf> {
+    env_path("HOME")
 }
 
 fn render_pyproject(config: &ProjectConfig) -> String {
@@ -800,6 +841,16 @@ mod tests {
         assert!(!is_valid_package_name("my-package")); // Hyphen not allowed
         assert!(!is_valid_package_name("my.package")); // Dot not allowed
         assert!(!is_valid_package_name("my package")); // Space not allowed
+    }
+
+    #[test]
+    fn pytest_cache_dir_uses_resolved_os_cache_path() {
+        let cache_dir = pytest_cache_dir("grid-tools");
+
+        assert!(cache_dir.ends_with("grid-tools"));
+        assert!(cache_dir.contains("pytest"));
+        assert!(!cache_dir.contains('$'));
+        assert!(!cache_dir.contains("XDG_CACHE_HOME"));
     }
 
     #[test]

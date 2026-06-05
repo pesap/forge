@@ -15,7 +15,38 @@ fn write_executable(path: &std::path::Path, content: &str) {
 }
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
-    format!("$XDG_CACHE_HOME/pytest/{project_name}")
+    let cache_root = if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join("Library").join("Caches"))
+            .unwrap_or_else(|| std::path::PathBuf::from("Library").join("Caches"))
+    } else if cfg!(target_os = "windows") {
+        std::env::var_os("LOCALAPPDATA")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE")
+                    .map(std::path::PathBuf::from)
+                    .map(|home| home.join("AppData").join("Local"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("AppData").join("Local"))
+    } else {
+        std::env::var_os("XDG_CACHE_HOME")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .map(|home| home.join(".cache"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
+    };
+    cache_root
+        .join("pytest")
+        .join(project_name)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[test]
@@ -97,6 +128,7 @@ fn new_generates_python_project_with_metadata() {
         .as_str()
         .expect("pytest cache_dir should be a string");
     assert_eq!(pytest_cache_dir, expected_pytest_cache_dir("grid-tools"));
+    assert!(!pytest_cache_dir.contains('$'));
     assert_eq!(
         pyproject_toml["tool"]["ruff"]["line-length"].as_integer(),
         Some(110)
@@ -133,16 +165,16 @@ fn new_generates_python_project_with_metadata() {
             "norecursedirs = [\".git\", \".venv\", \"build\", \"dist\", \"node_modules\"]"
         )
     );
-    assert!(pyproject.contains(
-        "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
-    ));
+    assert!(!pyproject.contains("[tool.pytest_env]"));
+    assert!(!pyproject.contains("XDG_CACHE_HOME"));
+    assert!(!pyproject.contains("pytest-env"));
     let dev_dependencies = pyproject_toml["dependency-groups"]["dev"]
         .as_array()
         .expect("dev dependency group should be an array");
     assert!(!dev_dependencies.iter().any(|dependency| {
         dependency
             .as_str()
-            .is_some_and(|value| value.starts_with("pytest-xdg"))
+            .is_some_and(|value| value.starts_with("pytest-env"))
     }));
     assert!(pyproject.contains(
         "[build-system]\nrequires = [\"uv_build~=0.11.7\"]\nbuild-backend = \"uv_build\""

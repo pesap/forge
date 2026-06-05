@@ -4,6 +4,41 @@ use predicates::str::contains;
 use std::fs;
 use tempfile::TempDir;
 
+fn expected_pytest_cache_dir(project_name: &str) -> String {
+    let cache_root = if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join("Library").join("Caches"))
+            .unwrap_or_else(|| std::path::PathBuf::from("Library").join("Caches"))
+    } else if cfg!(target_os = "windows") {
+        std::env::var_os("LOCALAPPDATA")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE")
+                    .map(std::path::PathBuf::from)
+                    .map(|home| home.join("AppData").join("Local"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("AppData").join("Local"))
+    } else {
+        std::env::var_os("XDG_CACHE_HOME")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .map(|home| home.join(".cache"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
+    };
+    cache_root
+        .join("pytest")
+        .join(project_name)
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn generate_python_project(project_path: &std::path::Path) {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
@@ -92,11 +127,13 @@ fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
                 .expect("ty rules section should exist")
     );
     assert!(pyproject.contains("strict = true"));
-    assert!(pyproject.contains("cache_dir = \"$XDG_CACHE_HOME/pytest/ops-tools\""));
-    assert!(pyproject.contains(
-        "[tool.pytest_env]\nXDG_CACHE_HOME = { value = \"{HOME}/.cache\", transform = true, skip_if_set = true }"
-    ));
-    assert!(!pyproject.contains("Library/Caches/pytest"));
+    assert!(pyproject.contains(&format!(
+        "cache_dir = \"{}\"",
+        expected_pytest_cache_dir("ops-tools")
+    )));
+    assert!(!pyproject.contains("[tool.pytest_env]"));
+    assert!(!pyproject.contains("XDG_CACHE_HOME"));
+    assert!(!pyproject.contains("pytest-env"));
     assert!(!pyproject.contains("{ include-group = \"build\" }"));
     assert!(pyproject.contains("{ include-group = \"code-quality\" }"));
     assert!(pyproject.contains("{ include-group = \"test\" }"));

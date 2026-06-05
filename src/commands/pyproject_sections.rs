@@ -136,10 +136,7 @@ mod tests {
     use crate::commands::pyproject_sections::sync_pytest_sections;
 
     const GENERATED: &str = r#"[tool.pytest.ini_options]
-cache_dir = "$XDG_CACHE_HOME/pytest/test"
-
-[tool.pytest_env]
-XDG_CACHE_HOME = { value = "{HOME}/.cache", transform = true, skip_if_set = true }
+cache_dir = "/Users/example/Library/Caches/pytest/test"
 
 [tool.ruff]
 line-length = 110
@@ -157,7 +154,7 @@ blueprint = "python-library>=0.1.0"
 "#;
 
     #[test]
-    fn sync_pytest_sections_keeps_pytest_env_after_pytest_ini_options() {
+    fn sync_pytest_sections_replaces_pytest_ini_options_and_removes_pytest_env() {
         let existing = r#"[project]
 name = "test"
 
@@ -184,10 +181,6 @@ blueprint = "python-library>=0.1.0"
         let ini_index = synced
             .find("[tool.pytest.ini_options]")
             .expect("pytest ini section should exist");
-        let env_index = synced
-            .find("[tool.pytest_env]")
-            .expect("pytest env section should exist");
-
         let ruff_lint_index = synced
             .find("[tool.ruff.lint]")
             .expect("ruff lint section should exist");
@@ -195,12 +188,12 @@ blueprint = "python-library>=0.1.0"
             .find("[tool.ty.rules]")
             .expect("ty rules section should exist");
 
-        assert!(ini_index < env_index);
+        assert!(ini_index < ruff_lint_index);
         assert!(ruff_lint_index < ty_rules_index);
-        assert!(synced.contains("cache_dir = \"$XDG_CACHE_HOME/pytest/test\""));
+        assert!(synced.contains("cache_dir = \"/Users/example/Library/Caches/pytest/test\""));
         assert!(synced.contains("line-length = 110"));
         assert!(synced.contains("all = \"error\""));
-        assert!(!synced.contains("Library/Caches/pytest"));
+        assert!(!synced.contains("[tool.pytest_env]"));
         assert!(!synced.contains("line-length = 100"));
         assert!(!synced.contains("all = \"warn\""));
     }
