@@ -70,6 +70,7 @@ fn build_environment() -> Environment<'static> {
         "python_library/release-please-manifest.json.j2" => "templates/python_library/release-please-manifest.json.j2",
         "python_library/docs-package.json.j2" => "templates/python_library/docs-package.json.j2",
         "python_library/docs-astro.config.mjs.j2" => "templates/python_library/docs-astro.config.mjs.j2",
+        "python_library/docs-content.config.ts.j2" => "templates/python_library/docs-content.config.ts.j2",
         "python_library/docs-tsconfig.json.j2" => "templates/python_library/docs-tsconfig.json.j2",
         "python_library/docs-index.mdx.j2" => "templates/python_library/docs-index.mdx.j2",
         "python_library/__init__.py.j2" => "templates/python_library/__init__.py.j2",
