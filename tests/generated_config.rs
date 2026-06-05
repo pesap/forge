@@ -51,7 +51,20 @@ fn generated_python_project_configs_are_structurally_valid() {
     );
     assert_file_contains(
         project_path.join("docs/astro.config.mjs"),
-        &["starlight(", "title:"],
+        &["starlight(", "title:", "head: []"],
+    );
+    assert_file_contains(
+        project_path.join("docs/src/content.config.ts"),
+        &[
+            "docsLoader",
+            "docsSchema",
+            "defineCollection",
+            "export const collections",
+        ],
+    );
+    assert_file_contains(
+        project_path.join("docs/src/content/docs/index.mdx"),
+        &["---\ntitle: grid-tools", "head: []"],
     );
     assert_json_file(
         project_path.join(".release-please-config.json"),
@@ -102,11 +115,15 @@ fn generated_rust_project_configs_are_structurally_valid() {
     );
     assert_file_contains(
         project_path.join("docs/astro.config.mjs"),
-        &["starlight(", "title:"],
+        &["starlight(", "title:", "head: []"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
         &["printWidth", "proseWrap", "singleQuote"],
+    );
+    assert_file_contains(
+        project_path.join(".prettierignore"),
+        &["dist/", "build/", "site/", ".venv/", ".coverage", "uv.lock"],
     );
     assert_update_check_is_current(&project_path);
 }
@@ -145,11 +162,15 @@ fn generated_any_project_configs_are_structurally_valid() {
     );
     assert_file_contains(
         project_path.join("docs/astro.config.mjs"),
-        &["starlight(", "title:"],
+        &["starlight(", "title:", "head: []"],
     );
     assert_json_file(
         project_path.join(".prettierrc.json"),
         &["printWidth", "proseWrap", "singleQuote"],
+    );
+    assert_file_contains(
+        project_path.join(".prettierignore"),
+        &["dist/", "build/", "site/", ".venv/", ".coverage", "uv.lock"],
     );
     assert_update_check_is_current(&project_path);
 }

@@ -14,8 +14,7 @@
         entry: uv run --locked ty check
         language: system
         types_or: [python, pyi]
-{% endif %}      - id: pretty-format-json
-{{ component_hooks }}{% if python_rules %}      - id: pytest
+{% endif %}{{ component_hooks }}{% if python_rules %}      - id: pytest
         name: pytest
         entry: uv run --locked pytest -q --maxfail=1 -m "not slow"
         language: system

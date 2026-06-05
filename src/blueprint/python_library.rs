@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file_if_exists};
+use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::readme;
@@ -165,6 +166,10 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_gitignore(&config.gitignore_profile)),
     );
     files.insert(
+        PathBuf::from(".gitattributes"),
+        GeneratedFile::text(gitattributes::render_line_ending_policy()),
+    );
+    files.insert(
         PathBuf::from(".python-version"),
         GeneratedFile::text(format!("{}\n", config.python_min)),
     );
@@ -181,7 +186,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.insert(
-        PathBuf::from("typos.toml"),
+        PathBuf::from(".typos.toml"),
         GeneratedFile::text(render_typos_config()),
     );
     files.insert(
@@ -234,6 +239,10 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
             GeneratedFile::text(render_docs_astro_config()),
         );
         files.insert(
+            PathBuf::from("docs/src/content.config.ts"),
+            GeneratedFile::text(render_docs_content_config()),
+        );
+        files.insert(
             PathBuf::from("docs/tsconfig.json"),
             GeneratedFile::text(render_docs_tsconfig()),
         );
@@ -268,6 +277,7 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
                 ".github/workflows/docs-pages.yaml",
                 "docs/package.json",
                 "docs/astro.config.mjs",
+                "docs/src/content.config.ts",
                 "docs/tsconfig.json",
                 "docs/src/content/docs/index.mdx",
             ]
@@ -458,7 +468,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n", "component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -554,15 +564,15 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
 }
 
 fn render_release_please_config() -> String {
-    template_engine::render_template("python_library/release-please-config.json.j2", ())
+    render_json_template("python_library/release-please-config.json.j2", ())
 }
 
 fn render_release_please_manifest() -> String {
-    template_engine::render_template("python_library/release-please-manifest.json.j2", ())
+    render_json_template("python_library/release-please-manifest.json.j2", ())
 }
 
 fn render_docs_package_json(config: &ProjectConfig) -> String {
-    template_engine::render_template(
+    render_json_template(
         "python_library/docs-package.json.j2",
         serde_json::json!({"project_name": config.project_name}),
     )
@@ -572,8 +582,23 @@ fn render_docs_astro_config() -> String {
     template_engine::render_template("python_library/docs-astro.config.mjs.j2", ())
 }
 
+fn render_docs_content_config() -> String {
+    template_engine::render_template("python_library/docs-content.config.ts.j2", ())
+}
+
 fn render_docs_tsconfig() -> String {
-    template_engine::render_template("python_library/docs-tsconfig.json.j2", ())
+    render_json_template("python_library/docs-tsconfig.json.j2", ())
+}
+
+fn render_json_template(context_name: &str, context: impl serde::Serialize) -> String {
+    ensure_trailing_newline(template_engine::render_template(context_name, context))
+}
+
+fn ensure_trailing_newline(mut rendered: String) -> String {
+    if !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    rendered
 }
 
 fn render_docs_index(config: &ProjectConfig) -> String {
@@ -877,7 +902,7 @@ mod tests {
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
         assert!(justfile.contains("uv run --locked ty check"));
-        assert!(justfile.contains("forge sync --path . --check"));
+        assert!(!justfile.contains("forge sync --path . --check"));
         assert!(justfile.contains("uv run --locked pytest --tb=short"));
         assert!(justfile.contains("uv build --locked"));
     }
@@ -917,6 +942,28 @@ mod tests {
     }
 
     #[test]
+    fn precommit_config_uses_prek_builtin_pretty_format_json() {
+        let precommit = render_precommit_config(&test_config(true));
+
+        let builtin_repo = precommit
+            .find("repo: builtin")
+            .expect("precommit config should include builtin repo");
+        let pretty_format_json = precommit
+            .find("id: pretty-format-json")
+            .expect("precommit config should include JSON formatter");
+        let meta_repo = precommit
+            .find("repo: meta")
+            .expect("precommit config should include meta repo");
+        let local_repo = precommit
+            .find("repo: local")
+            .expect("precommit config should include local repo");
+
+        assert!(builtin_repo < pretty_format_json);
+        assert!(pretty_format_json < meta_repo);
+        assert!(pretty_format_json < local_repo);
+    }
+
+    #[test]
     fn precommit_config_uses_typos_for_spell_checking() {
         let precommit = render_precommit_config(&test_config(true));
         let typos = render_typos_config();
@@ -948,6 +995,18 @@ mod tests {
 
         assert!(package_json.contains("\"name\": \"test-project-docs\""));
         assert!(package_json.contains("\"@astrojs/starlight\""));
+    }
+
+    #[test]
+    fn ensure_trailing_newline_only_appends_when_missing() {
+        assert_eq!(
+            ensure_trailing_newline("{\"a\":1}".to_string()),
+            "{\"a\":1}\n"
+        );
+        assert_eq!(
+            ensure_trailing_newline("{\"a\":1}\n".to_string()),
+            "{\"a\":1}\n"
+        );
     }
 
     #[test]
@@ -1190,8 +1249,17 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
+        assert_eq!(
+            files
+                .get(&PathBuf::from(".gitattributes"))
+                .and_then(GeneratedFile::as_text),
+            Some(
+                "# Normalize text files to LF in Git checkouts and commits.\n* text=auto eol=lf\n"
+            )
+        );
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
-        assert!(files.contains_key(&PathBuf::from("typos.toml")));
+        assert!(files.contains_key(&PathBuf::from(".typos.toml")));
+        assert!(!files.contains_key(&PathBuf::from("typos.toml")));
         assert!(!files.contains_key(&PathBuf::from(".cspell.json")));
         assert_eq!(
             files

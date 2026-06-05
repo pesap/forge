@@ -802,6 +802,7 @@ fn clean_optional_files_for_blueprint(
     blueprint.clean_optional_files_from_pyproject(root, pyproject)?;
     if blueprint == BlueprintName::PythonLibrary {
         remove_managed_file_if_exists(&root.join(".cspell.json"))?;
+        remove_managed_file_if_exists(&root.join("typos.toml"))?;
     }
     Ok(())
 }
@@ -1045,6 +1046,7 @@ fn cleanup_actions_for_blueprint(
     let mut paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
     if blueprint == BlueprintName::PythonLibrary {
         paths.push(PathBuf::from(".cspell.json"));
+        paths.push(PathBuf::from("typos.toml"));
     }
     paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
 
