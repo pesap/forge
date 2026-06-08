@@ -127,8 +127,8 @@ Forge writes two kinds of files:
 - **Project files** -- starter source code, package metadata, agent instructions.
   Generated once by `forge init`.
 - **Managed files** -- CI workflows, hook configs, documentation config, editor
-  settings. Regenerated on every `forge sync` run, so they stay current with
-  the latest templates.
+  settings, line-ending policy, and task-runner config. Regenerated on every
+  `forge sync` run, so they stay current with the latest templates.
 
 Managed files are tracked through `[tool.forge]` metadata embedded in
 `pyproject.toml`. No separate status file.

@@ -900,6 +900,11 @@ mod tests {
     fn just_verify_runs_non_mutating_python_quality_gate_explicitly() {
         let justfile = render_justfile(&test_config(true));
 
+        assert!(
+            justfile
+                .contains("set windows-shell := [\"powershell.exe\", \"-NoLogo\", \"-Command\"]")
+        );
+        assert!(!justfile.contains("windows-powershell"));
         assert!(justfile.contains("verify:\n    uv lock --check"));
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
@@ -1251,14 +1256,16 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
-        assert_eq!(
-            files
-                .get(&PathBuf::from(".gitattributes"))
-                .and_then(GeneratedFile::as_text),
-            Some(
-                "# Normalize text files to LF in Git checkouts and commits.\n* text=auto eol=lf\n"
-            )
-        );
+        let policy = files
+            .get(&PathBuf::from(".gitattributes"))
+            .and_then(GeneratedFile::as_text)
+            .expect(".gitattributes should be generated");
+
+        assert!(policy.contains("* text=auto eol=lf"));
+        assert!(policy.contains("*.bat text eol=crlf"));
+        assert!(policy.contains("*.cmd text eol=crlf"));
+        assert!(policy.contains("*.png binary"));
+        assert!(policy.contains("*.zip binary"));
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
         assert!(files.contains_key(&PathBuf::from(".typos.toml")));
         assert!(!files.contains_key(&PathBuf::from("typos.toml")));
