@@ -196,7 +196,8 @@ OSI-approved license IDs are `BSD-3-Clause`, `MIT`, `Apache-2.0`,
 `BSD-2-Clause`, and `ISC`.
 
 `--python-min` accepts values from `3.8` through `3.14`. Generated CI tests the
-configured minimum through `3.14`.
+configured minimum through `3.14` on Ubuntu and runs a lightweight Windows smoke
+job on `windows-latest`.
 
 Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
 `--pypi-publish`. Use `--editorconfig=false` to disable EditorConfig (enabled by
@@ -381,8 +382,8 @@ All blueprints generate:
   (symlink where supported; Windows falls back to a hardlink or copy when symlink
   privileges are unavailable)
 - **CI** -- GitHub Actions with read-only token permissions, `uv` caching,
-  lockfile verification (`uv lock --check`), bounded timeouts, and cancellation
-  of stale runs on the same ref
+  lockfile verification (`uv lock --check`), lightweight Windows smoke jobs,
+  bounded timeouts, and cancellation of stale runs on the same ref
 - **Hooks** -- `prek` hooks that check Forge infrastructure drift
 - **Release** -- `release-please` configuration
 - **Scheduled sync workflow** -- opens an infrastructure sync PR when drift

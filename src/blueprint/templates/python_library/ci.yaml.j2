@@ -32,3 +32,11 @@ on:
         with:
           python-version: "3.14"
 {{ install_forge_step }}{{ uv_sync_locked_step }}      - run: uv run --locked python -c "import {{ package_name }}"
+
+  windows-smoke:
+    runs-on: windows-latest
+{{ job_timeout }}    steps:
+{{ read_only_checkout_step }}{{ setup_uv_step }}      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+{{ uv_sync_locked_step }}      - run: uv run --locked pytest

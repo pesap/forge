@@ -433,6 +433,8 @@ mod tests {
         assert!(workflow.contains(github_actions::uv_sync_locked_step()));
         assert!(workflow.contains(github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
+        assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
+        assert!(workflow.contains("uv sync --all-groups --locked"));
     }
 
     #[test]

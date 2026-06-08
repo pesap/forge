@@ -926,6 +926,9 @@ mod tests {
         assert!(workflow.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
         assert!(workflow.contains("name: Upload coverage to Codecov"));
         assert!(workflow.contains("if: ${{ matrix.python-version == '3.14' }}"));
+        assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
+        assert!(workflow.contains("uv sync --all-groups --locked"));
+        assert!(workflow.contains("run: uv run --locked pytest"));
     }
 
     #[test]

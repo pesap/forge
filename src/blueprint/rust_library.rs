@@ -559,6 +559,7 @@ mod tests {
             )
         );
         assert!(workflow.contains("run: forge sync --path . --check"));
+        assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
         assert!(workflow.contains("run: cargo test"));
     }
 
