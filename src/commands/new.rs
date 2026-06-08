@@ -689,8 +689,8 @@ pub(crate) fn push_managed_option_flags(parts: &mut Vec<String>, flags: ManagedO
     if flags.prettier {
         parts.push("--prettier".to_string());
     }
-    if flags.editorconfig {
-        parts.push("--editorconfig".to_string());
+    if !flags.editorconfig {
+        parts.push("--editorconfig=false".to_string());
     }
     if flags.markdownlint {
         parts.push("--markdownlint".to_string());
@@ -1942,7 +1942,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --editorconfig --github --github-owner example-org --github-visibility private --yes"
+            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -1960,7 +1960,7 @@ mod tests {
                 codecov: Some(false),
                 pypi_publish: Some(true),
                 prettier: true,
-                editorconfig: true,
+                editorconfig: false,
                 markdownlint: false,
             },
         );
@@ -1972,7 +1972,7 @@ mod tests {
                 "--codecov=false".to_string(),
                 "--pypi-publish=true".to_string(),
                 "--prettier".to_string(),
-                "--editorconfig".to_string(),
+                "--editorconfig=false".to_string(),
             ]
         );
         assert!(!parts.iter().any(|part| part == "--no-docs"));
@@ -1990,7 +1990,7 @@ mod tests {
                 codecov: None,
                 pypi_publish: None,
                 prettier: false,
-                editorconfig: false,
+                editorconfig: true,
                 markdownlint: false,
             },
         );
@@ -2015,7 +2015,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: true,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -2031,6 +2031,41 @@ mod tests {
         let selection = component_selection_from_args(&args);
 
         assert!(selection.is_enabled(ManagedComponent::Prettier));
+        assert!(selection.is_enabled(ManagedComponent::Editorconfig));
+    }
+
+    #[test]
+    fn component_selection_from_args_honors_explicit_editorconfig_false() {
+        let args = NewArgs {
+            blueprint: Some(BlueprintName::AnyProject),
+            path: None,
+            project_name: Some("repo-infra".to_string()),
+            package_name: None,
+            description: Some("Shared infrastructure".to_string()),
+            author_name: None,
+            author_email: None,
+            license: None,
+            python_min: None,
+            gitignore_profile: None,
+            docs: true,
+            codecov: None,
+            pypi_publish: None,
+            prettier: false,
+            editorconfig: false,
+            markdownlint: false,
+            ignored_files: Vec::new(),
+            no_git_history: false,
+            github: false,
+            github_owner: None,
+            github_visibility: None,
+            json: false,
+            dry_run: false,
+            diff: false,
+            yes: true,
+        };
+
+        let selection = component_selection_from_args(&args);
+
         assert!(!selection.is_enabled(ManagedComponent::Editorconfig));
     }
 
@@ -2115,7 +2150,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -2204,7 +2239,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -2302,7 +2337,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -2409,7 +2444,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,

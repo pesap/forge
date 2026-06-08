@@ -16,7 +16,8 @@ use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
     BlueprintName, BlueprintSpec, DEFAULT_LICENSE, ManagedOption, apply_ignored_files,
-    is_supported_license, managed_option_enabled, render_forge_ignore, supported_license_message,
+    is_supported_license, managed_option_enabled, render_forge_ignore,
+    render_forge_overrides_table, supported_license_message,
     validate_managed_overrides_from_metadata,
 };
 
@@ -416,11 +417,16 @@ fn render_docs_dependency_group(_enabled: bool) -> &'static str {
 }
 
 fn render_python_forge_overrides(config: &ProjectConfig) -> String {
-    if config.pypi_publish {
-        "\n[tool.forge.overrides]\npypi-publish = true\n".to_string()
-    } else {
-        String::new()
-    }
+    render_forge_overrides_table(
+        BlueprintName::PythonLibrary,
+        &[
+            (ManagedOption::PypiPublish, config.pypi_publish),
+            (
+                ManagedOption::Editorconfig,
+                config.components.is_enabled(ManagedComponent::Editorconfig),
+            ),
+        ],
+    )
 }
 
 fn render_python_forge_ignore(config: &ProjectConfig) -> String {
@@ -429,10 +435,6 @@ fn render_python_forge_ignore(config: &ProjectConfig) -> String {
         (ManagedOption::Docs, config.docs),
         (ManagedOption::Codecov, config.codecov),
         (ManagedOption::PythonRules, config.python_rules),
-        (
-            ManagedOption::Editorconfig,
-            config.components.is_enabled(ManagedComponent::Editorconfig),
-        ),
     ] {
         if BlueprintName::PythonLibrary.option_default_enabled(option) && !enabled {
             let option_name = option.as_str();
@@ -924,6 +926,9 @@ mod tests {
         assert!(workflow.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
         assert!(workflow.contains("name: Upload coverage to Codecov"));
         assert!(workflow.contains("if: ${{ matrix.python-version == '3.14' }}"));
+        assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
+        assert!(workflow.contains("uv sync --all-groups --locked"));
+        assert!(workflow.contains("run: uv run --locked pytest"));
     }
 
     #[test]
@@ -935,9 +940,15 @@ mod tests {
         let precommit = render_precommit_config(&config);
 
         assert!(justfile.contains("uv run ruff format ."));
-        assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
-        assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-        assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+        assert!(justfile.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+        ));
+        assert!(precommit.contains(
+            "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+        ));
+        assert!(!precommit.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+        ));
     }
 
     #[test]
@@ -1222,6 +1233,7 @@ prettier = true
         assert!(!config.pypi_publish);
         assert!(config.python_rules);
         assert!(config.components.is_enabled(ManagedComponent::Prettier));
+        assert!(config.components.is_enabled(ManagedComponent::Editorconfig));
     }
 
     #[test]

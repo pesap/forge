@@ -37,6 +37,10 @@ fn generated_python_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/ci.yaml"),
         &["name", "on", "jobs"],
     );
+    assert_file_contains(
+        project_path.join(".github/workflows/ci.yaml"),
+        &["windows-latest", "uv run --locked pytest"],
+    );
     assert_yaml_file(
         project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
@@ -117,6 +121,10 @@ fn generated_rust_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/ci.yaml"),
         &["name", "on", "jobs"],
     );
+    assert_file_contains(
+        project_path.join(".github/workflows/ci.yaml"),
+        &["windows-latest", "cargo test"],
+    );
     assert_yaml_file(
         project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
@@ -163,6 +171,10 @@ fn generated_any_project_configs_are_structurally_valid() {
     assert_yaml_file(
         project_path.join(".github/workflows/ci.yaml"),
         &["name", "on", "jobs"],
+    );
+    assert_file_contains(
+        project_path.join(".github/workflows/ci.yaml"),
+        &["windows-latest", "uv sync --all-groups --locked"],
     );
     assert_yaml_file(
         project_path.join(".github/workflows/forge-sync.yaml"),

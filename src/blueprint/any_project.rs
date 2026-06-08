@@ -433,6 +433,8 @@ mod tests {
         assert!(workflow.contains(github_actions::uv_sync_locked_step()));
         assert!(workflow.contains(github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
+        assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
+        assert!(workflow.contains("uv sync --all-groups --locked"));
     }
 
     #[test]
@@ -490,9 +492,15 @@ mod tests {
         let justfile = render_justfile(&config);
         let precommit = render_precommit_config(&config);
 
-        assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
-        assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-        assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+        assert!(justfile.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+        ));
+        assert!(precommit.contains(
+            "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+        ));
+        assert!(!precommit.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+        ));
     }
 
     #[test]
@@ -566,5 +574,21 @@ prettier = true
         assert!(config.docs);
         assert!(config.components.is_enabled(ManagedComponent::Prettier));
         assert!(config.components.is_enabled(ManagedComponent::Editorconfig));
+    }
+
+    #[test]
+    fn config_from_pyproject_preserves_explicit_editorconfig_false_override() {
+        let metadata = r#"[tool.forge]
+blueprint = "any-project"
+project_name = "repo-infra"
+description = "A test project"
+
+[tool.forge.overrides]
+editorconfig = false
+"#;
+
+        let config = config_from_pyproject(metadata).expect("metadata should parse");
+
+        assert!(!config.components.is_enabled(ManagedComponent::Editorconfig));
     }
 }

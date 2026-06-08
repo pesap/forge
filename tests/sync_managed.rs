@@ -10,8 +10,14 @@ fn expected_pytest_cache_dir(project_name: &str) -> String {
 }
 
 fn generate_project(project_path: &std::path::Path) {
-    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
-    cmd.args([
+    generate_project_with_extra_args(project_path, []);
+}
+
+fn generate_project_with_extra_args<const N: usize>(
+    project_path: &std::path::Path,
+    extra_args: [&str; N],
+) {
+    let mut args = vec![
         "init",
         "--blueprint",
         "python-library",
@@ -31,8 +37,12 @@ fn generate_project(project_path: &std::path::Path) {
         "MIT",
         "--python-min",
         "3.12",
-        "--yes",
-    ]);
+    ];
+    args.extend(extra_args);
+    args.push("--yes");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args(args);
     cmd.assert().success();
 }
 
@@ -1551,11 +1561,17 @@ fn sync_set_can_enable_prettier_component() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-    assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
+    assert!(!precommit.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+    ));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join(".prettierignore").exists());
 }
@@ -1564,7 +1580,7 @@ fn sync_set_can_enable_prettier_component() {
 fn sync_set_can_enable_editorconfig_component() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
-    generate_project(&project_path);
+    generate_project_with_extra_args(&project_path, ["--editorconfig=false"]);
 
     let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
     sync.args([
@@ -1700,7 +1716,7 @@ dependencies = ["click>=8"]
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
     assert_eq!(
         forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]\nignore = [\"editorconfig\"]"
+        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
     );
     assert!(pyproject.contains("ruff~=0.14.0"));
     assert!(!pyproject.contains("ruff~=0.1.0"));
@@ -2113,13 +2129,10 @@ fn sync_set_markdownlint_disable_dry_run_json_reports_option_change_without_writ
     );
     assert_eq!(
         report["next_steps"],
-        serde_json::json!([
-            format!(
-                "forge sync --path {} --set markdownlint=false --yes",
-                canonical_display(&project_path)
-            ),
-            "uv lock"
-        ])
+        serde_json::json!([format!(
+            "forge sync --path {} --set markdownlint=false --yes",
+            canonical_display(&project_path)
+        )])
     );
 
     let pyproject =
@@ -2580,10 +2593,14 @@ fn sync_set_can_enable_prettier_for_language_agnostic_project() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
 }
 
 #[test]
@@ -2800,11 +2817,15 @@ fn sync_set_can_enable_prettier_for_rust_library_project() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
     assert!(precommit.contains("cargo clippy"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
 }
 
 #[test]

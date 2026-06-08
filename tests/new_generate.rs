@@ -3,6 +3,7 @@ use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use tempfile::TempDir;
 
 fn write_executable(path: &std::path::Path, content: &str) {
@@ -16,6 +17,43 @@ fn write_executable(path: &std::path::Path, content: &str) {
 
 fn expected_pytest_cache_dir(project_name: &str) -> String {
     format!(".cache/pytest/{project_name}")
+}
+
+fn init_args_for_blueprint(blueprint: &str, project_path: &Path) -> Vec<String> {
+    let mut args = vec![
+        "init".to_string(),
+        "--blueprint".to_string(),
+        blueprint.to_string(),
+        "--path".to_string(),
+        project_path
+            .to_str()
+            .expect("project path should be valid UTF-8")
+            .to_string(),
+        "--project-name".to_string(),
+        "grid-tools".to_string(),
+        "--description".to_string(),
+        "Grid toolchain".to_string(),
+    ];
+
+    if blueprint == "python-library" {
+        args.extend(["--package-name".to_string(), "grid_tools".to_string()]);
+    }
+
+    args.push("--yes".to_string());
+    args
+}
+
+fn forge_editorconfig_override(pyproject: &str) -> Option<bool> {
+    let parsed: toml::Value = toml::from_str(pyproject).expect("pyproject should parse");
+    parsed
+        .get("tool")
+        .and_then(toml::Value::as_table)
+        .and_then(|tool| tool.get("forge"))
+        .and_then(toml::Value::as_table)
+        .and_then(|forge| forge.get("overrides"))
+        .and_then(toml::Value::as_table)
+        .and_then(|overrides| overrides.get("editorconfig"))
+        .and_then(toml::Value::as_bool)
 }
 
 #[test]
@@ -53,7 +91,7 @@ fn new_generates_python_project_with_metadata() {
         .stdout(contains("[ok] generated grid-tools"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov, python-rules; disabled: pypi-publish, prettier, editorconfig, markdownlint",
+            "options: enabled: docs, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))
@@ -73,7 +111,8 @@ fn new_generates_python_project_with_metadata() {
         "gitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
     ));
     assert!(!pyproject.contains("[tool.forge.overrides]"));
-    assert!(pyproject.contains("ignore = [\"editorconfig\"]"));
+    assert!(!pyproject.contains("ignore = [\"editorconfig\"]"));
+    assert!(project_path.join(".editorconfig").exists());
     assert!(
         pyproject
             .find("[project]")
@@ -377,7 +416,7 @@ fn new_dry_run_previews_files_without_writing() {
         .stdout(contains("Project creation preview"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov, python-rules; disabled: pypi-publish, prettier, editorconfig, markdownlint",
+            "options: enabled: docs, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))
@@ -1355,11 +1394,17 @@ fn new_can_generate_prettier_component() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-    assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
+    assert!(!precommit.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+    ));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
 
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join(".prettierignore").exists());
@@ -1401,37 +1446,47 @@ fn new_accepts_explicit_false_for_prettier_component() {
 }
 
 #[test]
-fn new_can_generate_editorconfig_component() {
-    let temp = TempDir::new().expect("temp dir should create");
-    let project_path = temp.path().join("grid-tools");
+fn new_generates_editorconfig_by_default_for_all_blueprints() {
+    for blueprint in ["any-project", "python-library", "rust-library"] {
+        let temp = TempDir::new().expect("temp dir should create");
+        let project_path = temp.path().join(format!("{blueprint}-grid-tools"));
 
-    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
-    cmd.args([
-        "init",
-        "--blueprint",
-        "python-library",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-        "--project-name",
-        "grid-tools",
-        "--package-name",
-        "grid_tools",
-        "--description",
-        "Grid toolchain",
-        "--author-name",
-        "Ada Lovelace",
-        "--author-email",
-        "ada@example.com",
-        "--editorconfig",
-        "--yes",
-    ]);
+        let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+        cmd.args(init_args_for_blueprint(blueprint, &project_path));
 
-    cmd.assert().success();
+        cmd.assert().success();
 
-    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
-        .expect("pyproject.toml should be generated");
-    assert!(!pyproject.contains("editorconfig = true"));
-    assert!(project_path.join(".editorconfig").exists());
+        let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+            .expect("pyproject.toml should be generated");
+        assert_eq!(forge_editorconfig_override(&pyproject), None);
+        assert!(
+            project_path.join(".editorconfig").exists(),
+            "{blueprint} should generate .editorconfig by default"
+        );
+    }
+}
+
+#[test]
+fn new_can_explicitly_disable_editorconfig_for_all_blueprints() {
+    for blueprint in ["any-project", "python-library", "rust-library"] {
+        let temp = TempDir::new().expect("temp dir should create");
+        let project_path = temp.path().join(format!("{blueprint}-grid-tools"));
+        let mut args = init_args_for_blueprint(blueprint, &project_path);
+        args.insert(args.len() - 1, "--editorconfig=false".to_string());
+
+        let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+        cmd.args(args);
+
+        cmd.assert().success();
+
+        let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+            .expect("pyproject.toml should be generated");
+        assert_eq!(forge_editorconfig_override(&pyproject), Some(false));
+        assert!(
+            !project_path.join(".editorconfig").exists(),
+            "{blueprint} should omit explicitly disabled .editorconfig"
+        );
+    }
 }
 
 #[test]
@@ -1569,7 +1624,7 @@ fn new_dry_run_warns_when_pypi_publishing_is_selected() {
 }
 
 #[test]
-fn new_accepts_explicit_false_flags_for_default_enabled_components() {
+fn new_accepts_explicit_false_flags_for_default_enabled_workflows() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-tools");
 
@@ -1599,9 +1654,10 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(pyproject.contains("ignore = [\"docs\", \"codecov\", \"editorconfig\"]"));
+    assert!(pyproject.contains("ignore = [\"docs\", \"codecov\"]"));
     assert!(!pyproject.contains("docs = false"));
     assert!(!pyproject.contains("codecov = false"));
+    assert_eq!(forge_editorconfig_override(&pyproject), None);
     assert!(!pyproject.contains("@astrojs/starlight"));
 
     let justfile =
@@ -1612,6 +1668,7 @@ fn new_accepts_explicit_false_flags_for_default_enabled_components() {
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
     assert!(!ci.contains("\n      - uses: codecov/codecov-action"));
+    assert!(project_path.join(".editorconfig").exists());
     assert!(!project_path.join("docs/package.json").exists());
     assert!(
         !project_path
