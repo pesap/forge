@@ -416,13 +416,24 @@ fn create_managed_link_fallback(
     path: &Path,
     target: &Path,
     temp_path: &Path,
-    _error: std::io::Error,
+    error: std::io::Error,
 ) -> std::io::Result<()> {
+    if !windows_symlink_error_allows_fallback(&error) {
+        return Err(error);
+    }
+
     let resolved_target = resolve_managed_link_target(path, target);
     match fs::hard_link(&resolved_target, temp_path) {
         Ok(()) => Ok(()),
         Err(_) => fs::copy(&resolved_target, temp_path).map(|_| ()),
     }
+}
+
+#[cfg(windows)]
+fn windows_symlink_error_allows_fallback(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::PermissionDenied
+        || error.kind() == std::io::ErrorKind::Unsupported
+        || error.raw_os_error() == Some(1314)
 }
 
 fn managed_link_fallback_matches_target(path: &Path, target: &Path) -> bool {
@@ -440,6 +451,9 @@ fn managed_link_fallback_matches_target(path: &Path, target: &Path) -> bool {
             return false;
         };
         if !target_metadata.file_type().is_file() {
+            return false;
+        }
+        if metadata.len() != target_metadata.len() {
             return false;
         }
 
@@ -575,7 +589,7 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn planner_relinks_regular_file_for_managed_symlink_on_unix() {
+    fn planner_relinks_regular_file_for_managed_symlink_on_non_windows() {
         let temp = TempDir::new().expect("temp dir should create");
         std::fs::write(temp.path().join("AGENTS.md"), "shared instructions\n")
             .expect("target should write");
