@@ -376,7 +376,9 @@ forge completions elvish
 
 All blueprints generate:
 
-- **Agent instructions** -- shared `AGENTS.md` with a managed `CLAUDE.md` symlink
+- **Agent instructions** -- shared `AGENTS.md` with a managed `CLAUDE.md` link
+  (symlink where supported; Windows falls back to a hardlink or copy when symlink
+  privileges are unavailable)
 - **CI** -- GitHub Actions with read-only token permissions, `uv` caching,
   lockfile verification (`uv lock --check`), bounded timeouts, and cancellation
   of stale runs on the same ref

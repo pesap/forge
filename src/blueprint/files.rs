@@ -247,7 +247,11 @@ fn plan_generated_file(
                 reason: ManagedFileConflict::Directory,
             },
             Err(_) if full_path.exists() || full_path.symlink_metadata().is_ok() => {
-                ManagedFileAction::Relink(relative_path.into())
+                if managed_link_fallback_matches_target(full_path, target) {
+                    ManagedFileAction::Keep(relative_path.into())
+                } else {
+                    ManagedFileAction::Relink(relative_path.into())
+                }
             }
             Err(_) => ManagedFileAction::Create(relative_path.into()),
         },
@@ -371,9 +375,9 @@ fn replace_symlink(path: &Path, target: &Path) -> Result<()> {
 
     let temp_path = temp_path_for(path)?;
     let replace_result = (|| -> Result<()> {
-        symlink_file(target, &temp_path).with_context(|| {
+        create_managed_link(path, target, &temp_path).with_context(|| {
             format!(
-                "failed to create symlink {} -> {}",
+                "failed to create managed link {} -> {}",
                 temp_path.display(),
                 target.display()
             )
@@ -388,6 +392,78 @@ fn replace_symlink(path: &Path, target: &Path) -> Result<()> {
     }
 
     replace_result
+}
+
+fn create_managed_link(path: &Path, target: &Path, temp_path: &Path) -> std::io::Result<()> {
+    match symlink_file(target, temp_path) {
+        Ok(()) => Ok(()),
+        Err(error) => create_managed_link_fallback(path, target, temp_path, error),
+    }
+}
+
+#[cfg(unix)]
+fn create_managed_link_fallback(
+    _path: &Path,
+    _target: &Path,
+    _temp_path: &Path,
+    error: std::io::Error,
+) -> std::io::Result<()> {
+    Err(error)
+}
+
+#[cfg(windows)]
+fn create_managed_link_fallback(
+    path: &Path,
+    target: &Path,
+    temp_path: &Path,
+    _error: std::io::Error,
+) -> std::io::Result<()> {
+    let resolved_target = resolve_managed_link_target(path, target);
+    match fs::hard_link(&resolved_target, temp_path) {
+        Ok(()) => Ok(()),
+        Err(_) => fs::copy(&resolved_target, temp_path).map(|_| ()),
+    }
+}
+
+fn managed_link_fallback_matches_target(path: &Path, target: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let Ok(metadata) = path.symlink_metadata() else {
+            return false;
+        };
+        if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+            return false;
+        }
+
+        let resolved_target = resolve_managed_link_target(path, target);
+        let Ok(target_metadata) = resolved_target.symlink_metadata() else {
+            return false;
+        };
+        if !target_metadata.file_type().is_file() {
+            return false;
+        }
+
+        let Ok(existing_contents) = fs::read(path) else {
+            return false;
+        };
+        let Ok(target_contents) = fs::read(resolved_target) else {
+            return false;
+        };
+
+        existing_contents == target_contents
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = (path, target);
+        false
+    }
+}
+
+#[cfg(windows)]
+fn resolve_managed_link_target(path: &Path, target: &Path) -> PathBuf {
+    let base = path.parent().unwrap_or_else(|| Path::new(""));
+    base.join(target)
 }
 
 #[cfg(unix)]
@@ -494,6 +570,72 @@ mod tests {
                 path: PathBuf::from("CLAUDE.md"),
                 reason: ManagedFileConflict::Directory,
             }]
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn planner_relinks_regular_file_for_managed_symlink_on_unix() {
+        let temp = TempDir::new().expect("temp dir should create");
+        std::fs::write(temp.path().join("AGENTS.md"), "shared instructions\n")
+            .expect("target should write");
+        std::fs::write(temp.path().join("CLAUDE.md"), "shared instructions\n")
+            .expect("regular file should write");
+        let mut files = GeneratedFiles::new();
+        files.insert(
+            PathBuf::from("CLAUDE.md"),
+            GeneratedFile::symlink("AGENTS.md"),
+        );
+
+        let actions = plan_generated_files(temp.path(), &files);
+
+        assert_eq!(
+            actions,
+            vec![ManagedFileAction::Relink(PathBuf::from("CLAUDE.md"))]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn planner_keeps_windows_fallback_copy_for_managed_symlink() {
+        let temp = TempDir::new().expect("temp dir should create");
+        std::fs::write(temp.path().join("AGENTS.md"), "shared instructions\n")
+            .expect("target should write");
+        std::fs::write(temp.path().join("CLAUDE.md"), "shared instructions\n")
+            .expect("fallback file should write");
+        let mut files = GeneratedFiles::new();
+        files.insert(
+            PathBuf::from("CLAUDE.md"),
+            GeneratedFile::symlink("AGENTS.md"),
+        );
+
+        let actions = plan_generated_files(temp.path(), &files);
+
+        assert_eq!(
+            actions,
+            vec![ManagedFileAction::Keep(PathBuf::from("CLAUDE.md"))]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn planner_relinks_stale_windows_fallback_copy_for_managed_symlink() {
+        let temp = TempDir::new().expect("temp dir should create");
+        std::fs::write(temp.path().join("AGENTS.md"), "shared instructions\n")
+            .expect("target should write");
+        std::fs::write(temp.path().join("CLAUDE.md"), "stale instructions\n")
+            .expect("fallback file should write");
+        let mut files = GeneratedFiles::new();
+        files.insert(
+            PathBuf::from("CLAUDE.md"),
+            GeneratedFile::symlink("AGENTS.md"),
+        );
+
+        let actions = plan_generated_files(temp.path(), &files);
+
+        assert_eq!(
+            actions,
+            vec![ManagedFileAction::Relink(PathBuf::from("CLAUDE.md"))]
         );
     }
 
@@ -665,10 +807,47 @@ mod tests {
         );
 
         let error = result.expect_err("invalid symlink target should fail");
-        assert!(error.to_string().contains("failed to create symlink"));
+        assert!(error.to_string().contains("failed to create managed link"));
         assert_eq!(
             std::fs::read_link(&link).expect("existing symlink should remain readable"),
             PathBuf::from("OLD.md")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_managed_link_target_uses_link_parent_directory() {
+        let link = PathBuf::from("nested/CLAUDE.md");
+        let resolved = crate::blueprint::files::resolve_managed_link_target(
+            &link,
+            std::path::Path::new("AGENTS.md"),
+        );
+
+        assert_eq!(resolved, PathBuf::from("nested/AGENTS.md"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_fallback_link_match_accepts_only_matching_regular_files() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let target = temp.path().join("AGENTS.md");
+        let link = temp.path().join("CLAUDE.md");
+        std::fs::write(&target, "shared instructions\n").expect("target should write");
+        std::fs::write(&link, "shared instructions\n").expect("fallback file should write");
+
+        assert!(
+            crate::blueprint::files::managed_link_fallback_matches_target(
+                &link,
+                std::path::Path::new("AGENTS.md")
+            )
+        );
+
+        std::fs::write(&link, "different\n").expect("fallback file should update");
+        assert!(
+            !crate::blueprint::files::managed_link_fallback_matches_target(
+                &link,
+                std::path::Path::new("AGENTS.md")
+            )
         );
     }
 

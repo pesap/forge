@@ -456,6 +456,28 @@ fn sync_check_defaults_missing_overrides_table() {
     sync.assert().success();
 }
 
+#[cfg(windows)]
+#[test]
+fn sync_check_accepts_windows_fallback_claude_link_copy() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let claude_path = project_path.join("CLAUDE.md");
+    fs::remove_file(&claude_path).expect("generated CLAUDE.md should be removable");
+    fs::copy(project_path.join("AGENTS.md"), &claude_path)
+        .expect("fallback CLAUDE.md copy should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    sync.assert().success();
+}
+
 #[test]
 fn sync_rejects_missing_blueprint_version_metadata() {
     let temp = TempDir::new().expect("temp dir should create");
