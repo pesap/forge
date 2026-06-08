@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/pesap/forge/compare/v0.4.1...v0.5.0) (2026-06-08)
+
+
+### Features
+
+* cross-platform generated repo defaults ([#98](https://github.com/pesap/forge/issues/98)) ([0e50ae9](https://github.com/pesap/forge/commit/0e50ae947c01db5c5b6f8f2a2f652c0dd4fc931d))
+* improve cross-platform generated defaults ([#100](https://github.com/pesap/forge/issues/100)) ([d76eab1](https://github.com/pesap/forge/commit/d76eab15fdbcb597d2c2eec491886a0409dbf567))
+
+
+### Bug Fixes
+
+* align line-ending hook with CRLF scripts ([#99](https://github.com/pesap/forge/issues/99)) ([c7fc916](https://github.com/pesap/forge/commit/c7fc9165f9375e2cf27434182f6932b3b3999965))
+* avoid Windows drift for managed Claude link ([#96](https://github.com/pesap/forge/issues/96)) ([4596abe](https://github.com/pesap/forge/commit/4596abe1c68153f849927d775335ba9bc5edfb87))
+
 ## [0.4.1](https://github.com/pesap/forge/compare/v0.4.0...v0.4.1) (2026-06-05)
 
 
