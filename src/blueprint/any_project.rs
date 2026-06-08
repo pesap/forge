@@ -567,4 +567,20 @@ prettier = true
         assert!(config.components.is_enabled(ManagedComponent::Prettier));
         assert!(config.components.is_enabled(ManagedComponent::Editorconfig));
     }
+
+    #[test]
+    fn config_from_pyproject_preserves_explicit_editorconfig_false_override() {
+        let metadata = r#"[tool.forge]
+blueprint = "any-project"
+project_name = "repo-infra"
+description = "A test project"
+
+[tool.forge.overrides]
+editorconfig = false
+"#;
+
+        let config = config_from_pyproject(metadata).expect("metadata should parse");
+
+        assert!(!config.components.is_enabled(ManagedComponent::Editorconfig));
+    }
 }

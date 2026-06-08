@@ -135,7 +135,7 @@ Managed files are tracked through `[tool.forge]` metadata embedded in
 
 ### Optional components
 
-Components are reusable opt-in features like Prettier, EditorConfig, PyPI
+Components are reusable managed features like Prettier, EditorConfig, PyPI
 publishing, MkDocs, and Codecov. Forge uses sensible blueprint defaults and
 records only explicit deviations in `[tool.forge.overrides]`.
 
@@ -199,8 +199,9 @@ OSI-approved license IDs are `BSD-3-Clause`, `MIT`, `Apache-2.0`,
 configured minimum through `3.14`.
 
 Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
-`--pypi-publish`. Use `--docs=false` to disable MkDocs (enabled by default for
-`any-project` and `rust-library`).
+`--pypi-publish`. Use `--editorconfig=false` to disable EditorConfig (enabled by
+default for all blueprints) and `--docs=false` to disable MkDocs (enabled by
+default).
 
 If you enable `--pypi-publish`, Forge writes a commented trusted-publishing
 workflow at `.github/workflows/publish-pypi.yaml`; register that workflow as a

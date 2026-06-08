@@ -164,14 +164,14 @@ pub struct InitArgs {
         default_value_t = false
     )]
     pub prettier: bool,
-    /// Add EditorConfig baseline for cross-editor whitespace consistency. Accepts --editorconfig, --editorconfig=true, or --editorconfig=false.
+    /// Manage EditorConfig baseline for cross-editor whitespace consistency. Enabled by default; accepts --editorconfig=false to disable.
     #[arg(
         long,
         value_name = "BOOL",
         action = ArgAction::Set,
         num_args = 0..=1,
         default_missing_value = "true",
-        default_value_t = false
+        default_value_t = true
     )]
     pub editorconfig: bool,
     /// Add markdownlint checks for Markdown files. Accepts --markdownlint, --markdownlint=true, or --markdownlint=false.
@@ -290,14 +290,14 @@ pub struct NewArgs {
         default_value_t = false
     )]
     pub prettier: bool,
-    /// Add EditorConfig baseline for cross-editor whitespace consistency. Accepts --editorconfig, --editorconfig=true, or --editorconfig=false.
+    /// Manage EditorConfig baseline for cross-editor whitespace consistency. Enabled by default; accepts --editorconfig=false to disable.
     #[arg(
         long,
         value_name = "BOOL",
         action = ArgAction::Set,
         num_args = 0..=1,
         default_missing_value = "true",
-        default_value_t = false
+        default_value_t = true
     )]
     pub editorconfig: bool,
     /// Add markdownlint checks for Markdown files. Accepts --markdownlint, --markdownlint=true, or --markdownlint=false.

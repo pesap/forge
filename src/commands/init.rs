@@ -868,7 +868,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -905,7 +905,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -1050,7 +1050,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -1094,7 +1094,7 @@ mod tests {
             codecov: None,
             pypi_publish: None,
             prettier: false,
-            editorconfig: false,
+            editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
             no_git_history: false,
@@ -1127,7 +1127,7 @@ docs = false
 codecov = false
 pypi-publish = true
 prettier = true
-editorconfig = true
+editorconfig = false
 markdownlint = true
 "#,
                 ),
@@ -1147,7 +1147,7 @@ markdownlint = true
         assert!(command.contains("--codecov=false"));
         assert!(command.contains("--pypi-publish=true"));
         assert!(command.contains("--prettier"));
-        assert!(command.contains("--editorconfig"));
+        assert!(command.contains("--editorconfig=false"));
         assert!(command.contains("--markdownlint"));
     }
 }

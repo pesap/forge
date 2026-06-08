@@ -74,8 +74,9 @@ fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
     ));
     assert_eq!(
         forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]\nignore = [\"editorconfig\"]"
+        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
     );
+    assert!(project_path.join(".editorconfig").exists());
     assert!(!pyproject.contains("forge = ["));
     assert!(!pyproject.contains("\nbuild = ["));
     assert!(pyproject.contains("code-quality = ["));
@@ -247,7 +248,8 @@ fn init_accepts_positional_path_and_ignored_managed_files() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(pyproject.contains("ignore = [\"AGENTS.md\", \"CLAUDE.md\", \"editorconfig\"]"));
+    assert!(pyproject.contains("ignore = [\"AGENTS.md\", \"CLAUDE.md\"]"));
+    assert!(project_path.join(".editorconfig").exists());
     assert!(!project_path.join("AGENTS.md").exists());
     assert!(!project_path.join("CLAUDE.md").exists());
 
