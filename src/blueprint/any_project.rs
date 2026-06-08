@@ -467,6 +467,11 @@ mod tests {
             ignored_files: Vec::new(),
         });
 
+        assert!(
+            justfile
+                .contains("set windows-shell := [\"powershell.exe\", \"-NoLogo\", \"-Command\"]")
+        );
+        assert!(!justfile.contains("windows-powershell"));
         assert!(justfile.contains("verify:\n    uv lock --check"));
         assert!(justfile.contains("uv run --locked prek run --all-files"));
         assert!(!justfile.contains("forge sync --path . --check"));

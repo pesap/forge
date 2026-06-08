@@ -900,6 +900,11 @@ mod tests {
     fn just_verify_runs_non_mutating_python_quality_gate_explicitly() {
         let justfile = render_justfile(&test_config(true));
 
+        assert!(
+            justfile
+                .contains("set windows-shell := [\"powershell.exe\", \"-NoLogo\", \"-Command\"]")
+        );
+        assert!(!justfile.contains("windows-powershell"));
         assert!(justfile.contains("verify:\n    uv lock --check"));
         assert!(justfile.contains("uv run --locked ruff format --check ."));
         assert!(justfile.contains("uv run --locked ruff check ."));
