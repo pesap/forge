@@ -1561,11 +1561,17 @@ fn sync_set_can_enable_prettier_component() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-    assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
+    assert!(!precommit.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+    ));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
     assert!(project_path.join(".prettierrc.json").exists());
     assert!(project_path.join(".prettierignore").exists());
 }
@@ -2587,10 +2593,14 @@ fn sync_set_can_enable_prettier_for_language_agnostic_project() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
 }
 
 #[test]
@@ -2807,11 +2817,15 @@ fn sync_set_can_enable_prettier_for_rust_library_project() {
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
     assert!(precommit.contains("id: prettier"));
-    assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
+    assert!(precommit.contains(
+        "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+    ));
     assert!(precommit.contains("cargo clippy"));
     let justfile =
         fs::read_to_string(project_path.join("justfile")).expect("justfile should exist");
-    assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
+    assert!(justfile.contains(
+        "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+    ));
 }
 
 #[test]

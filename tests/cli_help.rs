@@ -122,10 +122,10 @@ fn components_lists_available_optional_components() {
         .stdout(contains(".markdownlint.jsonc"))
         .stdout(contains("required tools: npx"))
         .stdout(contains(
-            "format command: npx --yes prettier@3.8.3 --write --ignore-unknown .",
+            "format command: npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown .",
         ))
         .stdout(contains(
-            "check command: npx --yes prettier@3.8.3 --check --ignore-unknown .",
+            "check command: npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown .",
         ))
         .stdout(contains(
             "check command: npx --yes markdownlint-cli2@0.18.1 \"**/*.md\"",
@@ -184,8 +184,8 @@ fn components_can_emit_json() {
                 .iter()
                 .any(|blueprint| blueprint == "rust-library")
             && component["pre_commit_hook"] == true
-            && component["format_command"] == "npx --yes prettier@3.8.3 --write --ignore-unknown ."
-            && component["check_command"] == "npx --yes prettier@3.8.3 --check --ignore-unknown ."
+            && component["format_command"] == "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+            && component["check_command"] == "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown ."
             && component["enable_command"] == "forge sync --path . --set prettier=true"
             && component["disable_command"] == "forge sync --path . --set prettier=false"
     }));

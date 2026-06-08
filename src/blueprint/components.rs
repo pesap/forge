@@ -8,9 +8,11 @@ use crate::blueprint::template_engine;
 use crate::blueprint::{ManagedOption, ManagedOptionValues, managed_option_enabled};
 
 const PRETTIER_CLEANUP_PATHS: &[&str] = &[".prettierrc.json", ".prettierignore"];
-const PRETTIER_FORMAT_COMMAND: &str = "npx --yes prettier@3.8.3 --write --ignore-unknown .";
-const PRETTIER_CHECK_COMMAND: &str = "npx --yes prettier@3.8.3 --check --ignore-unknown .";
-const PRETTIER_PRE_COMMIT_HOOK: &str = "      - id: prettier\n        name: prettier check\n        entry: npx --yes prettier@3.8.3 --check --ignore-unknown\n        language: system\n        types_or: [json, yaml, markdown]\n";
+const PRETTIER_FORMAT_COMMAND: &str =
+    "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown .";
+const PRETTIER_CHECK_COMMAND: &str =
+    "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown .";
+const PRETTIER_PRE_COMMIT_HOOK: &str = "      - id: prettier\n        name: prettier check\n        entry: npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown\n        language: system\n        types_or: [json, yaml, markdown]\n";
 const PRETTIER_REQUIRED_TOOLS: &[&str] = &["npx"];
 const EDITORCONFIG_CLEANUP_PATHS: &[&str] = &[".editorconfig"];
 const EDITORCONFIG_REQUIRED_TOOLS: &[&str] = &[];
@@ -285,11 +287,15 @@ mod tests {
         assert_eq!(prettier.required_tools(), ["npx"]);
         assert_eq!(
             prettier.format_command(),
-            Some("npx --yes prettier@3.8.3 --write --ignore-unknown .")
+            Some(
+                "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+            )
         );
         assert_eq!(
             prettier.check_command(),
-            Some("npx --yes prettier@3.8.3 --check --ignore-unknown .")
+            Some(
+                "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown ."
+            )
         );
 
         assert_eq!(editorconfig.option(), ManagedOption::Editorconfig);
@@ -369,11 +375,9 @@ mod tests {
         let selection = ComponentSelection::from_prettier(true);
 
         assert!(selection.pre_commit_hooks().contains("id: prettier"));
-        assert!(
-            selection
-                .pre_commit_hooks()
-                .contains("entry: npx --yes prettier@3.8.3 --check --ignore-unknown")
-        );
+        assert!(selection.pre_commit_hooks().contains(
+            "entry: npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+        ));
         assert!(!selection.pre_commit_hooks().contains("--write"));
     }
 
@@ -383,7 +387,9 @@ mod tests {
 
         assert_eq!(
             selection.format_commands(),
-            vec!["npx --yes prettier@3.8.3 --write --ignore-unknown ."]
+            vec![
+                "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+            ]
         );
     }
 
@@ -393,7 +399,9 @@ mod tests {
 
         assert_eq!(
             selection.check_commands(),
-            vec!["npx --yes prettier@3.8.3 --check --ignore-unknown ."]
+            vec![
+                "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown ."
+            ]
         );
     }
 }

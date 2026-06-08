@@ -940,9 +940,15 @@ mod tests {
         let precommit = render_precommit_config(&config);
 
         assert!(justfile.contains("uv run ruff format ."));
-        assert!(justfile.contains("npx --yes prettier@3.8.3 --write --ignore-unknown ."));
-        assert!(precommit.contains("npx --yes prettier@3.8.3 --check --ignore-unknown"));
-        assert!(!precommit.contains("npx --yes prettier@3.8.3 --write --ignore-unknown"));
+        assert!(justfile.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown ."
+        ));
+        assert!(precommit.contains(
+            "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown"
+        ));
+        assert!(!precommit.contains(
+            "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown"
+        ));
     }
 
     #[test]

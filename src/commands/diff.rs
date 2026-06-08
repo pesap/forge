@@ -227,11 +227,11 @@ mod tests {
     fn render_text_diff_aligns_repeated_blocks() {
         let diff = render_text_diff(
             Path::new("justfile"),
-            "format:\n    uv run ruff format .\n    npx --yes prettier@3.8.3 --write --ignore-unknown .\nlint:\n    uv run ruff check --fix .\n    uv run ty check\n\ntest:\n    uv run pytest -q\n\nsmoke:\n    uv run python -c \"import test\"\n\nbuild:\n    uv build\n",
+            "format:\n    uv run ruff format .\n    npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown .\nlint:\n    uv run ruff check --fix .\n    uv run ty check\n\ntest:\n    uv run pytest -q\n\nsmoke:\n    uv run python -c \"import test\"\n\nbuild:\n    uv build\n",
             "format:\n    uv run ruff format .\nlint:\n    uv run ruff check --fix .\n    uv run ty check\n\ntest:\n    uv run pytest -q\n\nsmoke:\n    uv run python -c \"import sandbox\"\n\nbuild:\n    uv build\n",
         );
 
-        assert!(diff.contains("-    npx --yes prettier@3.8.3 --write --ignore-unknown .\n"));
+        assert!(diff.contains("-    npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown .\n"));
         assert!(diff.contains("-    uv run python -c \"import test\"\n"));
         assert!(diff.contains("+    uv run python -c \"import sandbox\"\n"));
         assert!(!diff.contains("-lint:\n-lint:"));
