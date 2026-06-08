@@ -1251,14 +1251,16 @@ prettier = true
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));
         assert!(files.contains_key(&PathBuf::from(".gitignore")));
-        assert_eq!(
-            files
-                .get(&PathBuf::from(".gitattributes"))
-                .and_then(GeneratedFile::as_text),
-            Some(
-                "# Normalize text files to LF in Git checkouts and commits.\n* text=auto eol=lf\n"
-            )
-        );
+        let policy = files
+            .get(&PathBuf::from(".gitattributes"))
+            .and_then(GeneratedFile::as_text)
+            .expect(".gitattributes should be generated");
+
+        assert!(policy.contains("* text=auto eol=lf"));
+        assert!(policy.contains("*.bat text eol=crlf"));
+        assert!(policy.contains("*.cmd text eol=crlf"));
+        assert!(policy.contains("*.png binary"));
+        assert!(policy.contains("*.zip binary"));
         assert!(files.contains_key(&PathBuf::from("LICENSE.txt")));
         assert!(files.contains_key(&PathBuf::from(".typos.toml")));
         assert!(!files.contains_key(&PathBuf::from("typos.toml")));

@@ -1402,6 +1402,33 @@ fn sync_check_fails_when_managed_infra_has_drift_without_writing() {
 }
 
 #[test]
+fn sync_check_reports_gitattributes_drift_as_managed_without_writing() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let gitattributes = project_path.join(".gitattributes");
+    fs::write(&gitattributes, "BROKEN\n").expect("should write broken .gitattributes");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    sync.assert()
+        .failure()
+        .stdout(contains("update  .gitattributes"))
+        .stderr(contains("managed infrastructure is out of date"));
+
+    let gitattributes_after =
+        fs::read_to_string(gitattributes).expect(".gitattributes should remain readable");
+    assert_eq!(gitattributes_after, "BROKEN\n");
+}
+
+#[test]
 fn sync_check_json_reports_changes_before_failing() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
