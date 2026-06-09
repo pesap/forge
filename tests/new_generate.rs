@@ -6,6 +6,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::TempDir;
 
+const FORGE_INSTALL_FROM_GIT: &str =
+    "cargo install --git https://github.com/pesap/forge --locked forge";
+
 fn write_executable(path: &std::path::Path, content: &str) {
     fs::write(path, content).expect("fake command should be writable");
     let mut permissions = fs::metadata(path)
@@ -220,10 +223,13 @@ fn new_generates_python_project_with_metadata() {
     assert!(ci.contains("permissions:\n  contents: read\n\njobs:"));
     assert!(ci.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
     assert!(ci.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
-    assert!(ci.contains("cargo install --git https://github.com/pesap/forge --locked forge"));
+    assert!(!ci.contains(FORGE_INSTALL_FROM_GIT));
     assert!(ci.contains("uv sync --all-groups --locked"));
     assert!(ci.contains("uv run --locked pytest --cov --cov-report=xml"));
     assert!(ci.contains("uv run --locked prek run --all-files"));
+    assert!(ci.contains("uv run --locked python -c \"import grid_tools\""));
+    assert!(ci.contains("runs-on: windows-latest"));
+    assert!(ci.contains("      - run: uv run --locked pytest"));
     assert_eq!(
         fs::read_link(project_path.join("CLAUDE.md")).expect("CLAUDE.md should be a symlink"),
         std::path::PathBuf::from("AGENTS.md")
@@ -232,6 +238,7 @@ fn new_generates_python_project_with_metadata() {
     let update_workflow =
         fs::read_to_string(project_path.join(".github/workflows/forge-sync.yaml"))
             .expect("forge sync workflow should be generated");
+    assert!(update_workflow.contains(FORGE_INSTALL_FROM_GIT));
     assert!(update_workflow.contains("forge sync --path ."));
     assert!(update_workflow.contains("uv lock"));
     assert!(update_workflow.contains("persist-credentials: false"));

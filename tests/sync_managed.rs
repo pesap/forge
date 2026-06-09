@@ -5,6 +5,9 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
+const FORGE_INSTALL_FROM_GIT: &str =
+    "cargo install --git https://github.com/pesap/forge --locked forge";
+
 fn expected_pytest_cache_dir(project_name: &str) -> String {
     format!(".cache/pytest/{project_name}")
 }
@@ -335,6 +338,7 @@ fn sync_refreshes_managed_infra() {
     assert!(!just_after.contains("BROKEN"));
     assert!(just_after.contains("verify"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
+    assert!(!ci_after.contains(FORGE_INSTALL_FROM_GIT));
     assert!(ci_after.contains("uv sync --all-groups --locked"));
     assert!(ci_after.contains("uv run --locked pytest --cov --cov-report=xml"));
     assert!(ci_after.contains("uv run --locked prek run --all-files"));
