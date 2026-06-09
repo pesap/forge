@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/pesap/forge/compare/v0.5.0...v0.5.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* stop installing forge in generated Python CI ([#102](https://github.com/pesap/forge/issues/102)) ([79a05b8](https://github.com/pesap/forge/commit/79a05b8d2b68ff37b9e02157ed50fe641d689a91))
+
 ## [0.5.0](https://github.com/pesap/forge/compare/v0.4.1...v0.5.0) (2026-06-08)
 
 
