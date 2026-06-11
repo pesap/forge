@@ -489,6 +489,18 @@ fn create_established_python_repo(project_path: &std::path::Path) {
     )
     .expect("workflow should write");
     fs::write(
+        project_path.join(".github/workflows/forge-update.yaml"),
+        "name: Existing forge update\n",
+    )
+    .expect("legacy workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/publish.yaml"),
+        "name: Existing publish\n",
+    )
+    .expect("publish workflow should write");
+    fs::write(project_path.join("typos.toml"), "[default.extend-words]\n")
+        .expect("legacy typos should write");
+    fs::write(
         project_path.join("docs/source/conf.py"),
         "project = 'ops-tools'\n",
     )
@@ -544,6 +556,9 @@ fn init_dry_run_infers_python_and_preserves_established_repo_by_default() {
         ".pre-commit-config.yaml",
         ".github/workflows/ci.yaml",
         ".github/workflows/workflow-quality.yaml",
+        ".github/workflows/forge-update.yaml",
+        ".github/workflows/publish.yaml",
+        "typos.toml",
     ] {
         assert!(
             actions.iter().any(|action| {
@@ -592,6 +607,13 @@ fn init_existing_established_python_repo_is_sync_clean() {
         "{\".\":\"0.3.0\"}\n"
     );
     assert!(!project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join(".github/workflows/forge-update.yaml")
+            .exists()
+    );
+    assert!(project_path.join(".github/workflows/publish.yaml").exists());
+    assert!(project_path.join("typos.toml").exists());
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
@@ -605,6 +627,22 @@ fn init_existing_established_python_repo_is_sync_clean() {
         .assert()
         .success()
         .stdout(contains("managed infrastructure is current"));
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--yes",
+    ]);
+    sync.assert().success();
+    assert!(
+        project_path
+            .join(".github/workflows/forge-update.yaml")
+            .exists()
+    );
+    assert!(project_path.join(".github/workflows/publish.yaml").exists());
+    assert!(project_path.join("typos.toml").exists());
 }
 
 #[test]

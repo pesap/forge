@@ -301,6 +301,8 @@ fn apply_safe_adoption_defaults(
         preserved.insert(relative_path.clone());
     }
 
+    preserve_existing_cleanup_paths(args, blueprint, files, &mut preserved);
+
     if blueprint == BlueprintName::PythonLibrary && existing_root_release_please(&args.path) {
         for path in [
             ".release-please-config.json",
@@ -318,6 +320,35 @@ fn apply_safe_adoption_defaults(
     }
 
     preserved
+}
+
+fn preserve_existing_cleanup_paths(
+    args: &InitArgs,
+    blueprint: BlueprintName,
+    files: &GeneratedFiles,
+    preserved: &mut BTreeSet<PathBuf>,
+) {
+    let Some(generated_pyproject) = files
+        .get(Path::new(PYPROJECT_TOML))
+        .and_then(GeneratedFile::as_text)
+    else {
+        return;
+    };
+    let Ok(mut cleanup_paths) =
+        blueprint.optional_cleanup_paths_from_pyproject(generated_pyproject)
+    else {
+        return;
+    };
+    if blueprint == BlueprintName::PythonLibrary {
+        cleanup_paths.extend([PathBuf::from(".cspell.json"), PathBuf::from("typos.toml")]);
+    }
+    cleanup_paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
+
+    for path in cleanup_paths {
+        if args.path.join(&path).exists() && !takeover_matches(args, &path) {
+            preserved.insert(path);
+        }
+    }
 }
 
 fn takeover_matches(args: &InitArgs, path: &Path) -> bool {
