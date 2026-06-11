@@ -35,7 +35,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     ensure_existing_directory(&args.path)?;
     ensure_not_already_managed(&args.path)?;
 
-    let blueprint = select_existing_project_blueprint(&args)?;
+    let blueprint = select_existing_project_blueprint(&args, stdin_is_terminal)?;
     apply_existing_project_defaults(&mut args, blueprint)?;
     let render_args = new_args_from_init_args(&args);
     new::validate_explicit_options(blueprint, &render_args)?;
@@ -191,7 +191,10 @@ fn should_create_project(path: &Path) -> Result<bool> {
     }
 }
 
-fn select_existing_project_blueprint(args: &InitArgs) -> Result<BlueprintName> {
+fn select_existing_project_blueprint(
+    args: &InitArgs,
+    stdin_is_terminal: bool,
+) -> Result<BlueprintName> {
     if let Some(blueprint) = args.blueprint {
         return Ok(blueprint);
     }
@@ -200,6 +203,9 @@ fn select_existing_project_blueprint(args: &InitArgs) -> Result<BlueprintName> {
         BlueprintInference::HighConfidence(blueprint) => Ok(blueprint),
         BlueprintInference::Ambiguous(candidates)
         | BlueprintInference::LowConfidence(candidates) => {
+            if !args.yes && stdin_is_terminal {
+                return new::select_blueprint(None, false);
+            }
             let candidate_list = candidates
                 .iter()
                 .map(|blueprint| blueprint.as_str())
@@ -259,10 +265,11 @@ fn has_rust_library_signals(path: &Path) -> bool {
     let Ok(cargo_toml) = fs::read_to_string(path.join("Cargo.toml")) else {
         return false;
     };
-    toml::from_str::<toml::Value>(&cargo_toml)
-        .ok()
-        .and_then(|parsed| parsed.get("package").cloned())
-        .is_some()
+    let Ok(parsed) = toml::from_str::<toml::Value>(&cargo_toml) else {
+        return false;
+    };
+    parsed.get("package").is_some()
+        && (parsed.get("lib").is_some() || path.join("src/lib.rs").is_file())
 }
 
 fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName) -> Result<()> {

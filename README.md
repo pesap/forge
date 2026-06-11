@@ -286,8 +286,8 @@ forge init --path . --blueprint python-library --project-name my-library --descr
 | `--dry-run`        | Preview what would be written                           |
 | `--json`           | Machine-readable init report                            |
 | `--diff`           | Include text diffs for managed file changes             |
-| `--ignore PATH`    | Exclude a Forge-managed path or directory prefix         |
-| `--takeover PATH`  | Convert one existing user-owned path/prefix to managed   |
+| `--ignore PATH`    | Exclude a Forge-managed path or directory prefix (`docs/` for prefixes) |
+| `--takeover PATH`  | Convert one existing user-owned path/prefix to managed (`docs/` for prefixes) |
 | `--takeover-docs`  | Convert existing docs files to Forge-managed Starlight   |
 | `--takeover-ci`    | Convert existing GitHub workflow files to Forge-managed  |
 | `--takeover-hooks` | Convert existing hook config to Forge-managed            |

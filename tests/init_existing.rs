@@ -646,6 +646,32 @@ fn init_existing_established_python_repo_is_sync_clean() {
 }
 
 #[test]
+fn init_does_not_infer_rust_library_for_binary_only_package() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-bin");
+    fs::create_dir_all(project_path.join("src")).expect("src should create");
+    fs::write(
+        project_path.join("Cargo.toml"),
+        "[package]\nname = \"ops-bin\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Ops binary\"\n",
+    )
+    .expect("Cargo.toml should write");
+    fs::write(project_path.join("src/main.rs"), "fn main() {}\n").expect("main should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--dry-run",
+        "--yes",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(contains("could not infer a unique blueprint"))
+        .stderr(contains("rust-library"));
+}
+
+#[test]
 fn init_infers_rust_blueprint_without_explicit_blueprint() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-rs");
@@ -685,6 +711,7 @@ fn init_reports_ambiguous_blueprint_candidates() {
     )
     .expect("pyproject should write");
     fs::write(project_path.join("Cargo.toml"), "[package]\nname = \"mixed\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Mixed\"\n").expect("cargo should write");
+    fs::write(project_path.join("src/lib.rs"), "pub fn existing() {}\n").expect("lib should write");
 
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([

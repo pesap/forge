@@ -184,10 +184,10 @@ pub struct InitArgs {
         default_value_t = false
     )]
     pub markdownlint: bool,
-    /// Forge-managed file path or directory prefix to ignore. May be repeated.
+    /// Forge-managed file path or directory prefix to ignore. Prefixes must end with `/`. May be repeated.
     #[arg(long = "ignore", value_name = "PATH")]
     pub ignored_files: Vec<String>,
-    /// Existing user-owned path or directory prefix to convert to Forge management during adoption. May be repeated.
+    /// Existing user-owned path or directory prefix to convert to Forge management during adoption. Prefixes must end with `/`. May be repeated.
     #[arg(long = "takeover", value_name = "PATH")]
     pub takeover_files: Vec<String>,
     /// Convert all existing generated-path conflicts to Forge management during adoption.
