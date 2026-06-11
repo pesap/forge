@@ -126,7 +126,7 @@ pub struct InitArgs {
     /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
     #[arg(long)]
     pub gitignore_profile: Option<String>,
-    /// Generate MkDocs documentation. Accepts --docs, --docs=true, or --docs=false.
+    /// Generate Astro Starlight documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,
         value_name = "BOOL",
@@ -184,9 +184,24 @@ pub struct InitArgs {
         default_value_t = false
     )]
     pub markdownlint: bool,
-    /// Forge-managed file path or directory prefix to ignore. May be repeated.
+    /// Forge-managed file path or directory prefix to ignore. Prefixes must end with `/`. May be repeated.
     #[arg(long = "ignore", value_name = "PATH")]
     pub ignored_files: Vec<String>,
+    /// Existing user-owned path or directory prefix to convert to Forge management during adoption. Prefixes must end with `/`. May be repeated.
+    #[arg(long = "takeover", value_name = "PATH")]
+    pub takeover_files: Vec<String>,
+    /// Convert all existing generated-path conflicts to Forge management during adoption.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub takeover_all: bool,
+    /// Convert existing docs files to Forge-managed Starlight docs during adoption.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub takeover_docs: bool,
+    /// Convert existing GitHub workflow files to Forge-managed CI during adoption.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub takeover_ci: bool,
+    /// Convert existing hook configuration to Forge management during adoption.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub takeover_hooks: bool,
     /// Skip git repository initialization when creating a new project.
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git_history: bool,
@@ -252,7 +267,7 @@ pub struct NewArgs {
     /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
     #[arg(long)]
     pub gitignore_profile: Option<String>,
-    /// Generate MkDocs documentation. Accepts --docs, --docs=true, or --docs=false.
+    /// Generate Astro Starlight documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,
         value_name = "BOOL",

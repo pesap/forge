@@ -4,10 +4,6 @@ use predicates::str::contains;
 use std::fs;
 use tempfile::TempDir;
 
-fn expected_pytest_cache_dir(project_name: &str) -> String {
-    format!(".cache/pytest/{project_name}")
-}
-
 fn generate_python_project(project_path: &std::path::Path) {
     let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
     cmd.args([
@@ -59,6 +55,16 @@ dev = [
     "ruff>=0.15.0",
     "ty>=0.0.15",
 ]
+
+[build-system]
+requires = ["uv_build>=0.8.0,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 99
 "#,
     )
     .expect("existing pyproject should be writable");
@@ -69,45 +75,24 @@ fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("version = \"2.3.4\""));
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
-    assert!(pyproject.contains(
-        "[build-system]\nrequires = [\"uv_build~=0.11.7\"]\nbuild-backend = \"uv_build\""
+    assert!(pyproject.contains("[build-system]"));
+    assert!(pyproject.contains("requires = [\"uv_build>=0.8.0,<0.9.0\"]"));
+    let forge_metadata = forge_section(&pyproject);
+    assert!(forge_metadata.contains("blueprint = \"python-library>=0.1.0\""));
+    assert!(forge_metadata.contains("pyproject = \"external\""));
+    assert!(forge_metadata.contains(
+        "gitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
     ));
-    assert_eq!(
-        forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
-    );
     assert!(project_path.join(".editorconfig").exists());
-    assert!(!pyproject.contains("forge = ["));
-    assert!(!pyproject.contains("\nbuild = ["));
-    assert!(pyproject.contains("code-quality = ["));
-    assert!(!pyproject.contains("linting = ["));
-    assert!(pyproject.contains("test = ["));
-    assert!(pyproject.contains("\"prek~=0.4.1\""));
-    assert!(pyproject.contains("\"pytest~=9.0.0\""));
-    assert!(pyproject.contains("\"ruff~=0.14.0\""));
-    assert!(pyproject.contains("\"ty~=0.0.1\""));
-    assert!(pyproject.contains("line-length = 110"));
-    assert!(pyproject.contains("[tool.ty.rules]\nall = \"error\""));
-    assert!(
-        pyproject
-            .find("[tool.ruff.lint]")
-            .expect("ruff lint section should exist")
-            < pyproject
-                .find("[tool.ty.rules]")
-                .expect("ty rules section should exist")
-    );
-    assert!(pyproject.contains("strict = true"));
-    let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
-    let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
-        .as_str()
-        .expect("pytest cache_dir should be a string");
-    assert_eq!(pytest_cache_dir, expected_pytest_cache_dir("ops-tools"));
-    assert!(!pyproject.contains("[tool.pytest_env]"));
-    assert!(!pyproject.contains("XDG_CACHE_HOME"));
-    assert!(!pyproject.contains("pytest-env"));
-    assert!(!pyproject.contains("{ include-group = \"build\" }"));
-    assert!(pyproject.contains("{ include-group = \"code-quality\" }"));
-    assert!(pyproject.contains("{ include-group = \"test\" }"));
+    assert!(pyproject.contains("dev = ["));
+    assert!(pyproject.contains("\"prek>=0.3.1\""));
+    assert!(pyproject.contains("\"pytest>=9.0.2\""));
+    assert!(pyproject.contains("\"ruff>=0.15.0\""));
+    assert!(pyproject.contains("\"ty>=0.0.15\""));
+    assert!(pyproject.contains("filterwarnings = [\"error::DeprecationWarning\"]"));
+    assert!(pyproject.contains("line-length = 99"));
+    assert!(!pyproject.contains("line-length = 110"));
+    assert!(!pyproject.contains("[tool.ty.rules]"));
 }
 
 #[test]
@@ -328,10 +313,12 @@ fn init_yes_preserves_existing_pyproject_metadata() {
 
     cmd.assert()
         .success()
-        .stdout(contains("update  README.md"))
+        .stdout(contains("preserve README.md"))
         .stdout(contains("update  pyproject.toml"));
 
     assert_external_pyproject_adopted(&project_path);
+    let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
+    assert_eq!(readme, "# Handwritten\n");
 }
 
 #[test]
@@ -475,6 +462,271 @@ fn init_adds_managed_infrastructure_to_existing_any_project_repo() {
         .assert()
         .success()
         .stdout(contains("managed infrastructure is current"));
+}
+
+fn create_established_python_repo(project_path: &std::path::Path) {
+    create_existing_python_repo_with_pyproject(project_path);
+    fs::write(project_path.join("src/ops_tools/__init__.py"), "")
+        .expect("package init should write");
+    fs::create_dir_all(project_path.join("docs/source")).expect("docs should create");
+    fs::create_dir_all(project_path.join(".github/workflows")).expect("workflows should create");
+    fs::write(project_path.join("README.md"), "# Existing README\n").expect("README should write");
+    fs::write(project_path.join("CHANGELOG.md"), "# Existing changelog\n")
+        .expect("changelog should write");
+    fs::write(project_path.join("LICENSE.txt"), "Existing license\n")
+        .expect("license should write");
+    fs::write(project_path.join(".gitignore"), "custom-cache/\n").expect("gitignore should write");
+    fs::write(project_path.join(".pre-commit-config.yaml"), "repos: []\n")
+        .expect("hooks should write");
+    fs::write(
+        project_path.join(".github/workflows/ci.yaml"),
+        "name: Existing CI\n",
+    )
+    .expect("ci should write");
+    fs::write(
+        project_path.join(".github/workflows/workflow-quality.yaml"),
+        "name: Existing workflow quality\n",
+    )
+    .expect("workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/forge-update.yaml"),
+        "name: Existing forge update\n",
+    )
+    .expect("legacy workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/publish.yaml"),
+        "name: Existing publish\n",
+    )
+    .expect("publish workflow should write");
+    fs::write(project_path.join("typos.toml"), "[default.extend-words]\n")
+        .expect("legacy typos should write");
+    fs::write(
+        project_path.join("docs/source/conf.py"),
+        "project = 'ops-tools'\n",
+    )
+    .expect("sphinx conf should write");
+    fs::write(
+        project_path.join("docs/source/index.md"),
+        "# Existing docs\n",
+    )
+    .expect("docs index should write");
+    fs::write(
+        project_path.join(".release-please-config.json"),
+        "{\"packages\":{\".\":{\"release-type\":\"python\"}}}\n",
+    )
+    .expect("release config should write");
+    fs::write(
+        project_path.join(".release-please-manifest.json"),
+        "{\".\":\"0.3.0\"}\n",
+    )
+    .expect("release manifest should write");
+}
+
+#[test]
+fn init_dry_run_infers_python_and_preserves_established_repo_by_default() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_established_python_repo(&project_path);
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--dry-run",
+        "--json",
+        "--yes",
+    ]);
+
+    let output = cmd.output().expect("init should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(report["blueprint"], "python-library");
+    assert_eq!(report["status_code"], "dry_run");
+    assert_eq!(report["conflicts"], 0);
+    let actions = report["actions"]
+        .as_array()
+        .expect("actions should be an array");
+    for path in [
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE.txt",
+        ".gitignore",
+        ".pre-commit-config.yaml",
+        ".github/workflows/ci.yaml",
+        ".github/workflows/workflow-quality.yaml",
+        ".github/workflows/forge-update.yaml",
+        ".github/workflows/publish.yaml",
+        "typos.toml",
+    ] {
+        assert!(
+            actions.iter().any(|action| {
+                action["action"] == "preserve"
+                    && action["path"] == path
+                    && action["reason_code"] == "existing_user_file_preserved"
+            }),
+            "{path} should be preserved"
+        );
+    }
+    assert!(
+        !actions
+            .iter()
+            .any(|action| action["path"] == "docs/package.json")
+    );
+    assert!(
+        report["next_steps"][0]
+            .as_str()
+            .expect("next step should be a string")
+            .contains("--ignore README.md")
+    );
+}
+
+#[test]
+fn init_existing_established_python_repo_is_sync_clean() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_established_python_repo(&project_path);
+
+    let mut init = Command::cargo_bin("forge").expect("forge binary should build");
+    init.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--yes",
+    ]);
+    init.assert().success();
+
+    assert_eq!(
+        fs::read_to_string(project_path.join("README.md")).expect("README should exist"),
+        "# Existing README\n"
+    );
+    assert_eq!(
+        fs::read_to_string(project_path.join(".release-please-manifest.json"))
+            .expect("manifest should exist"),
+        "{\".\":\"0.3.0\"}\n"
+    );
+    assert!(!project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join(".github/workflows/forge-update.yaml")
+            .exists()
+    );
+    assert!(project_path.join(".github/workflows/publish.yaml").exists());
+    assert!(project_path.join("typos.toml").exists());
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+        "--yes",
+    ]);
+    check
+        .assert()
+        .success()
+        .stdout(contains("managed infrastructure is current"));
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--yes",
+    ]);
+    sync.assert().success();
+    assert!(
+        project_path
+            .join(".github/workflows/forge-update.yaml")
+            .exists()
+    );
+    assert!(project_path.join(".github/workflows/publish.yaml").exists());
+    assert!(project_path.join("typos.toml").exists());
+}
+
+#[test]
+fn init_does_not_infer_rust_library_for_binary_only_package() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-bin");
+    fs::create_dir_all(project_path.join("src")).expect("src should create");
+    fs::write(
+        project_path.join("Cargo.toml"),
+        "[package]\nname = \"ops-bin\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Ops binary\"\n",
+    )
+    .expect("Cargo.toml should write");
+    fs::write(project_path.join("src/main.rs"), "fn main() {}\n").expect("main should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--dry-run",
+        "--yes",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(contains("could not infer a unique blueprint"))
+        .stderr(contains("rust-library"));
+}
+
+#[test]
+fn init_infers_rust_blueprint_without_explicit_blueprint() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-rs");
+    fs::create_dir_all(project_path.join("src")).expect("src should create");
+    fs::write(
+        project_path.join("Cargo.toml"),
+        "[package]\nname = \"ops-rs\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Ops Rust\"\n",
+    )
+    .expect("Cargo.toml should write");
+    fs::write(project_path.join("src/lib.rs"), "pub fn existing() {}\n").expect("lib should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--dry-run",
+        "--json",
+        "--yes",
+    ]);
+    let output = cmd.output().expect("init should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(report["blueprint"], "rust-library");
+}
+
+#[test]
+fn init_reports_ambiguous_blueprint_candidates() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("mixed");
+    fs::create_dir_all(project_path.join("src/mixed_py")).expect("src should create");
+    fs::write(project_path.join("src/mixed_py/__init__.py"), "").expect("init should write");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        "[project]\nname = \"mixed\"\nversion = \"0.1.0\"\ndescription = \"Mixed\"\n",
+    )
+    .expect("pyproject should write");
+    fs::write(project_path.join("Cargo.toml"), "[package]\nname = \"mixed\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Mixed\"\n").expect("cargo should write");
+    fs::write(project_path.join("src/lib.rs"), "pub fn existing() {}\n").expect("lib should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--dry-run",
+        "--yes",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(contains("could not infer a unique blueprint"))
+        .stderr(contains("python-library"))
+        .stderr(contains("rust-library"))
+        .stderr(contains("forge init --path"));
 }
 
 #[test]
@@ -854,11 +1106,11 @@ fn init_yes_overwrites_existing_files_without_force() {
 
     cmd.assert()
         .success()
-        .stdout(contains("update  README.md"))
+        .stdout(contains("preserve README.md"))
         .stdout(contains("Repository initialized"));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
-    assert!(readme.contains("Shared repo infrastructure"));
+    assert_eq!(readme, "# Handwritten\n");
     assert!(project_path.join("pyproject.toml").exists());
 }
 
@@ -900,12 +1152,13 @@ fn init_json_conflict_report_includes_recovery_next_steps() {
             .as_array()
             .expect("actions should be an array")
             .iter()
-            .any(|action| action["action"] == "update" && action["path"] == "README.md")
+            .any(|action| action["action"] == "preserve"
+                && action["path"] == "README.md"
+                && action["reason_code"] == "existing_user_file_preserved")
     );
-    assert!(
-        fs::read_to_string(project_path.join("README.md"))
-            .expect("README should exist")
-            .contains("Shared repo infrastructure")
+    assert_eq!(
+        fs::read_to_string(project_path.join("README.md")).expect("README should exist"),
+        "# Handwritten\n"
     );
     assert!(project_path.join("pyproject.toml").exists());
 }
@@ -969,6 +1222,8 @@ fn init_diff_shows_conflicting_managed_file_changes_before_overwrite() {
         "Shared repo infrastructure",
         "--dry-run",
         "--diff",
+        "--takeover",
+        "README.md",
         "--yes",
     ]);
 
@@ -1032,6 +1287,8 @@ fn init_yes_overwrites_existing_managed_files_after_explicit_review() {
         "repo-infra",
         "--description",
         "Shared repo infrastructure",
+        "--takeover",
+        "README.md",
         "--yes",
     ]);
 
@@ -1086,7 +1343,7 @@ fn init_yes_dry_run_json_reports_overwrites_without_writing() {
     assert_eq!(
         report["next_steps"],
         serde_json::json!([format!(
-            "forge init --path {} --blueprint any-project --project-name repo-infra --description 'Shared repo infrastructure' --yes",
+            "forge init --path {} --blueprint any-project --project-name repo-infra --description 'Shared repo infrastructure' --ignore README.md --yes",
             project_path.display()
         )])
     );
@@ -1095,7 +1352,7 @@ fn init_yes_dry_run_json_reports_overwrites_without_writing() {
             .as_array()
             .expect("actions should be an array")
             .iter()
-            .any(|action| action["action"] == "update" && action["path"] == "README.md")
+            .any(|action| action["action"] == "preserve" && action["path"] == "README.md")
     );
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");

@@ -20,10 +20,8 @@ use crate::blueprint::{
     validate_managed_overrides_from_metadata,
 };
 use crate::cli::SyncArgs;
-use crate::commands::dependency_groups::sync_dependency_groups;
 use crate::commands::diff;
 use crate::commands::new::managed_infrastructure_summary;
-use crate::commands::pyproject_sections::{sync_build_system, sync_pytest_sections};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
@@ -442,16 +440,16 @@ fn uses_external_pyproject(pyproject: &str) -> Result<bool> {
         .get("tool")
         .and_then(Value::as_table)
         .and_then(|tool| tool.get("forge"))
-        .is_some())
+        .and_then(Value::as_table)
+        .and_then(|forge| forge.get("pyproject"))
+        .and_then(Value::as_str)
+        == Some("external"))
 }
 
 fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
     let forge_metadata = forge_metadata_block(generated_pyproject)
         .context("generated pyproject.toml is missing [tool.forge]")?;
-    let synced = sync_dependency_groups(pyproject, generated_pyproject)?;
-    let synced = sync_build_system(&synced, generated_pyproject)?;
-    let synced = sync_pytest_sections(&synced, generated_pyproject)?;
-    let synced = sync_forge_metadata(&synced, &external_pyproject_metadata(forge_metadata));
+    let synced = sync_forge_metadata(pyproject, &external_pyproject_metadata(forge_metadata));
     toml::from_str::<Value>(&synced).context("failed to parse synced external pyproject.toml")?;
     Ok(synced)
 }
@@ -799,10 +797,22 @@ fn clean_optional_files_for_blueprint(
     root: &Path,
     pyproject: &str,
 ) -> Result<()> {
-    blueprint.clean_optional_files_from_pyproject(root, pyproject)?;
+    let ignored_paths = ignored_paths_from_pyproject(pyproject);
+    let mut paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
     if blueprint == BlueprintName::PythonLibrary {
-        remove_managed_file_if_exists(&root.join(".cspell.json"))?;
-        remove_managed_file_if_exists(&root.join("typos.toml"))?;
+        paths.push(PathBuf::from(".cspell.json"));
+        paths.push(PathBuf::from("typos.toml"));
+    }
+    paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
+
+    for relative_path in paths {
+        if ignored_paths
+            .iter()
+            .any(|ignored| path_matches_prefix(&relative_path, ignored))
+        {
+            continue;
+        }
+        remove_managed_file_if_exists(&root.join(relative_path))?;
     }
     Ok(())
 }
@@ -844,10 +854,14 @@ fn action_breakdown(actions: &[ManagedFileAction]) -> ActionBreakdown {
     for action in actions {
         match action {
             ManagedFileAction::Create(_) => breakdown.create += 1,
-            ManagedFileAction::Update(_) => breakdown.update += 1,
+            ManagedFileAction::Update(_) | ManagedFileAction::MetadataAppend(_) => {
+                breakdown.update += 1;
+            }
             ManagedFileAction::Relink(_) => breakdown.relink += 1,
             ManagedFileAction::Remove(_) => breakdown.remove += 1,
-            ManagedFileAction::Keep(_) => breakdown.keep += 1,
+            ManagedFileAction::Keep(_) | ManagedFileAction::PreserveUserFile(_) => {
+                breakdown.keep += 1
+            }
             ManagedFileAction::Conflict { .. } => breakdown.conflict += 1,
         }
     }
@@ -1043,6 +1057,7 @@ fn cleanup_actions_for_blueprint(
     root: &Path,
     pyproject: &str,
 ) -> Result<Vec<ManagedFileAction>> {
+    let ignored_paths = ignored_paths_from_pyproject(pyproject);
     let mut paths = blueprint.optional_cleanup_paths_from_pyproject(pyproject)?;
     if blueprint == BlueprintName::PythonLibrary {
         paths.push(PathBuf::from(".cspell.json"));
@@ -1052,6 +1067,11 @@ fn cleanup_actions_for_blueprint(
 
     let mut cleanup_actions: Vec<ManagedFileAction> = paths
         .into_iter()
+        .filter(|relative_path| {
+            !ignored_paths
+                .iter()
+                .any(|ignored| path_matches_prefix(relative_path, ignored))
+        })
         .filter_map(|relative_path| cleanup_action_for_optional_path(root, relative_path))
         .collect();
     cleanup_actions.extend(empty_parent_directory_cleanup_actions(
@@ -1060,6 +1080,36 @@ fn cleanup_actions_for_blueprint(
     )?);
 
     Ok(cleanup_actions)
+}
+
+fn ignored_paths_from_pyproject(pyproject: &str) -> Vec<String> {
+    toml::from_str::<Value>(pyproject)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .get("tool")
+                .and_then(Value::as_table)
+                .and_then(|tool| tool.get("forge"))
+                .and_then(Value::as_table)
+                .and_then(|forge| forge.get("ignore"))
+                .and_then(Value::as_array)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+        })
+        .unwrap_or_default()
+}
+
+fn path_matches_prefix(path: &Path, ignored: &str) -> bool {
+    let path = path.to_string_lossy();
+    path == ignored
+        || ignored
+            .strip_suffix('/')
+            .is_some_and(|prefix| path.starts_with(&format!("{prefix}/")))
 }
 
 fn cleanup_action_for_optional_path(

@@ -192,6 +192,10 @@ fn build_report(scope: &DoctorScope) -> DoctorReport {
         "gh",
         "create and push GitHub repositories",
     ));
+    tools.push(check_optional_tool(
+        "ruff",
+        "lint and format Python code through uv",
+    ));
     tools.push(check_optional_tool("ty", "run Python type checking"));
     tools.push(check_optional_tool("prek", "run git hook automation"));
     tools.extend(
@@ -285,7 +289,7 @@ fn required_tool_requirements(blueprint: Option<BlueprintName>) -> Vec<&'static 
                     .iter()
                     .flat_map(|blueprint| blueprint.required_tools.iter().copied()),
             );
-            tools.extend(["python3", "ruff"]);
+            tools.extend(["python3"]);
         }
     }
     tools.sort_unstable();
@@ -295,7 +299,7 @@ fn required_tool_requirements(blueprint: Option<BlueprintName>) -> Vec<&'static 
 
 fn extend_python_toolchain(tools: &mut Vec<&'static str>, blueprint: BlueprintName) {
     if matches!(blueprint, BlueprintName::PythonLibrary) {
-        tools.extend(["python3", "ruff"]);
+        tools.extend(["python3"]);
     }
 }
 
@@ -305,7 +309,7 @@ fn required_tool_purpose(tool: &str) -> &'static str {
         "git" => "initialize generated repositories",
         "just" => "run generated project tasks",
         "python3" => "run Python package toolchain",
-        "ruff" => "lint and format Python code",
+        "ruff" => "lint and format Python code through the project environment",
         "uv" => "sync generated project dependencies",
         _ => "run generated project tasks",
     }
@@ -510,7 +514,7 @@ mod tests {
         assert!(tools.contains(&"cargo"));
         assert!(tools.contains(&"git"));
         assert!(tools.contains(&"python3"));
-        assert!(tools.contains(&"ruff"));
+        assert!(!tools.contains(&"ruff"));
         for blueprint in &BLUEPRINT_REGISTRY {
             for required_tool in blueprint.required_tools {
                 assert!(tools.contains(required_tool));
@@ -544,7 +548,7 @@ mod tests {
     fn required_tools_can_be_scoped_to_one_blueprint() {
         let tools = required_tool_requirements(Some(BlueprintName::PythonLibrary));
 
-        assert_eq!(tools, vec!["git", "just", "python3", "ruff", "uv"]);
+        assert_eq!(tools, vec!["git", "just", "python3", "uv"]);
         assert!(!tools.contains(&"cargo"));
     }
 

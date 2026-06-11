@@ -1,12 +1,10 @@
 pub mod blueprints;
 pub mod completions;
 pub mod components;
-mod dependency_groups;
 pub mod diff;
 pub mod doctor;
 pub mod init;
 pub mod new;
-mod pyproject_sections;
 pub mod self_update;
 pub mod sync;
 

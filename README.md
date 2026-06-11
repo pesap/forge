@@ -201,8 +201,8 @@ job on `windows-latest`.
 
 Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
 `--pypi-publish`. Use `--editorconfig=false` to disable EditorConfig (enabled by
-default for all blueprints) and `--docs=false` to disable MkDocs (enabled by
-default).
+default for all blueprints) and `--docs=false` to disable Astro Starlight docs
+(enabled by default).
 
 If you enable `--pypi-publish`, Forge writes a commented trusted-publishing
 workflow at `.github/workflows/publish-pypi.yaml`; register that workflow as a
@@ -235,10 +235,13 @@ metadata it needs before it writes managed infrastructure:
 forge init --path . --blueprint python-library
 ```
 
-For non-interactive use, Forge can infer `--project-name`, `--description`, and
-`--python-min` from an existing PEP 621 `[project]` table in `pyproject.toml`:
+For non-interactive use, Forge can infer the blueprint for high-confidence
+Python and Rust package repositories. Python inference uses PEP 621
+`pyproject.toml` plus source-layout or `uv` build-backend signals, then fills
+`--project-name`, `--description`, and `--python-min` from project metadata:
 
 ```bash
+forge init --path . --dry-run --json --yes
 forge init --path . --blueprint python-library --yes
 ```
 
@@ -255,10 +258,21 @@ forge init \
 ```
 
 `forge init` writes Forge-managed infrastructure and `[tool.forge]` metadata, not
-starter source files. When adopting an existing `pyproject.toml`, Forge preserves
-its current project metadata and appends only Forge metadata. Other files that
-already exist at managed paths are shown as overwrites; interactive runs ask for
-confirmation after showing the plan, and non-interactive runs use `--yes` to opt in.
+starter source files. Existing user-owned files at managed paths are preserved by
+default and recorded in Forge metadata as ignored managed paths. JSON and human
+output include reason codes such as `new_managed_file`, `metadata_append`, and
+`existing_user_file_preserved` so adoption plans are reviewable.
+
+When adopting an existing `pyproject.toml`, Forge marks it as external with
+`pyproject = "external"`, preserves existing build-system, dependency groups,
+pytest, Ruff, coverage, mypy, ty, and other tool tables, and appends only Forge
+metadata. Later `forge sync` refreshes Forge metadata without taking over those
+external sections.
+
+Forge detects existing Sphinx, MkDocs, and Starlight/Astro docs systems and does
+not create a parallel `docs/` site unless you explicitly request docs takeover.
+Existing release-please root config/manifest files, CI workflow files, and hook
+config are also preserved by default.
 
 Use a dry run first when adopting a repository that already has infrastructure
 such as `pyproject.toml`, `README.md`, CI workflows, hooks, or a `justfile`:
@@ -267,12 +281,18 @@ such as `pyproject.toml`, `README.md`, CI workflows, hooks, or a `justfile`:
 forge init --path . --blueprint python-library --project-name my-library --description "My library" --dry-run --diff
 ```
 
-| Flag        | Effect                                   |
-| ----------- | ---------------------------------------- |
-| `--dry-run` | Preview what would be written            |
-| `--json`    | Machine-readable init report             |
-| `--diff`    | Include text diffs for managed file changes |
-| `--yes`     | Confirm prompts and overwrite managed paths |
+| Flag               | Effect                                                  |
+| ------------------ | ------------------------------------------------------- |
+| `--dry-run`        | Preview what would be written                           |
+| `--json`           | Machine-readable init report                            |
+| `--diff`           | Include text diffs for managed file changes             |
+| `--ignore PATH`    | Exclude a Forge-managed path or directory prefix (`docs/` for prefixes) |
+| `--takeover PATH`  | Convert one existing user-owned path/prefix to managed (`docs/` for prefixes) |
+| `--takeover-docs`  | Convert existing docs files to Forge-managed Starlight   |
+| `--takeover-ci`    | Convert existing GitHub workflow files to Forge-managed  |
+| `--takeover-hooks` | Convert existing hook config to Forge-managed            |
+| `--takeover-all`   | Convert all generated-path conflicts to Forge management |
+| `--yes`            | Confirm non-interactive apply after reviewing the plan   |
 
 After init succeeds, future changes flow through `forge sync --path .`.
 
