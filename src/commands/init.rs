@@ -1,6 +1,7 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::IsTerminal;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -14,10 +15,8 @@ use crate::blueprint::{
     minimal_external_pyproject_metadata, python_library, rust_library,
 };
 use crate::cli::{InitArgs, NewArgs};
-use crate::commands::dependency_groups::sync_dependency_groups;
 use crate::commands::diff;
 use crate::commands::new::{self, ProjectRender, RenderScope};
-use crate::commands::pyproject_sections::{sync_build_system, sync_pytest_sections};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
@@ -36,8 +35,14 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     ensure_existing_directory(&args.path)?;
     ensure_not_already_managed(&args.path)?;
 
-    let blueprint = new::select_blueprint(args.blueprint, args.yes)?;
+    let blueprint = select_existing_project_blueprint(&args)?;
     apply_existing_project_defaults(&mut args, blueprint)?;
+    let render_args = new_args_from_init_args(&args);
+    new::validate_explicit_options(blueprint, &render_args)?;
+    new::validate_required_fields_for_yes(blueprint, &render_args)?;
+    let project =
+        new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
+    let preserved_paths = apply_safe_adoption_defaults(&mut args, blueprint, &project.files);
     let render_args = new_args_from_init_args(&args);
     new::validate_explicit_options(blueprint, &render_args)?;
     new::validate_required_fields_for_yes(blueprint, &render_args)?;
@@ -46,7 +51,12 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     let adopted_existing_pyproject = adopt_existing_pyproject(&args.path, &mut project.files)?;
     let infrastructure = new::managed_infrastructure_summary(&project.files);
     let apply_command = preview_init_command(&args, blueprint, &project, stdin_is_terminal);
-    let actions = plan_generated_files(&args.path, &project.files);
+    let actions = adoption_actions(
+        &args.path,
+        &project.files,
+        &preserved_paths,
+        adopted_existing_pyproject,
+    );
     let overwrites = count_overwrites(&actions, adopted_existing_pyproject);
     let changes = count_changes(&actions);
     let conflicts = count_conflicts(&actions);
@@ -181,6 +191,80 @@ fn should_create_project(path: &Path) -> Result<bool> {
     }
 }
 
+fn select_existing_project_blueprint(args: &InitArgs) -> Result<BlueprintName> {
+    if let Some(blueprint) = args.blueprint {
+        return Ok(blueprint);
+    }
+
+    match infer_existing_project_blueprint(&args.path) {
+        BlueprintInference::HighConfidence(blueprint) => Ok(blueprint),
+        BlueprintInference::Ambiguous(candidates)
+        | BlueprintInference::LowConfidence(candidates) => {
+            let candidate_list = candidates
+                .iter()
+                .map(|blueprint| blueprint.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let suggested = candidates
+                .first()
+                .copied()
+                .unwrap_or(BlueprintName::AnyProject);
+            Err(coded_error(
+                ErrorCode::Input,
+                format!(
+                    "could not infer a unique blueprint; candidates: {candidate_list}; rerun with `{}`",
+                    init_command(args, suggested)
+                ),
+            ))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum BlueprintInference {
+    HighConfidence(BlueprintName),
+    LowConfidence(Vec<BlueprintName>),
+    Ambiguous(Vec<BlueprintName>),
+}
+
+fn infer_existing_project_blueprint(path: &Path) -> BlueprintInference {
+    let mut candidates = Vec::new();
+    if has_python_library_signals(path) {
+        candidates.push(BlueprintName::PythonLibrary);
+    }
+    if has_rust_library_signals(path) {
+        candidates.push(BlueprintName::RustLibrary);
+    }
+
+    match candidates.as_slice() {
+        [blueprint] => BlueprintInference::HighConfidence(*blueprint),
+        [] => BlueprintInference::LowConfidence(BlueprintName::ALL.to_vec()),
+        _ => BlueprintInference::Ambiguous(candidates),
+    }
+}
+
+fn has_python_library_signals(path: &Path) -> bool {
+    let Ok(pyproject) = fs::read_to_string(path.join(PYPROJECT_TOML)) else {
+        return false;
+    };
+    let Ok(parsed) = toml::from_str::<toml::Value>(&pyproject) else {
+        return false;
+    };
+    parsed.get("project").is_some()
+        && (uv_build_backend_module_name(&parsed).is_some()
+            || package_name_from_src_layout(path).is_some())
+}
+
+fn has_rust_library_signals(path: &Path) -> bool {
+    let Ok(cargo_toml) = fs::read_to_string(path.join("Cargo.toml")) else {
+        return false;
+    };
+    toml::from_str::<toml::Value>(&cargo_toml)
+        .ok()
+        .and_then(|parsed| parsed.get("package").cloned())
+        .is_some()
+}
+
 fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName) -> Result<()> {
     match blueprint {
         BlueprintName::AnyProject | BlueprintName::PythonLibrary => {
@@ -192,6 +276,122 @@ fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName
     }
     apply_existing_path_fallbacks(args, blueprint);
     Ok(())
+}
+
+fn apply_safe_adoption_defaults(
+    args: &mut InitArgs,
+    blueprint: BlueprintName,
+    files: &GeneratedFiles,
+) -> BTreeSet<PathBuf> {
+    if existing_docs_system(&args.path) && !takeover_matches(args, Path::new("docs/package.json")) {
+        args.docs = false;
+    }
+
+    let mut preserved = BTreeSet::new();
+    for relative_path in files.keys() {
+        if relative_path == Path::new(PYPROJECT_TOML) {
+            continue;
+        }
+        if !args.path.join(relative_path).exists() {
+            continue;
+        }
+        if takeover_matches(args, relative_path) {
+            continue;
+        }
+        preserved.insert(relative_path.clone());
+    }
+
+    if blueprint == BlueprintName::PythonLibrary && existing_root_release_please(&args.path) {
+        for path in [
+            ".release-please-config.json",
+            ".release-please-manifest.json",
+            ".github/release-please-config.json",
+            ".github/release-please-manifest.json",
+            ".github/workflows/release-please.yaml",
+        ] {
+            preserved.insert(PathBuf::from(path));
+        }
+    }
+
+    for path in &preserved {
+        push_unique_ignore(&mut args.ignored_files, path.display().to_string());
+    }
+
+    preserved
+}
+
+fn takeover_matches(args: &InitArgs, path: &Path) -> bool {
+    args.takeover_all
+        || (args.takeover_docs && path.starts_with("docs"))
+        || (args.takeover_ci && path.starts_with(".github/workflows"))
+        || (args.takeover_hooks && path == Path::new(".pre-commit-config.yaml"))
+        || args
+            .takeover_files
+            .iter()
+            .any(|candidate| path_matches_prefix(path, candidate))
+}
+
+fn path_matches_prefix(path: &Path, candidate: &str) -> bool {
+    let path = path.to_string_lossy();
+    path == candidate
+        || candidate
+            .strip_suffix('/')
+            .is_some_and(|prefix| path.starts_with(&format!("{prefix}/")))
+}
+
+fn push_unique_ignore(ignored_files: &mut Vec<String>, path: String) {
+    if !ignored_files.iter().any(|ignored| ignored == &path) {
+        ignored_files.push(path);
+    }
+}
+
+fn existing_docs_system(path: &Path) -> bool {
+    [
+        "docs/source/conf.py",
+        "docs/conf.py",
+        "mkdocs.yml",
+        "mkdocs.yaml",
+        "docs/astro.config.mjs",
+        "astro.config.mjs",
+    ]
+    .iter()
+    .any(|candidate| path.join(candidate).exists())
+}
+
+fn existing_root_release_please(path: &Path) -> bool {
+    path.join(".release-please-config.json").exists()
+        || path.join(".release-please-manifest.json").exists()
+}
+
+fn adoption_actions(
+    root: &Path,
+    files: &GeneratedFiles,
+    preserved_paths: &BTreeSet<PathBuf>,
+    adopted_existing_pyproject: bool,
+) -> Vec<ManagedFileAction> {
+    let mut actions = plan_generated_files(root, files)
+        .into_iter()
+        .map(|action| {
+            if adopted_existing_pyproject && is_pyproject_update(&action) {
+                ManagedFileAction::MetadataAppend(PathBuf::from(PYPROJECT_TOML))
+            } else {
+                action
+            }
+        })
+        .collect::<Vec<_>>();
+    actions.extend(
+        preserved_paths
+            .iter()
+            .filter(|path| root.join(path).exists())
+            .cloned()
+            .map(ManagedFileAction::PreserveUserFile),
+    );
+    actions.sort_by(|left, right| {
+        left.path()
+            .cmp(right.path())
+            .then(left.label().cmp(right.label()))
+    });
+    actions
 }
 
 fn apply_pyproject_project_defaults(args: &mut InitArgs, infer_python_min: bool) -> Result<()> {
@@ -435,11 +635,9 @@ fn forge_metadata_block(pyproject: &str) -> Option<&str> {
 fn append_forge_metadata(
     existing: &str,
     forge_metadata: &str,
-    generated_pyproject: &str,
+    _generated_pyproject: &str,
 ) -> Result<String> {
-    let adopted = sync_dependency_groups(existing, generated_pyproject)?;
-    let adopted = sync_build_system(&adopted, generated_pyproject)?;
-    let mut adopted = sync_pytest_sections(&adopted, generated_pyproject)?;
+    let mut adopted = existing.to_string();
     if !adopted.ends_with('\n') {
         adopted.push('\n');
     }
@@ -786,6 +984,27 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName) -> String {
         },
     );
 
+    for ignored_file in &args.ignored_files {
+        parts.push("--ignore".to_string());
+        parts.push(ui::shell_arg(ignored_file));
+    }
+    for takeover_file in &args.takeover_files {
+        parts.push("--takeover".to_string());
+        parts.push(ui::shell_arg(takeover_file));
+    }
+    if args.takeover_all {
+        parts.push("--takeover-all".to_string());
+    }
+    if args.takeover_docs {
+        parts.push("--takeover-docs".to_string());
+    }
+    if args.takeover_ci {
+        parts.push("--takeover-ci".to_string());
+    }
+    if args.takeover_hooks {
+        parts.push("--takeover-hooks".to_string());
+    }
+
     if args.yes {
         parts.push("--yes".to_string());
     }
@@ -871,6 +1090,11 @@ mod tests {
             editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
+            takeover_files: Vec::new(),
+            takeover_all: false,
+            takeover_docs: false,
+            takeover_ci: false,
+            takeover_hooks: false,
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -908,6 +1132,11 @@ mod tests {
             editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
+            takeover_files: Vec::new(),
+            takeover_all: false,
+            takeover_docs: false,
+            takeover_ci: false,
+            takeover_hooks: false,
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -1053,6 +1282,11 @@ mod tests {
             editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
+            takeover_files: Vec::new(),
+            takeover_all: false,
+            takeover_docs: false,
+            takeover_ci: false,
+            takeover_hooks: false,
             no_git_history: false,
             github: false,
             github_owner: None,
@@ -1097,6 +1331,11 @@ mod tests {
             editorconfig: true,
             markdownlint: false,
             ignored_files: Vec::new(),
+            takeover_files: Vec::new(),
+            takeover_all: false,
+            takeover_docs: false,
+            takeover_ci: false,
+            takeover_hooks: false,
             no_git_history: false,
             github: false,
             github_owner: None,

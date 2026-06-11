@@ -289,9 +289,6 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
 
     files.push(PathBuf::from(".github/workflows/publish-pypi.yaml"));
     files.push(PathBuf::from(".github/workflows/publish.yaml"));
-    files.push(PathBuf::from(".release-please-config.json"));
-    files.push(PathBuf::from(".release-please-manifest.json"));
-
     files.extend(config.components.disabled_file_paths());
     files
 }
@@ -684,6 +681,8 @@ struct ForgeSection {
     license: Option<String>,
     python_min: Option<String>,
     gitignore_profile: Option<GitignoreProfileMetadata>,
+    #[serde(rename = "pyproject")]
+    _pyproject: Option<String>,
     ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,

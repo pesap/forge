@@ -86,15 +86,19 @@ fn diff_for_action(
     managed_files: &GeneratedFiles,
 ) -> Result<Option<String>> {
     match action {
-        ManagedFileAction::Create(path) | ManagedFileAction::Update(path) => {
+        ManagedFileAction::Create(path)
+        | ManagedFileAction::Update(path)
+        | ManagedFileAction::MetadataAppend(path) => {
             let Some(GeneratedFile::Text(new_content)) = managed_files.get(path) else {
                 return Ok(None);
             };
             let diff = match action {
                 ManagedFileAction::Create(path) => render_created_text_diff(path, new_content),
-                ManagedFileAction::Update(path) => fs::read_to_string(root.join(path))
-                    .map(|old_content| render_text_diff(path, &old_content, new_content))
-                    .with_context(|| format!("failed to read {}", root.join(path).display()))?,
+                ManagedFileAction::Update(path) | ManagedFileAction::MetadataAppend(path) => {
+                    fs::read_to_string(root.join(path))
+                        .map(|old_content| render_text_diff(path, &old_content, new_content))
+                        .with_context(|| format!("failed to read {}", root.join(path).display()))?
+                }
                 _ => String::new(),
             };
             Ok(Some(diff))

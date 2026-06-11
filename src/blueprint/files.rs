@@ -43,7 +43,9 @@ pub type GeneratedFiles = BTreeMap<PathBuf, GeneratedFile>;
 pub enum ManagedFileAction {
     Create(PathBuf),
     Update(PathBuf),
+    MetadataAppend(PathBuf),
     Keep(PathBuf),
+    PreserveUserFile(PathBuf),
     Relink(PathBuf),
     Remove(PathBuf),
     Conflict {
@@ -67,7 +69,9 @@ impl ManagedFileAction {
         match self {
             Self::Create(path)
             | Self::Update(path)
+            | Self::MetadataAppend(path)
             | Self::Keep(path)
+            | Self::PreserveUserFile(path)
             | Self::Relink(path)
             | Self::Remove(path) => path,
             Self::Conflict { path, .. } => path,
@@ -77,8 +81,9 @@ impl ManagedFileAction {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Create(_) => "create",
-            Self::Update(_) => "update",
+            Self::Update(_) | Self::MetadataAppend(_) => "update",
             Self::Keep(_) => "keep",
+            Self::PreserveUserFile(_) => "preserve",
             Self::Relink(_) => "relink",
             Self::Remove(_) => "remove",
             Self::Conflict { .. } => "conflict",
@@ -86,7 +91,10 @@ impl ManagedFileAction {
     }
 
     pub fn changes_filesystem(&self) -> bool {
-        !matches!(self, Self::Keep(_) | Self::Conflict { .. })
+        !matches!(
+            self,
+            Self::Keep(_) | Self::PreserveUserFile(_) | Self::Conflict { .. }
+        )
     }
 
     pub fn blocks_update(&self) -> bool {
@@ -95,6 +103,9 @@ impl ManagedFileAction {
 
     pub fn reason(&self) -> Option<&'static str> {
         match self {
+            Self::Create(_) => Some("new_managed_file"),
+            Self::MetadataAppend(_) => Some("metadata_append"),
+            Self::PreserveUserFile(_) => Some("existing_user_file_preserved; takeover_required"),
             Self::Conflict { reason, .. } => Some(reason.as_str()),
             _ => None,
         }
@@ -102,6 +113,9 @@ impl ManagedFileAction {
 
     pub fn reason_code(&self) -> Option<&'static str> {
         match self {
+            Self::Create(_) => Some("new_managed_file"),
+            Self::MetadataAppend(_) => Some("metadata_append"),
+            Self::PreserveUserFile(_) => Some("existing_user_file_preserved"),
             Self::Conflict { reason, .. } => Some(reason.code()),
             _ => None,
         }

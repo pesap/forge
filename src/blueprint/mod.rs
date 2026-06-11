@@ -440,7 +440,7 @@ pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Strin
     let blueprint = forge_metadata_blueprint(forge_metadata)
         .unwrap_or_else(|| "python-library>=0.1.0".to_string());
     let mut metadata = format!(
-        "[tool.forge]\nblueprint = {}\n",
+        "[tool.forge]\nblueprint = {}\npyproject = \"external\"\n",
         toml_value::string_literal(&blueprint)
     );
     if let Ok(parsed) = toml::from_str::<Value>(forge_metadata)

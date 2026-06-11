@@ -8,10 +8,6 @@ use tempfile::TempDir;
 const FORGE_INSTALL_FROM_GIT: &str =
     "cargo install --git https://github.com/pesap/forge --locked forge";
 
-fn expected_pytest_cache_dir(project_name: &str) -> String {
-    format!(".cache/pytest/{project_name}")
-}
-
 fn generate_project(project_path: &std::path::Path) {
     generate_project_with_extra_args(project_path, []);
 }
@@ -1678,16 +1674,8 @@ dependencies = ["click>=8"]
         .expect("legacy release-please manifest should write");
     fs::write(project_path.join("typos.toml"), "[default.extend-words]\n")
         .expect("legacy typos config should write");
-    let expected_cache_dir = expected_pytest_cache_dir("ops-tools");
-    let drifted = pyproject
-        .replace("ruff~=0.14.0", "ruff~=0.1.0")
-        .replace("line-length = 110", "line-length = 100")
-        .replace("all = \"error\"", "all = \"warn\"")
-        .replace(
-            &format!("cache_dir = \"{expected_cache_dir}\""),
-            "cache_dir = \"/tmp/pytest-cache-drift/ops-tools\"",
-        );
-    fs::write(&pyproject_path, drifted).expect("pyproject should be writable");
+    fs::write(&pyproject_path, pyproject.replace("2.3.4", "2.3.5"))
+        .expect("pyproject should be writable");
 
     let mut check = Command::cargo_bin("forge").expect("forge binary should build");
     check.args([
@@ -1699,7 +1687,8 @@ dependencies = ["click>=8"]
     check
         .assert()
         .failure()
-        .stdout(contains("update  pyproject.toml"))
+        .stdout(contains("keep    pyproject.toml"))
+        .stdout(contains("remove  .cspell.json"))
         .stderr(contains("managed infrastructure is out of date"));
 
     let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
@@ -1711,40 +1700,16 @@ dependencies = ["click>=8"]
     ]);
     sync.assert()
         .success()
-        .stdout(contains("update  pyproject.toml"))
-        .stdout(contains("remove  .release-please-config.json"))
-        .stdout(contains("remove  .release-please-manifest.json"));
+        .stdout(contains("keep    pyproject.toml"))
+        .stdout(contains("remove  .cspell.json"))
+        .stdout(contains("remove  typos.toml"));
 
     let pyproject = fs::read_to_string(pyproject_path).expect("pyproject should exist");
-    assert!(pyproject.contains("version = \"2.3.4\""));
+    assert!(pyproject.contains("version = \"2.3.5\""));
     assert!(pyproject.contains("dependencies = [\"click>=8\"]"));
-    assert_eq!(
-        forge_section(&pyproject).trim(),
-        "blueprint = \"python-library>=0.1.0\"\ngitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
-    );
-    assert!(pyproject.contains("ruff~=0.14.0"));
-    assert!(!pyproject.contains("ruff~=0.1.0"));
-    assert!(pyproject.contains("line-length = 110"));
-    assert!(pyproject.contains("[tool.ty.rules]\nall = \"error\""));
-    assert!(
-        pyproject
-            .find("[tool.ruff.lint]")
-            .expect("ruff lint section should exist")
-            < pyproject
-                .find("[tool.ty.rules]")
-                .expect("ty rules section should exist")
-    );
-    assert!(!pyproject.contains("line-length = 100"));
-    assert!(!pyproject.contains("all = \"warn\""));
-    let pyproject_toml: toml::Value = toml::from_str(&pyproject).expect("pyproject should parse");
-    let pytest_cache_dir = pyproject_toml["tool"]["pytest"]["ini_options"]["cache_dir"]
-        .as_str()
-        .expect("pytest cache_dir should be a string");
-    assert_eq!(pytest_cache_dir, expected_cache_dir);
-    assert!(!pyproject.contains("[tool.pytest_env]"));
-    assert!(!pyproject.contains("XDG_CACHE_HOME"));
-    assert!(!pyproject.contains("pytest-env"));
-    assert!(!pyproject.contains("/tmp/pytest-cache-drift"));
+    let forge_metadata = forge_section(&pyproject);
+    assert!(forge_metadata.contains("blueprint = \"python-library>=0.1.0\""));
+    assert!(forge_metadata.contains("pyproject = \"external\""));
     assert!(project_path.join(".typos.toml").exists());
     assert!(!project_path.join("typos.toml").exists());
     assert!(
@@ -1758,8 +1723,8 @@ dependencies = ["click>=8"]
             .exists()
     );
     assert!(!project_path.join(".cspell.json").exists());
-    assert!(!project_path.join(".release-please-config.json").exists());
-    assert!(!project_path.join(".release-please-manifest.json").exists());
+    assert!(project_path.join(".release-please-config.json").exists());
+    assert!(project_path.join(".release-please-manifest.json").exists());
 }
 
 #[test]
