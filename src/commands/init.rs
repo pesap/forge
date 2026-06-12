@@ -532,12 +532,21 @@ fn github_workflow_directory_has_files(path: &Path) -> bool {
             }
             continue;
         }
-        if entry_path.is_file() {
+        if is_workflow_manifest_file(&entry_path) {
             return true;
         }
     }
 
     false
+}
+
+fn is_workflow_manifest_file(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase()),
+        Some(extension) if matches!(extension.as_str(), "yml" | "yaml")
+    )
 }
 
 fn existing_root_release_please(path: &Path) -> bool {
@@ -567,21 +576,32 @@ fn takeover_plan(
 
     if blueprint == BlueprintName::PythonLibrary {
         if args.takeover_docs || args.takeover_all {
-            match discover_docs_takeover_source(root)? {
-                Some(relocation) => plan.relocations.push(relocation),
-                None => {
-                    args.docs = false;
-                    plan.notes.push(
-                        "manually migrate existing docs content into docs/src/content/docs/index.mdx, then rerun forge init --takeover-docs".to_string(),
-                    );
+            if root.join(TAKEOVER_DOCS_DESTINATION).exists() {
+                args.docs = false;
+                plan.notes.push(
+                    "existing docs destination already exists; manually migrate existing docs content into docs/src/content/docs/index.mdx before rerunning forge init --takeover-docs".to_string(),
+                );
+            } else {
+                match discover_docs_takeover_source(root)? {
+                    Some(relocation) => plan.relocations.push(relocation),
+                    None => {
+                        args.docs = false;
+                        plan.notes.push(
+                            "manually migrate existing docs content into docs/src/content/docs/index.mdx, then rerun forge init --takeover-docs".to_string(),
+                        );
+                    }
                 }
             }
         }
 
-        if (args.takeover_ci || args.takeover_all)
-            && let Some(relocation) = discover_release_takeover_source(root)?
-        {
-            plan.relocations.push(relocation);
+        if args.takeover_ci || args.takeover_all {
+            if root.join(TAKEOVER_RELEASE_WORKFLOW_DESTINATION).exists() {
+                plan.notes.push(
+                    "existing release-please workflow already exists; manually reconcile .github/workflows/release.yaml before rerunning forge init --takeover-ci".to_string(),
+                );
+            } else if let Some(relocation) = discover_release_takeover_source(root)? {
+                plan.relocations.push(relocation);
+            }
         }
     }
 
@@ -590,40 +610,40 @@ fn takeover_plan(
 
 fn discover_docs_takeover_source(root: &Path) -> Result<Option<TakeoverRelocation>> {
     let docs_root = root.join("docs");
-    let Ok(entries) = fs::read_dir(&docs_root) else {
+    let Ok(mut entries) = fs::read_dir(&docs_root) else {
         return Ok(None);
     };
 
-    let mut candidates = Vec::new();
-    for entry in entries {
-        let entry = entry.with_context(|| format!("failed to read {}", docs_root.display()))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if !matches!(
-            path.extension()
-                .and_then(|extension| extension.to_str())
-                .map(|extension| extension.to_ascii_lowercase()),
-            Some(extension) if matches!(extension.as_str(), "md" | "mdx" | "markdown")
-        ) {
-            continue;
-        }
-        candidates.push(path);
+    let Some(entry) = entries.next() else {
+        return Ok(None);
+    };
+    if entries.next().is_some() {
+        return Ok(None);
     }
 
-    match candidates.as_slice() {
-        [source] => Ok(Some(TakeoverRelocation {
-            from: source
-                .strip_prefix(root)
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|_| source.to_path_buf()),
-            to: PathBuf::from(TAKEOVER_DOCS_DESTINATION),
-            content: fs::read_to_string(source)
-                .with_context(|| format!("failed to read {}", source.display()))?,
-        })),
-        _ => Ok(None),
+    let entry = entry.with_context(|| format!("failed to read {}", docs_root.display()))?;
+    let path = entry.path();
+    if !path.is_file() {
+        return Ok(None);
     }
+    if !matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase()),
+        Some(extension) if matches!(extension.as_str(), "md" | "mdx" | "markdown")
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(TakeoverRelocation {
+        from: path
+            .strip_prefix(root)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|_| path.to_path_buf()),
+        to: PathBuf::from(TAKEOVER_DOCS_DESTINATION),
+        content: fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?,
+    }))
 }
 
 fn discover_release_takeover_source(root: &Path) -> Result<Option<TakeoverRelocation>> {
@@ -1641,6 +1661,20 @@ mod tests {
         );
         assert_eq!(args.python_min.as_deref(), Some("3.11"));
         assert_eq!(args.license.as_deref(), Some("MIT"));
+    }
+
+    #[test]
+    fn workflow_infra_detection_ignores_placeholder_files() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let project_path = temp.path().join("grid-tools");
+        fs::create_dir_all(project_path.join(".github/workflows"))
+            .expect("workflow dir should create");
+        fs::write(project_path.join(".github/workflows/.gitkeep"), "").expect("placeholder");
+        fs::write(project_path.join(".github/workflows/README.md"), "notes").expect("notes");
+        assert!(!existing_workflow_infrastructure(&project_path));
+        fs::write(project_path.join(".github/workflows/ci.yaml"), "name: CI\n")
+            .expect("workflow should write");
+        assert!(existing_workflow_infrastructure(&project_path));
     }
 
     #[test]
