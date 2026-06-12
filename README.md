@@ -269,10 +269,12 @@ pytest, Ruff, coverage, mypy, ty, and other tool tables, and appends only Forge
 metadata. Later `forge sync` refreshes Forge metadata without taking over those
 external sections.
 
-Forge detects existing Sphinx, MkDocs, and Starlight/Astro docs systems and does
-not create a parallel `docs/` site unless you explicitly request docs takeover.
-Existing release-please root config/manifest files, CI workflow files, and hook
-config are also preserved by default.
+Forge detects existing Sphinx, MkDocs, Starlight/Astro docs systems, and
+existing Markdown content under `docs/`, and does not create a parallel Starlight
+`docs/` site unless you explicitly request docs takeover. Existing GitHub
+workflow infrastructure is preserved by default instead of adding a parallel
+Forge-managed release/workflow scaffold, and hook config remains preserved by
+default.
 
 Use a dry run first when adopting a repository that already has infrastructure
 such as `pyproject.toml`, `README.md`, CI workflows, hooks, or a `justfile`:

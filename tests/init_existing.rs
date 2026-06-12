@@ -70,6 +70,43 @@ line-length = 99
     .expect("existing pyproject should be writable");
 }
 
+fn create_existing_python_repo_with_parallel_infra(project_path: &std::path::Path) {
+    create_existing_python_repo_with_pyproject(project_path);
+    fs::write(project_path.join("README.md"), "# Existing repository\n")
+        .expect("README should be writable");
+    fs::create_dir_all(project_path.join("docs")).expect("docs directory should create");
+    fs::write(
+        project_path.join("docs/resolve-csv-contract.md"),
+        "# Contract\n",
+    )
+    .expect("docs content should be writable");
+    fs::create_dir_all(project_path.join(".github/workflows")).expect("workflows should create");
+    fs::write(
+        project_path.join(".github/workflows/ci.yaml"),
+        "name: Existing CI\n",
+    )
+    .expect("ci workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/commit.yaml"),
+        "name: Existing commit\n",
+    )
+    .expect("commit workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/release.yaml"),
+        "name: Existing release\n",
+    )
+    .expect("release workflow should write");
+    fs::write(
+        project_path.join(".github/workflows/workflow-quality.yaml"),
+        "name: Existing workflow quality\n",
+    )
+    .expect("workflow quality should write");
+    fs::write(project_path.join(".pre-commit-config.yaml"), "repos: []\n")
+        .expect("hooks should write");
+    fs::write(project_path.join("justfile"), "verify:\n\techo ok\n")
+        .expect("justfile should write");
+}
+
 fn assert_external_pyproject_adopted(project_path: &std::path::Path) {
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
@@ -569,17 +606,129 @@ fn init_dry_run_infers_python_and_preserves_established_repo_by_default() {
             "{path} should be preserved"
         );
     }
-    assert!(
-        !actions
-            .iter()
-            .any(|action| action["path"] == "docs/package.json")
-    );
+    assert!(actions.iter().any(|action| {
+        action["action"] == "preserve"
+            && action["path"] == "docs/package.json"
+            && action["reason_code"] == "existing_semantic_equivalent_preserved"
+    }));
     assert!(
         report["next_steps"][0]
             .as_str()
             .expect("next step should be a string")
             .contains("--ignore README.md")
     );
+}
+
+#[test]
+fn init_dry_run_preserves_existing_docs_and_workflow_infrastructure_semantically() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_parallel_infra(&project_path);
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--dry-run",
+        "--json",
+        "--yes",
+    ]);
+
+    let output = cmd.output().expect("init should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(report["blueprint"], "python-library");
+    assert_eq!(report["status_code"], "dry_run");
+    let actions = report["actions"]
+        .as_array()
+        .expect("actions should be an array");
+
+    for path in [
+        ".github/workflows/forge-sync.yaml",
+        ".github/workflows/release-please.yaml",
+        ".github/release-please-config.json",
+        ".github/release-please-manifest.json",
+        ".github/workflows/docs-pages.yaml",
+        "docs/package.json",
+        "docs/astro.config.mjs",
+        "docs/src/content.config.ts",
+        "docs/tsconfig.json",
+        "docs/src/content/docs/index.mdx",
+    ] {
+        assert!(
+            actions.iter().any(|action| {
+                action["action"] == "preserve"
+                    && action["path"] == path
+                    && action["reason_code"] == "existing_semantic_equivalent_preserved"
+            }),
+            "{path} should be preserved semantically"
+        );
+        assert!(
+            !actions
+                .iter()
+                .any(|action| { action["path"] == path && action["action"] == "create" }),
+            "{path} should not be created"
+        );
+    }
+
+    for path in [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/workflow-quality.yaml",
+    ] {
+        assert!(
+            actions.iter().any(|action| {
+                action["action"] == "preserve"
+                    && action["path"] == path
+                    && action["reason_code"] == "existing_user_file_preserved"
+            }),
+            "{path} should remain user-preserved"
+        );
+    }
+
+    let mut init = Command::cargo_bin("forge").expect("forge binary should build");
+    init.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--yes",
+    ]);
+    init.assert().success();
+
+    for path in [
+        "docs/package.json",
+        "docs/astro.config.mjs",
+        "docs/src/content.config.ts",
+        "docs/tsconfig.json",
+        "docs/src/content/docs/index.mdx",
+        ".github/workflows/docs-pages.yaml",
+        ".github/workflows/forge-sync.yaml",
+        ".github/release-please-config.json",
+        ".github/release-please-manifest.json",
+    ] {
+        assert!(
+            !project_path.join(path).exists(),
+            "{path} should not be written"
+        );
+    }
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    check
+        .assert()
+        .success()
+        .stdout(contains("managed infrastructure is current"));
 }
 
 #[test]

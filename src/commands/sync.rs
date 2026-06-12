@@ -859,9 +859,9 @@ fn action_breakdown(actions: &[ManagedFileAction]) -> ActionBreakdown {
             }
             ManagedFileAction::Relink(_) => breakdown.relink += 1,
             ManagedFileAction::Remove(_) => breakdown.remove += 1,
-            ManagedFileAction::Keep(_) | ManagedFileAction::PreserveUserFile(_) => {
-                breakdown.keep += 1
-            }
+            ManagedFileAction::Keep(_)
+            | ManagedFileAction::PreserveUserFile(_)
+            | ManagedFileAction::PreserveSemanticEquivalent(_) => breakdown.keep += 1,
             ManagedFileAction::Conflict { .. } => breakdown.conflict += 1,
         }
     }

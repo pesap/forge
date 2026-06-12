@@ -46,6 +46,7 @@ pub enum ManagedFileAction {
     MetadataAppend(PathBuf),
     Keep(PathBuf),
     PreserveUserFile(PathBuf),
+    PreserveSemanticEquivalent(PathBuf),
     Relink(PathBuf),
     Remove(PathBuf),
     Conflict {
@@ -72,6 +73,7 @@ impl ManagedFileAction {
             | Self::MetadataAppend(path)
             | Self::Keep(path)
             | Self::PreserveUserFile(path)
+            | Self::PreserveSemanticEquivalent(path)
             | Self::Relink(path)
             | Self::Remove(path) => path,
             Self::Conflict { path, .. } => path,
@@ -83,7 +85,7 @@ impl ManagedFileAction {
             Self::Create(_) => "create",
             Self::Update(_) | Self::MetadataAppend(_) => "update",
             Self::Keep(_) => "keep",
-            Self::PreserveUserFile(_) => "preserve",
+            Self::PreserveUserFile(_) | Self::PreserveSemanticEquivalent(_) => "preserve",
             Self::Relink(_) => "relink",
             Self::Remove(_) => "remove",
             Self::Conflict { .. } => "conflict",
@@ -93,7 +95,10 @@ impl ManagedFileAction {
     pub fn changes_filesystem(&self) -> bool {
         !matches!(
             self,
-            Self::Keep(_) | Self::PreserveUserFile(_) | Self::Conflict { .. }
+            Self::Keep(_)
+                | Self::PreserveUserFile(_)
+                | Self::PreserveSemanticEquivalent(_)
+                | Self::Conflict { .. }
         )
     }
 
@@ -106,6 +111,9 @@ impl ManagedFileAction {
             Self::Create(_) => Some("new_managed_file"),
             Self::MetadataAppend(_) => Some("metadata_append"),
             Self::PreserveUserFile(_) => Some("existing_user_file_preserved; takeover_required"),
+            Self::PreserveSemanticEquivalent(_) => {
+                Some("existing_semantic_equivalent_preserved; takeover_required")
+            }
             Self::Conflict { reason, .. } => Some(reason.as_str()),
             _ => None,
         }
@@ -116,6 +124,7 @@ impl ManagedFileAction {
             Self::Create(_) => Some("new_managed_file"),
             Self::MetadataAppend(_) => Some("metadata_append"),
             Self::PreserveUserFile(_) => Some("existing_user_file_preserved"),
+            Self::PreserveSemanticEquivalent(_) => Some("existing_semantic_equivalent_preserved"),
             Self::Conflict { reason, .. } => Some(reason.code()),
             _ => None,
         }

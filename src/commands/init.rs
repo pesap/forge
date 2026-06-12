@@ -21,6 +21,20 @@ use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
 const PYPROJECT_TOML: &str = "pyproject.toml";
+const PYTHON_DOCS_SCAFFOLD_PATHS: &[&str] = &[
+    ".github/workflows/docs-pages.yaml",
+    "docs/package.json",
+    "docs/astro.config.mjs",
+    "docs/src/content.config.ts",
+    "docs/tsconfig.json",
+    "docs/src/content/docs/index.mdx",
+];
+const PYTHON_WORKFLOW_SCAFFOLD_PATHS: &[&str] = &[
+    ".github/release-please-config.json",
+    ".github/release-please-manifest.json",
+    ".github/workflows/forge-sync.yaml",
+    ".github/workflows/release-please.yaml",
+];
 
 pub fn run(mut args: InitArgs) -> Result<()> {
     if let Some(path) = args.path_flag.take() {
@@ -37,6 +51,8 @@ pub fn run(mut args: InitArgs) -> Result<()> {
 
     let blueprint = select_existing_project_blueprint(&args, stdin_is_terminal)?;
     apply_existing_project_defaults(&mut args, blueprint)?;
+    let semantic_preserved_paths = semantic_adoption_preservations(&args.path, blueprint, &args);
+    apply_semantic_adoption_defaults(&mut args, &semantic_preserved_paths);
     let render_args = new_args_from_init_args(&args);
     new::validate_explicit_options(blueprint, &render_args)?;
     new::validate_required_fields_for_yes(blueprint, &render_args)?;
@@ -55,6 +71,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         &args.path,
         &project.files,
         &preserved_paths,
+        &semantic_preserved_paths,
         adopted_existing_pyproject,
     );
     let overwrites = count_overwrites(&actions, adopted_existing_pyproject);
@@ -285,15 +302,30 @@ fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName
     Ok(())
 }
 
+fn apply_semantic_adoption_defaults(
+    args: &mut InitArgs,
+    semantic_preserved_paths: &BTreeSet<PathBuf>,
+) {
+    if semantic_preserved_paths
+        .iter()
+        .any(|path| path.starts_with("docs"))
+    {
+        args.docs = false;
+    }
+
+    for path in semantic_preserved_paths
+        .iter()
+        .filter(|path| path.starts_with(".github"))
+    {
+        push_unique_ignore(&mut args.ignored_files, path.display().to_string());
+    }
+}
+
 fn apply_safe_adoption_defaults(
     args: &mut InitArgs,
     blueprint: BlueprintName,
     files: &GeneratedFiles,
 ) -> BTreeSet<PathBuf> {
-    if existing_docs_system(&args.path) && !takeover_matches(args, Path::new("docs/package.json")) {
-        args.docs = false;
-    }
-
     let mut preserved = BTreeSet::new();
     for relative_path in files.keys() {
         if relative_path == Path::new(PYPROJECT_TOML) {
@@ -383,6 +415,42 @@ fn push_unique_ignore(ignored_files: &mut Vec<String>, path: String) {
     }
 }
 
+fn semantic_adoption_preservations(
+    path: &Path,
+    blueprint: BlueprintName,
+    args: &InitArgs,
+) -> BTreeSet<PathBuf> {
+    let mut preserved = BTreeSet::new();
+
+    if blueprint == BlueprintName::PythonLibrary {
+        if existing_docs_infrastructure(path)
+            && !takeover_matches(args, Path::new("docs/package.json"))
+        {
+            for relative_path in PYTHON_DOCS_SCAFFOLD_PATHS {
+                let relative_path = PathBuf::from(relative_path);
+                if !path.join(&relative_path).exists() {
+                    preserved.insert(relative_path);
+                }
+            }
+        }
+
+        if existing_workflow_infrastructure(path) && !args.takeover_ci && !args.takeover_all {
+            for relative_path in PYTHON_WORKFLOW_SCAFFOLD_PATHS {
+                let relative_path = PathBuf::from(relative_path);
+                if !path.join(&relative_path).exists() && !takeover_matches(args, &relative_path) {
+                    preserved.insert(relative_path);
+                }
+            }
+        }
+    }
+
+    preserved
+}
+
+fn existing_docs_infrastructure(path: &Path) -> bool {
+    existing_docs_system(path) || docs_content_exists(path)
+}
+
 fn existing_docs_system(path: &Path) -> bool {
     [
         "docs/source/conf.py",
@@ -396,6 +464,62 @@ fn existing_docs_system(path: &Path) -> bool {
     .any(|candidate| path.join(candidate).exists())
 }
 
+fn docs_content_exists(path: &Path) -> bool {
+    docs_directory_contains_markdown(&path.join("docs"))
+}
+
+fn docs_directory_contains_markdown(path: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(path) else {
+        return false;
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            if docs_directory_contains_markdown(&entry_path) {
+                return true;
+            }
+            continue;
+        }
+        if matches!(
+            entry_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| extension.to_ascii_lowercase()),
+            Some(extension) if matches!(extension.as_str(), "md" | "mdx" | "markdown")
+        ) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn existing_workflow_infrastructure(path: &Path) -> bool {
+    github_workflow_directory_has_files(&path.join(".github/workflows"))
+}
+
+fn github_workflow_directory_has_files(path: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(path) else {
+        return false;
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            if github_workflow_directory_has_files(&entry_path) {
+                return true;
+            }
+            continue;
+        }
+        if entry_path.is_file() {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn existing_root_release_please(path: &Path) -> bool {
     path.join(".release-please-config.json").exists()
         || path.join(".release-please-manifest.json").exists()
@@ -405,6 +529,7 @@ fn adoption_actions(
     root: &Path,
     files: &GeneratedFiles,
     preserved_paths: &BTreeSet<PathBuf>,
+    semantic_preserved_paths: &BTreeSet<PathBuf>,
     adopted_existing_pyproject: bool,
 ) -> Vec<ManagedFileAction> {
     let mut actions = plan_generated_files(root, files)
@@ -423,6 +548,12 @@ fn adoption_actions(
             .filter(|path| root.join(path).exists())
             .cloned()
             .map(ManagedFileAction::PreserveUserFile),
+    );
+    actions.extend(
+        semantic_preserved_paths
+            .iter()
+            .cloned()
+            .map(ManagedFileAction::PreserveSemanticEquivalent),
     );
     actions.sort_by(|left, right| {
         left.path()
