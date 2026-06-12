@@ -123,6 +123,31 @@ fn diff_for_action(
                 }
             }
         }
+        ManagedFileAction::Relocate { from, to } => {
+            let Some(GeneratedFile::Text(new_content)) = managed_files.get(to) else {
+                return Ok(None);
+            };
+            let full_path = root.join(from);
+            match fs::read_to_string(&full_path) {
+                Ok(old_content) => Ok(Some(render_renamed_text_diff(
+                    from,
+                    to,
+                    &old_content,
+                    new_content,
+                ))),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::IsADirectory | std::io::ErrorKind::InvalidData
+                    ) =>
+                {
+                    Ok(None)
+                }
+                Err(error) => {
+                    Err(error).with_context(|| format!("failed to read {}", full_path.display()))
+                }
+            }
+        }
         ManagedFileAction::Remove(path) => {
             let full_path = root.join(path);
             if !full_path.is_file() {
@@ -159,11 +184,20 @@ fn render_removed_text_diff(path: &Path, old_content: &str) -> String {
 }
 
 fn render_text_diff(path: &Path, old_content: &str, new_content: &str) -> String {
+    render_renamed_text_diff(path, path, old_content, new_content)
+}
+
+fn render_renamed_text_diff(
+    old_path: &Path,
+    new_path: &Path,
+    old_content: &str,
+    new_content: &str,
+) -> String {
     TextDiff::from_lines(old_content, new_content)
         .unified_diff()
         .header(
-            &format!("a/{}", path.display()),
-            &format!("b/{}", path.display()),
+            &format!("a/{}", old_path.display()),
+            &format!("b/{}", new_path.display()),
         )
         .to_string()
 }

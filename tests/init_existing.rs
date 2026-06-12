@@ -732,6 +732,149 @@ fn init_dry_run_preserves_existing_docs_and_workflow_infrastructure_semantically
 }
 
 #[test]
+fn init_takeover_ci_relocates_release_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_parallel_infra(&project_path);
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--takeover-ci",
+        "--dry-run",
+        "--json",
+        "--yes",
+    ]);
+
+    let output = cmd.output().expect("init should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    let actions = report["actions"]
+        .as_array()
+        .expect("actions should be an array");
+    assert!(actions.iter().any(|action| {
+        action["action"] == "relocate"
+            && action["path"] == ".github/workflows/release-please.yaml"
+            && action["source_path"] == ".github/workflows/release.yaml"
+            && action["reason_code"] == "takeover_relocated"
+    }));
+    assert!(!actions.iter().any(|action| action["path"]
+        == ".github/workflows/release-please.yaml"
+        && action["action"] == "create"));
+}
+
+#[test]
+fn init_takeover_ci_human_output_shows_relocation() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_parallel_infra(&project_path);
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--takeover-ci",
+        "--dry-run",
+        "--yes",
+    ]);
+
+    cmd.assert().success().stdout(contains(
+        "relocate .github/workflows/release.yaml -> .github/workflows/release-please.yaml",
+    ));
+}
+
+#[test]
+fn init_takeover_docs_relocates_single_docs_page() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_parallel_infra(&project_path);
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--takeover-docs",
+        "--yes",
+    ]);
+
+    cmd.assert().success();
+
+    assert!(!project_path.join("docs/resolve-csv-contract.md").exists());
+    assert_eq!(
+        fs::read_to_string(project_path.join("docs/src/content/docs/index.mdx"))
+            .expect("docs index should exist"),
+        "# Contract\n"
+    );
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join(".github/workflows/docs-pages.yaml")
+            .exists()
+    );
+}
+
+#[test]
+fn init_takeover_docs_reports_manual_migration_for_nested_docs() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    create_existing_python_repo_with_pyproject(&project_path);
+    fs::create_dir_all(project_path.join("docs/source")).expect("docs should create");
+    fs::write(
+        project_path.join("docs/source/index.md"),
+        "# Existing docs\n",
+    )
+    .expect("nested docs should write");
+    fs::write(
+        project_path.join("docs/source/conf.py"),
+        "project = 'ops-tools'\n",
+    )
+    .expect("sphinx conf should write");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--blueprint",
+        "python-library",
+        "--takeover-docs",
+        "--dry-run",
+        "--json",
+        "--yes",
+    ]);
+
+    let output = cmd.output().expect("init should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    let next_steps = report["next_steps"]
+        .as_array()
+        .expect("next steps should be an array");
+    assert!(next_steps.iter().any(|step| {
+        step.as_str()
+            .expect("step should be a string")
+            .contains("manually migrate existing docs content")
+    }));
+    let actions = report["actions"]
+        .as_array()
+        .expect("actions should be an array");
+    assert!(!actions.iter().any(|action| {
+        action["action"] == "create" && action["path"] == "docs/src/content/docs/index.mdx"
+    }));
+}
+
+#[test]
 fn init_existing_established_python_repo_is_sync_clean() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");

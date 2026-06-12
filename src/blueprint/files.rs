@@ -47,6 +47,10 @@ pub enum ManagedFileAction {
     Keep(PathBuf),
     PreserveUserFile(PathBuf),
     PreserveSemanticEquivalent(PathBuf),
+    Relocate {
+        from: PathBuf,
+        to: PathBuf,
+    },
     Relink(PathBuf),
     Remove(PathBuf),
     Conflict {
@@ -74,9 +78,17 @@ impl ManagedFileAction {
             | Self::Keep(path)
             | Self::PreserveUserFile(path)
             | Self::PreserveSemanticEquivalent(path)
-            | Self::Relink(path)
-            | Self::Remove(path) => path,
+            | Self::Remove(path)
+            | Self::Relink(path) => path,
+            Self::Relocate { to, .. } => to,
             Self::Conflict { path, .. } => path,
+        }
+    }
+
+    pub fn source_path(&self) -> Option<&Path> {
+        match self {
+            Self::Relocate { from, .. } => Some(from),
+            _ => None,
         }
     }
 
@@ -86,6 +98,7 @@ impl ManagedFileAction {
             Self::Update(_) | Self::MetadataAppend(_) => "update",
             Self::Keep(_) => "keep",
             Self::PreserveUserFile(_) | Self::PreserveSemanticEquivalent(_) => "preserve",
+            Self::Relocate { .. } => "relocate",
             Self::Relink(_) => "relink",
             Self::Remove(_) => "remove",
             Self::Conflict { .. } => "conflict",
@@ -114,6 +127,7 @@ impl ManagedFileAction {
             Self::PreserveSemanticEquivalent(_) => {
                 Some("existing_semantic_equivalent_preserved; takeover_required")
             }
+            Self::Relocate { .. } => Some("takeover_relocated"),
             Self::Conflict { reason, .. } => Some(reason.as_str()),
             _ => None,
         }
@@ -125,6 +139,7 @@ impl ManagedFileAction {
             Self::MetadataAppend(_) => Some("metadata_append"),
             Self::PreserveUserFile(_) => Some("existing_user_file_preserved"),
             Self::PreserveSemanticEquivalent(_) => Some("existing_semantic_equivalent_preserved"),
+            Self::Relocate { .. } => Some("takeover_relocated"),
             Self::Conflict { reason, .. } => Some(reason.code()),
             _ => None,
         }

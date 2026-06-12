@@ -832,6 +832,7 @@ fn print_actions(actions: &[ManagedFileAction]) {
     ui::info("create", breakdown.create);
     ui::info("update", breakdown.update);
     ui::info("relink", breakdown.relink);
+    ui::info("relocate", breakdown.relocate);
     ui::info("remove", breakdown.remove);
     ui::info("keep", breakdown.keep);
     ui::info("conflict", breakdown.conflict);
@@ -844,6 +845,7 @@ struct ActionBreakdown {
     create: usize,
     update: usize,
     relink: usize,
+    relocate: usize,
     remove: usize,
     keep: usize,
     conflict: usize,
@@ -858,6 +860,7 @@ fn action_breakdown(actions: &[ManagedFileAction]) -> ActionBreakdown {
                 breakdown.update += 1;
             }
             ManagedFileAction::Relink(_) => breakdown.relink += 1,
+            ManagedFileAction::Relocate { .. } => breakdown.relocate += 1,
             ManagedFileAction::Remove(_) => breakdown.remove += 1,
             ManagedFileAction::Keep(_)
             | ManagedFileAction::PreserveUserFile(_)

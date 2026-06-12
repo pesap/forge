@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::blueprint::files::{
     GeneratedFile, GeneratedFiles, ManagedFileAction, count_changes, count_conflicts,
-    plan_generated_files, write_generated_files,
+    plan_generated_files, remove_managed_file_if_exists, write_generated_files,
 };
 use crate::blueprint::{
     BlueprintName, detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
@@ -35,6 +35,8 @@ const PYTHON_WORKFLOW_SCAFFOLD_PATHS: &[&str] = &[
     ".github/workflows/forge-sync.yaml",
     ".github/workflows/release-please.yaml",
 ];
+const TAKEOVER_DOCS_DESTINATION: &str = "docs/src/content/docs/index.mdx";
+const TAKEOVER_RELEASE_WORKFLOW_DESTINATION: &str = ".github/workflows/release-please.yaml";
 
 pub fn run(mut args: InitArgs) -> Result<()> {
     if let Some(path) = args.path_flag.take() {
@@ -59,11 +61,14 @@ pub fn run(mut args: InitArgs) -> Result<()> {
     let project =
         new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
     let preserved_paths = apply_safe_adoption_defaults(&mut args, blueprint, &project.files);
+    let takeover_path = args.path.clone();
+    let takeover_plan = takeover_plan(&takeover_path, blueprint, &mut args)?;
     let render_args = new_args_from_init_args(&args);
     new::validate_explicit_options(blueprint, &render_args)?;
     new::validate_required_fields_for_yes(blueprint, &render_args)?;
     let mut project =
         new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
+    apply_takeover_relocations(&mut project.files, &takeover_plan.relocations);
     let adopted_existing_pyproject = adopt_existing_pyproject(&args.path, &mut project.files)?;
     let infrastructure = new::managed_infrastructure_summary(&project.files);
     let apply_command = preview_init_command(&args, blueprint, &project, stdin_is_terminal);
@@ -72,6 +77,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         &project.files,
         &preserved_paths,
         &semantic_preserved_paths,
+        &takeover_plan.relocations,
         adopted_existing_pyproject,
     );
     let overwrites = count_overwrites(&actions, adopted_existing_pyproject);
@@ -86,6 +92,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
             args.dry_run,
             &project,
             &actions,
+            &takeover_plan.notes,
         )?;
     } else {
         ui::section(if args.dry_run {
@@ -111,7 +118,13 @@ pub fn run(mut args: InitArgs) -> Result<()> {
 
     if conflicts > 0 {
         if !args.json {
-            print_next_steps(&args, blueprint, conflicts, args.dry_run);
+            print_next_steps(
+                &args,
+                blueprint,
+                conflicts,
+                args.dry_run,
+                &takeover_plan.notes,
+            );
         }
         return Err(coded_error(
             ErrorCode::Conflict,
@@ -168,6 +181,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
 
     if !args.dry_run {
         write_generated_files(&args.path, project.files)?;
+        remove_takeover_sources(&args.path, &takeover_plan.relocations)?;
     }
 
     if !args.json {
@@ -187,7 +201,13 @@ pub fn run(mut args: InitArgs) -> Result<()> {
             new::required_tools_summary_for_options(blueprint, &project.options),
         );
         ui::info("managed sync", "forge sync --path .");
-        print_next_steps(&args, blueprint, conflicts, args.dry_run);
+        print_next_steps(
+            &args,
+            blueprint,
+            conflicts,
+            args.dry_run,
+            &takeover_plan.notes,
+        );
     }
 
     Ok(())
@@ -525,17 +545,138 @@ fn existing_root_release_please(path: &Path) -> bool {
         || path.join(".release-please-manifest.json").exists()
 }
 
+#[derive(Clone, Debug)]
+struct TakeoverRelocation {
+    from: PathBuf,
+    to: PathBuf,
+    content: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct TakeoverPlan {
+    relocations: Vec<TakeoverRelocation>,
+    notes: Vec<String>,
+}
+
+fn takeover_plan(
+    root: &Path,
+    blueprint: BlueprintName,
+    args: &mut InitArgs,
+) -> Result<TakeoverPlan> {
+    let mut plan = TakeoverPlan::default();
+
+    if blueprint == BlueprintName::PythonLibrary {
+        if args.takeover_docs || args.takeover_all {
+            match discover_docs_takeover_source(root)? {
+                Some(relocation) => plan.relocations.push(relocation),
+                None => {
+                    args.docs = false;
+                    plan.notes.push(
+                        "manually migrate existing docs content into docs/src/content/docs/index.mdx, then rerun forge init --takeover-docs".to_string(),
+                    );
+                }
+            }
+        }
+
+        if (args.takeover_ci || args.takeover_all)
+            && let Some(relocation) = discover_release_takeover_source(root)?
+        {
+            plan.relocations.push(relocation);
+        }
+    }
+
+    Ok(plan)
+}
+
+fn discover_docs_takeover_source(root: &Path) -> Result<Option<TakeoverRelocation>> {
+    let docs_root = root.join("docs");
+    let Ok(entries) = fs::read_dir(&docs_root) else {
+        return Ok(None);
+    };
+
+    let mut candidates = Vec::new();
+    for entry in entries {
+        let entry = entry.with_context(|| format!("failed to read {}", docs_root.display()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !matches!(
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| extension.to_ascii_lowercase()),
+            Some(extension) if matches!(extension.as_str(), "md" | "mdx" | "markdown")
+        ) {
+            continue;
+        }
+        candidates.push(path);
+    }
+
+    match candidates.as_slice() {
+        [source] => Ok(Some(TakeoverRelocation {
+            from: source
+                .strip_prefix(root)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|_| source.to_path_buf()),
+            to: PathBuf::from(TAKEOVER_DOCS_DESTINATION),
+            content: fs::read_to_string(source)
+                .with_context(|| format!("failed to read {}", source.display()))?,
+        })),
+        _ => Ok(None),
+    }
+}
+
+fn discover_release_takeover_source(root: &Path) -> Result<Option<TakeoverRelocation>> {
+    let source = root.join(".github/workflows/release.yaml");
+    if !source.is_file() {
+        return Ok(None);
+    }
+
+    Ok(Some(TakeoverRelocation {
+        from: PathBuf::from(".github/workflows/release.yaml"),
+        to: PathBuf::from(TAKEOVER_RELEASE_WORKFLOW_DESTINATION),
+        content: fs::read_to_string(&source)
+            .with_context(|| format!("failed to read {}", source.display()))?,
+    }))
+}
+
+fn apply_takeover_relocations(files: &mut GeneratedFiles, relocations: &[TakeoverRelocation]) {
+    for relocation in relocations {
+        files.insert(
+            relocation.to.clone(),
+            GeneratedFile::text(relocation.content.clone()),
+        );
+    }
+}
+
+fn remove_takeover_sources(root: &Path, relocations: &[TakeoverRelocation]) -> Result<()> {
+    for relocation in relocations {
+        remove_managed_file_if_exists(&root.join(&relocation.from))?;
+    }
+    Ok(())
+}
+
 fn adoption_actions(
     root: &Path,
     files: &GeneratedFiles,
     preserved_paths: &BTreeSet<PathBuf>,
     semantic_preserved_paths: &BTreeSet<PathBuf>,
+    relocations: &[TakeoverRelocation],
     adopted_existing_pyproject: bool,
 ) -> Vec<ManagedFileAction> {
+    let relocations_by_destination = relocations
+        .iter()
+        .map(|relocation| (relocation.to.clone(), relocation.clone()))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut actions = plan_generated_files(root, files)
         .into_iter()
         .map(|action| {
-            if adopted_existing_pyproject && is_pyproject_update(&action) {
+            if let Some(relocation) = relocations_by_destination.get(action.path()) {
+                ManagedFileAction::Relocate {
+                    from: relocation.from.clone(),
+                    to: relocation.to.clone(),
+                }
+            } else if adopted_existing_pyproject && is_pyproject_update(&action) {
                 ManagedFileAction::MetadataAppend(PathBuf::from(PYPROJECT_TOML))
             } else {
                 action
@@ -962,7 +1103,9 @@ fn should_review_overwrite(action: &ManagedFileAction, adopted_existing_pyprojec
     }
     matches!(
         action,
-        ManagedFileAction::Update(_) | ManagedFileAction::Relink(_)
+        ManagedFileAction::Update(_)
+            | ManagedFileAction::Relink(_)
+            | ManagedFileAction::Relocate { .. }
     )
 }
 
@@ -978,7 +1121,12 @@ fn print_detected_package_name(args: &InitArgs) {
 
 fn print_actions(actions: &[ManagedFileAction]) {
     for action in actions {
-        if let Some(reason) = action.reason() {
+        if let ManagedFileAction::Relocate { from, to } = action {
+            ui::action(
+                action.label(),
+                format!("{} -> {}", from.display(), to.display()),
+            );
+        } else if let Some(reason) = action.reason() {
             ui::action(
                 action.label(),
                 format!("{} ({reason})", action.path().display()),
@@ -991,8 +1139,14 @@ fn print_actions(actions: &[ManagedFileAction]) {
     ui::info("conflicts", count_conflicts(actions));
 }
 
-fn print_next_steps(args: &InitArgs, blueprint: BlueprintName, conflicts: usize, dry_run: bool) {
-    let next_steps = next_steps_for_report(args, blueprint, dry_run, conflicts);
+fn print_next_steps(
+    args: &InitArgs,
+    blueprint: BlueprintName,
+    conflicts: usize,
+    dry_run: bool,
+    takeover_notes: &[String],
+) {
+    let next_steps = next_steps_for_report(args, blueprint, dry_run, conflicts, takeover_notes);
     if next_steps.is_empty() {
         return;
     }
@@ -1010,6 +1164,7 @@ fn print_json_report(
     dry_run: bool,
     project: &ProjectRender,
     actions: &[ManagedFileAction],
+    takeover_notes: &[String],
 ) -> Result<()> {
     let conflicts = count_conflicts(actions);
     let report = InitReport {
@@ -1023,7 +1178,7 @@ fn print_json_report(
         infrastructure: new::managed_infrastructure_summary(&project.files),
         required_tools: new::required_tools_summary_for_options(blueprint, &project.options),
         options: &project.options,
-        next_steps: next_steps_for_report(args, blueprint, dry_run, conflicts),
+        next_steps: next_steps_for_report(args, blueprint, dry_run, conflicts, takeover_notes),
         changes: count_changes(actions),
         conflicts,
         actions: actions
@@ -1031,6 +1186,7 @@ fn print_json_report(
             .map(|action| InitAction {
                 action: action.label(),
                 path: action.path().display().to_string(),
+                source_path: action.source_path().map(|path| path.display().to_string()),
                 reason_code: action.reason_code(),
                 reason: action.reason(),
                 changes_filesystem: action.changes_filesystem(),
@@ -1046,8 +1202,9 @@ fn next_steps_for_report(
     blueprint: BlueprintName,
     dry_run: bool,
     conflicts: usize,
+    takeover_notes: &[String],
 ) -> Vec<String> {
-    if conflicts > 0 {
+    let mut next_steps = if conflicts > 0 {
         Vec::new()
     } else if dry_run {
         vec![init_command(args, blueprint)]
@@ -1057,7 +1214,9 @@ fn next_steps_for_report(
             "uv sync --all-groups".to_string(),
             "just verify".to_string(),
         ]
-    }
+    };
+    next_steps.extend(takeover_notes.iter().cloned());
+    next_steps
 }
 
 fn init_setup_review_context(
@@ -1213,6 +1372,7 @@ struct InitReport<'a> {
 struct InitAction<'a> {
     action: &'a str,
     path: String,
+    source_path: Option<String>,
     reason_code: Option<&'a str>,
     reason: Option<&'a str>,
     changes_filesystem: bool,
@@ -1231,11 +1391,15 @@ mod tests {
             ManagedFileAction::Keep(PathBuf::from("justfile")),
             ManagedFileAction::Update(PathBuf::from("README.md")),
             ManagedFileAction::Relink(PathBuf::from("CLAUDE.md")),
+            ManagedFileAction::Relocate {
+                from: PathBuf::from("docs/resolve-csv-contract.md"),
+                to: PathBuf::from("docs/src/content/docs/index.mdx"),
+            },
             ManagedFileAction::Update(PathBuf::from("pyproject.toml")),
         ];
 
-        assert_eq!(count_overwrites(&actions, false), 3);
-        assert_eq!(count_overwrites(&actions, true), 2);
+        assert_eq!(count_overwrites(&actions, false), 4);
+        assert_eq!(count_overwrites(&actions, true), 3);
     }
 
     #[test]
