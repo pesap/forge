@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/pesap/forge/compare/v0.6.0...v0.6.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **init:** preserve existing docs and workflow infra ([#116](https://github.com/pesap/forge/issues/116)) ([adce8b5](https://github.com/pesap/forge/commit/adce8b5208365de59dece777d0fdcbe9858d5a16))
+
 ## [0.6.0](https://github.com/pesap/forge/compare/v0.5.1...v0.6.0) (2026-06-11)
 
 
