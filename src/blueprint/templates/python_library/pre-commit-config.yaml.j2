@@ -20,12 +20,27 @@
         language: system
         pass_filenames: false
         stages: [pre-push]
-{% endif %}
+{% endif %}      - id: commitizen-branch
+        name: commitizen check branch
+        entry: >-
+          bash -c 'range="origin/main..HEAD";
+          if [ -n "$PRE_COMMIT_FROM_REF" ] && [ -n "$PRE_COMMIT_TO_REF" ]; then
+            if git rev-parse --verify "$PRE_COMMIT_FROM_REF" >/dev/null 2>&1 && git rev-parse --verify "$PRE_COMMIT_TO_REF" >/dev/null 2>&1; then
+              range="$PRE_COMMIT_FROM_REF..$PRE_COMMIT_TO_REF";
+            fi;
+          fi;
+          count="$(git rev-list --count "$range" 2>/dev/null || echo 0)";
+          if [ "$count" = "0" ]; then echo "No commits to check in $range"; exit 0; fi;
+          uvx --from commitizen=={{ commitizen_version }} cz check --rev-range "$range"'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.9.1
+    rev: v{{ commitizen_version }}
     hooks:
       - id: commitizen
-      - id: commitizen-branch
+        stages: [commit-msg]
   - repo: https://github.com/crate-ci/typos
     rev: v1.47.2
     hooks:

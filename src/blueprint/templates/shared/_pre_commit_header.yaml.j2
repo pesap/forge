@@ -5,7 +5,8 @@ default_stages:
 
 default_install_hook_types:
   - pre-commit
-  - pre-push
+{% if install_commit_msg_hook %}  - commit-msg
+{% endif %}  - pre-push
 
 repos:
   - repo: builtin

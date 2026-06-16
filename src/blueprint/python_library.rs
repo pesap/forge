@@ -27,6 +27,7 @@ pub const PYPI_PUBLISH_NOTICE: &str =
     "Register this workflow as a trusted publisher in PyPI before uncommenting the publish step.";
 pub const CODECOV_NOTICE: &str =
     "Configure Codecov for this repository before uncommenting the upload step.";
+const COMMITIZEN_VERSION: &str = "4.16.2";
 
 #[derive(Clone, Debug)]
 pub struct ProjectConfig {
@@ -469,7 +470,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n", "component_hooks": config.components.pre_commit_hooks(), "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n", "commitizen_version": COMMITIZEN_VERSION, "component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": true, "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -1002,6 +1003,26 @@ mod tests {
         assert!(!precommit.contains("uv run ruff check --fix"));
         assert!(!precommit.contains("uv run ty check\n"));
         assert!(!precommit.contains("uv run pytest -q --maxfail=1"));
+    }
+
+    #[test]
+    fn precommit_config_installs_explicit_safe_commitizen_hooks() {
+        let precommit = render_precommit_config(&test_config(true));
+
+        assert!(
+            precommit.contains(
+                "default_install_hook_types:\n  - pre-commit\n  - commit-msg\n  - pre-push"
+            )
+        );
+        assert!(precommit.contains("id: commitizen-branch"));
+        assert!(precommit.contains("No commits to check in $range"));
+        assert!(
+            precommit.contains("uvx --from commitizen==4.16.2 cz check --rev-range \"$range\"")
+        );
+        assert!(precommit.contains("repo: https://github.com/commitizen-tools/commitizen"));
+        assert!(precommit.contains("rev: v4.16.2"));
+        assert!(precommit.contains("id: commitizen\n        stages: [commit-msg]"));
+        assert!(!precommit.contains("rev: v4.9.1"));
     }
 
     #[test]

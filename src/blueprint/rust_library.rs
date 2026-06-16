@@ -338,7 +338,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "rust_rules": config.rust_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": false, "rust_rules": config.rust_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
