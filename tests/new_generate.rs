@@ -4,6 +4,7 @@ use predicates::str::contains;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::process::Output;
 use tempfile::TempDir;
 
 const FORGE_INSTALL_FROM_GIT: &str =
@@ -44,6 +45,43 @@ fn init_args_for_blueprint(blueprint: &str, project_path: &Path) -> Vec<String> 
 
     args.push("--yes".to_string());
     args
+}
+
+fn generated_commitizen_branch_script(precommit: &str) -> &str {
+    let marker = "entry: >-\n          bash -c '";
+    let start = precommit
+        .find(marker)
+        .expect("commitizen branch hook should use a bash entry")
+        + marker.len();
+    let rest = &precommit[start..];
+    let end = rest
+        .find("'\n        language: system")
+        .expect("commitizen branch hook entry should end before language");
+    &rest[..end]
+}
+
+fn run_git(project_path: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(project_path)
+        .output()
+        .expect("git should run");
+    assert!(
+        output.status.success(),
+        "git {} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn run_commitizen_branch_script(project_path: &Path, script: &str) -> Output {
+    std::process::Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(project_path)
+        .output()
+        .expect("commitizen branch script should run")
 }
 
 fn forge_editorconfig_override(pyproject: &str) -> Option<bool> {
@@ -249,6 +287,16 @@ fn new_generates_python_project_with_metadata() {
     assert!(precommit.contains("entry: uv run --locked ruff format --check"));
     assert!(precommit.contains("entry: uv run --locked ruff check"));
     assert!(precommit.contains("entry: uv run --locked pytest -q --maxfail=1"));
+    assert!(
+        precommit
+            .contains("default_install_hook_types:\n  - pre-commit\n  - commit-msg\n  - pre-push")
+    );
+    assert!(precommit.contains("id: commitizen-branch"));
+    assert!(precommit.contains("No commits to check in $range"));
+    assert!(precommit.contains("uvx --from commitizen==4.16.2 cz check --rev-range \"$range\""));
+    assert!(precommit.contains("repo: https://github.com/commitizen-tools/commitizen"));
+    assert!(precommit.contains("rev: v4.16.2"));
+    assert!(precommit.contains("id: commitizen\n        stages: [commit-msg]"));
     assert!(precommit.contains("repo: https://github.com/crate-ci/typos"));
     assert!(precommit.contains("id: typos"));
     assert!(!precommit.contains("cspell"));
@@ -264,6 +312,127 @@ fn new_generates_python_project_with_metadata() {
     assert!(typos.contains("[default.extend-words]"));
     assert!(!project_path.join("typos.toml").exists());
     assert!(!project_path.join(".cspell.json").exists());
+}
+
+#[test]
+fn generated_python_commitizen_pre_push_is_safe_for_noop_ranges() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--yes",
+        "--no-git-history",
+    ]);
+    cmd.assert().success();
+
+    let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
+        .expect("pre-commit config should be generated");
+    let commitizen_branch_script = generated_commitizen_branch_script(&precommit);
+
+    run_git(&project_path, &["init", "-q", "-b", "main"]);
+    run_git(&project_path, &["config", "user.name", "Test User"]);
+    run_git(&project_path, &["config", "user.email", "test@example.com"]);
+    run_git(&project_path, &["add", "."]);
+    run_git(&project_path, &["commit", "-qm", "feat: initial"]);
+    run_git(
+        &project_path,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+
+    let output = run_commitizen_branch_script(&project_path, commitizen_branch_script);
+
+    assert!(
+        output.status.success(),
+        "no-op commitizen branch check should pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("No commits to check in origin/main..HEAD")
+    );
+}
+
+#[test]
+fn generated_python_commitizen_pre_push_propagates_commitizen_failures() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--yes",
+        "--no-git-history",
+    ]);
+    cmd.assert().success();
+
+    let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
+        .expect("pre-commit config should be generated");
+    let commitizen_branch_script = generated_commitizen_branch_script(&precommit);
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir(&fake_bin).expect("fake bin dir should create");
+    let uvx_log = temp.path().join("uvx.log");
+    write_executable(
+        &fake_bin.join("uvx"),
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$UVX_LOG\"\nexit 17\n",
+    );
+
+    run_git(&project_path, &["init", "-q", "-b", "main"]);
+    run_git(&project_path, &["config", "user.name", "Test User"]);
+    run_git(&project_path, &["config", "user.email", "test@example.com"]);
+    run_git(&project_path, &["add", "."]);
+    run_git(&project_path, &["commit", "-qm", "feat: initial"]);
+    run_git(
+        &project_path,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    fs::write(project_path.join("bad.txt"), "bad\n").expect("test file should be writable");
+    run_git(&project_path, &["add", "bad.txt"]);
+    run_git(&project_path, &["commit", "-qm", "bad message"]);
+
+    let output = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(commitizen_branch_script)
+        .current_dir(&project_path)
+        .env("UVX_LOG", &uvx_log)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_bin.display(),
+                std::env::var("PATH").expect("PATH should be set")
+            ),
+        )
+        .output()
+        .expect("commitizen branch script should run");
+
+    assert_eq!(output.status.code(), Some(17));
+    assert_eq!(
+        fs::read_to_string(uvx_log).expect("uvx invocation should be logged"),
+        "--from commitizen==4.16.2 cz check --rev-range origin/main..HEAD\n"
+    );
 }
 
 #[test]

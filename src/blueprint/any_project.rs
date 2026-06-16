@@ -265,6 +265,7 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     #[derive(Serialize)]
     struct Context<'a> {
         component_hooks: String,
+        install_commit_msg_hook: bool,
         uv_lock_hook: &'a str,
     }
 
@@ -272,6 +273,7 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
         "any_project/pre-commit-config.yaml.j2",
         Context {
             component_hooks: config.components.pre_commit_hooks(),
+            install_commit_msg_hook: false,
             uv_lock_hook: precommit::uv_lock_hook(),
         },
     )
