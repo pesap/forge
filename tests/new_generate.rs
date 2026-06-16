@@ -84,6 +84,38 @@ fn run_commitizen_branch_script(project_path: &Path, script: &str) -> Output {
         .expect("commitizen branch script should run")
 }
 
+fn init_python_project_without_git_history(project_path: &Path) {
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--yes",
+        "--no-git-history",
+    ]);
+    cmd.assert().success();
+}
+
+fn commit_initial_python_project(project_path: &Path) {
+    run_git(project_path, &["init", "-q", "-b", "main"]);
+    run_git(project_path, &["config", "user.name", "Test User"]);
+    run_git(project_path, &["config", "user.email", "test@example.com"]);
+    run_git(project_path, &["add", "."]);
+    run_git(project_path, &["commit", "-qm", "feat: initial"]);
+    run_git(
+        project_path,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+}
+
 fn forge_editorconfig_override(pyproject: &str) -> Option<bool> {
     let parsed: toml::Value = toml::from_str(pyproject).expect("pyproject should parse");
     parsed
@@ -318,38 +350,12 @@ fn new_generates_python_project_with_metadata() {
 fn generated_python_commitizen_pre_push_is_safe_for_noop_ranges() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-tools");
-
-    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
-    cmd.args([
-        "init",
-        "--blueprint",
-        "python-library",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-        "--project-name",
-        "grid-tools",
-        "--package-name",
-        "grid_tools",
-        "--description",
-        "Grid toolchain",
-        "--yes",
-        "--no-git-history",
-    ]);
-    cmd.assert().success();
+    init_python_project_without_git_history(&project_path);
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
     let commitizen_branch_script = generated_commitizen_branch_script(&precommit);
-
-    run_git(&project_path, &["init", "-q", "-b", "main"]);
-    run_git(&project_path, &["config", "user.name", "Test User"]);
-    run_git(&project_path, &["config", "user.email", "test@example.com"]);
-    run_git(&project_path, &["add", "."]);
-    run_git(&project_path, &["commit", "-qm", "feat: initial"]);
-    run_git(
-        &project_path,
-        &["update-ref", "refs/remotes/origin/main", "HEAD"],
-    );
+    commit_initial_python_project(&project_path);
 
     let output = run_commitizen_branch_script(&project_path, commitizen_branch_script);
 
@@ -369,24 +375,7 @@ fn generated_python_commitizen_pre_push_is_safe_for_noop_ranges() {
 fn generated_python_commitizen_pre_push_propagates_commitizen_failures() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-tools");
-
-    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
-    cmd.args([
-        "init",
-        "--blueprint",
-        "python-library",
-        "--path",
-        project_path.to_str().expect("valid UTF-8 path"),
-        "--project-name",
-        "grid-tools",
-        "--package-name",
-        "grid_tools",
-        "--description",
-        "Grid toolchain",
-        "--yes",
-        "--no-git-history",
-    ]);
-    cmd.assert().success();
+    init_python_project_without_git_history(&project_path);
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
@@ -399,15 +388,7 @@ fn generated_python_commitizen_pre_push_propagates_commitizen_failures() {
         "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$UVX_LOG\"\nexit 17\n",
     );
 
-    run_git(&project_path, &["init", "-q", "-b", "main"]);
-    run_git(&project_path, &["config", "user.name", "Test User"]);
-    run_git(&project_path, &["config", "user.email", "test@example.com"]);
-    run_git(&project_path, &["add", "."]);
-    run_git(&project_path, &["commit", "-qm", "feat: initial"]);
-    run_git(
-        &project_path,
-        &["update-ref", "refs/remotes/origin/main", "HEAD"],
-    );
+    commit_initial_python_project(&project_path);
     fs::write(project_path.join("bad.txt"), "bad\n").expect("test file should be writable");
     run_git(&project_path, &["add", "bad.txt"]);
     run_git(&project_path, &["commit", "-qm", "bad message"]);
