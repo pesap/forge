@@ -483,7 +483,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n        files: ^(?!.*(^|/)package-lock\\.json$).+\\.json$\n", "commitizen_version": COMMITIZEN_VERSION, "component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": true, "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"builtin_hooks": template_engine::render_template("python_library/pretty-format-json-hook.yaml.j2", ()), "commitizen_version": COMMITIZEN_VERSION, "component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": true, "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -517,7 +517,10 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "ty_check_step": github_actions::uv_run_locked_step("ty check"),
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n", CODECOV_NOTICE)}
+            "codecov_step": template_engine::render_template(
+                "python_library/codecov-step.yaml.j2",
+                serde_json::json!({"enabled": config.codecov, "notice": CODECOV_NOTICE}),
+            )
         }),
     )
 }
@@ -562,12 +565,13 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
             "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
             "job_timeout": github_actions::job_timeout(),
             "pypi_publish_job_block": if config.pypi_publish {
-                format!(
-                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')\n    concurrency:\n      group: pypi-publish-${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\n      cancel-in-progress: false\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - id: publish_ref\n        run: |\n          if [ \"${{{{ github.event_name }}}}\" = \"workflow_dispatch\" ] && [ \"${{{{ github.event.inputs.publish_pypi }}}}\" = \"true\" ] && [ -z \"${{{{ github.event.inputs.release_tag }}}}\" ]; then\n            echo \"release_tag input is required when publish_pypi=true\" >&2\n            exit 1\n          fi\n          REF=\"${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\"\n          if [ -z \"$REF\" ]; then\n            echo \"No release tag resolved for publish step\" >&2\n            exit 1\n          fi\n          echo \"ref=$REF\" >> \"$GITHUB_OUTPUT\"\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ steps.publish_ref.outputs.ref }}}}\n          persist-credentials: false\n      - name: Verify release tag exists\n        run: git rev-parse --verify \"refs/tags/${{{{ steps.publish_ref.outputs.ref }}}}\"\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      - run: uv publish --dry-run\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n      - name: Publish summary\n        run: |\n          {{\n            echo \"### PyPI publish fallback dry-run\"\n            echo \"- project: {}\"\n            echo \"- tag: ${{{{ steps.publish_ref.outputs.ref }}}}\"\n            echo \"- mode: uv publish --dry-run\"\n            echo \"- to enable real publish: uncomment the trusted publishing step in this workflow\"\n          }} >> \"$GITHUB_STEP_SUMMARY\"\n",
-                    config.project_name,
-                    github_actions::job_timeout(),
-                    PYPI_PUBLISH_NOTICE,
-                    config.project_name
+                template_engine::render_template(
+                    "python_library/pypi-publish-job.yaml.j2",
+                    serde_json::json!({
+                        "project_name": config.project_name,
+                        "job_timeout": github_actions::job_timeout(),
+                        "notice": PYPI_PUBLISH_NOTICE,
+                    }),
                 )
             } else {
                 String::new()
@@ -1363,11 +1367,11 @@ prettier = true
         let workflow = render_ci_workflow(&test_config(true));
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
-        assert!(workflow.contains(github_actions::cancel_redundant_ci_concurrency()));
-        assert!(workflow.contains(github_actions::job_timeout()));
+        assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));
+        assert!(workflow.contains(&github_actions::job_timeout()));
         assert!(workflow.contains(github_actions::read_only_checkout_step()));
         assert!(workflow.contains("enable-cache: true"));
-        assert!(workflow.contains(github_actions::uv_sync_locked_step()));
+        assert!(workflow.contains(&github_actions::uv_sync_locked_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
     }
 
@@ -1375,7 +1379,7 @@ prettier = true
     fn release_workflows_use_job_timeouts() {
         let release_please = render_release_please_workflow(&test_config(true));
 
-        assert!(release_please.contains(github_actions::job_timeout()));
+        assert!(release_please.contains(&github_actions::job_timeout()));
         assert!(
             release_please.contains(
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
@@ -1390,7 +1394,7 @@ prettier = true
         let release_please_with_publish = render_release_please_workflow(&with_publish);
         assert!(release_please_with_publish.contains("publish-pypi:"));
         assert!(release_please_with_publish.contains("needs: release-please"));
-        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')"));
+        assert!(release_please_with_publish.contains("if: ${{ needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true') }}"));
         assert!(
             release_please_with_publish
                 .contains("release_tag input is required when publish_pypi=true")

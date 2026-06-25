@@ -288,13 +288,13 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
 fn render_ci_workflow() -> String {
     #[derive(Serialize)]
     struct Context<'a> {
-        cancel_redundant_ci_concurrency: &'a str,
-        read_only_permissions: &'a str,
-        job_timeout: &'a str,
+        cancel_redundant_ci_concurrency: String,
+        read_only_permissions: String,
+        job_timeout: String,
         read_only_checkout_step: &'a str,
         setup_uv_step: &'a str,
-        uv_sync_locked_step: &'a str,
-        uv_lock_check_step: &'a str,
+        uv_sync_locked_step: String,
+        uv_lock_check_step: String,
         uv_run_locked_step: String,
     }
 
@@ -434,12 +434,12 @@ mod tests {
         let workflow = render_ci_workflow();
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
-        assert!(workflow.contains(github_actions::cancel_redundant_ci_concurrency()));
-        assert!(workflow.contains(github_actions::job_timeout()));
+        assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));
+        assert!(workflow.contains(&github_actions::job_timeout()));
         assert!(workflow.contains(github_actions::read_only_checkout_step()));
         assert!(workflow.contains("enable-cache: true"));
-        assert!(workflow.contains(github_actions::uv_sync_locked_step()));
-        assert!(workflow.contains(github_actions::uv_lock_check_step()));
+        assert!(workflow.contains(&github_actions::uv_sync_locked_step()));
+        assert!(workflow.contains(&github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
         assert!(!workflow.contains("forge sync --path . --check"));
         assert!(!workflow.contains("Install forge"));

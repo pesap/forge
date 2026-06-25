@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::IsTerminal;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -215,6 +216,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
                 "managed infrastructure is out of date",
             ));
         }
+        write_github_outputs(args.github_output, lockfile_update_needed)?;
         return Ok(());
     }
 
@@ -266,7 +268,32 @@ pub fn run(args: SyncArgs) -> Result<()> {
         &actions,
         lockfile_update_needed,
     );
+    write_github_outputs(args.github_output, lockfile_update_needed)?;
     Ok(())
+}
+
+fn write_github_outputs(enabled: bool, lockfile_update_needed: bool) -> Result<()> {
+    if !enabled {
+        return Ok(());
+    }
+
+    let output_path = std::env::var_os("GITHUB_OUTPUT").ok_or_else(|| {
+        coded_error(
+            ErrorCode::Env,
+            "--github-output requires the GITHUB_OUTPUT environment variable",
+        )
+    })?;
+    write_github_outputs_file(Path::new(&output_path), lockfile_update_needed)
+}
+
+fn write_github_outputs_file(path: &Path, lockfile_update_needed: bool) -> Result<()> {
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("failed to open GitHub output file {}", path.display()))?;
+    writeln!(file, "lockfile={lockfile_update_needed}")
+        .with_context(|| format!("failed to write GitHub output file {}", path.display()))
 }
 
 fn ensure_update_path_is_directory(root: &Path) -> Result<()> {
@@ -1750,6 +1777,18 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
         assert!(pyproject.contains("ignore = [\n"));
         assert!(pyproject.contains("  \"workflow-quality\",\n"));
         toml::from_str::<Value>(&pyproject).expect("updated metadata should remain valid TOML");
+    }
+
+    #[test]
+    fn github_outputs_report_lockfile_decision() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let output_path = temp.path().join("github-output");
+
+        super::write_github_outputs_file(&output_path, true).expect("github output should write");
+        super::write_github_outputs_file(&output_path, false).expect("github output should append");
+
+        let output = std::fs::read_to_string(output_path).expect("github output should read");
+        assert_eq!(output, "lockfile=true\nlockfile=false\n");
     }
 
     #[test]

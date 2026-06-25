@@ -561,12 +561,12 @@ mod tests {
         let workflow = render_ci_workflow();
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
-        assert!(workflow.contains(github_actions::cancel_redundant_ci_concurrency()));
-        assert!(workflow.contains(github_actions::job_timeout()));
+        assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));
+        assert!(workflow.contains(&github_actions::job_timeout()));
         assert!(workflow.contains(github_actions::read_only_checkout_step()));
         assert!(workflow.contains("enable-cache: true"));
-        assert!(workflow.contains(github_actions::uv_sync_locked_step()));
-        assert!(workflow.contains(github_actions::uv_lock_check_step()));
+        assert!(workflow.contains(&github_actions::uv_sync_locked_step()));
+        assert!(workflow.contains(&github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
         assert!(workflow.contains("run: cargo fmt --all --check"));
         assert!(

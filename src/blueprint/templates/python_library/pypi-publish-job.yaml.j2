@@ -1,0 +1,53 @@
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: {% raw %}${{ needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true') }}{% endraw %}
+    concurrency:
+      group: {% raw %}pypi-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}{% endraw %}
+      cancel-in-progress: false
+    environment:
+      name: pypi
+      url: https://pypi.org/p/{{ project_name }}
+    permissions:
+      id-token: write
+      contents: read
+{{ job_timeout }}    steps:
+      - id: publish_ref
+        run: |
+          if [ "{% raw %}${{ github.event_name }}{% endraw %}" = "workflow_dispatch" ] && [ "{% raw %}${{ github.event.inputs.publish_pypi }}{% endraw %}" = "true" ] && [ -z "{% raw %}${{ github.event.inputs.release_tag }}{% endraw %}" ]; then
+            echo "release_tag input is required when publish_pypi=true" >&2
+            exit 1
+          fi
+          REF="{% raw %}${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}{% endraw %}"
+          if [ -z "$REF" ]; then
+            echo "No release tag resolved for publish step" >&2
+            exit 1
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: {% raw %}${{ steps.publish_ref.outputs.ref }}{% endraw %}
+          persist-credentials: false
+      - name: Verify release tag exists
+        run: git rev-parse --verify "refs/tags/{% raw %}${{ steps.publish_ref.outputs.ref }}{% endraw %}"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+      - run: uv build --locked
+      - run: uv publish --dry-run
+      # {{ notice }}
+      # - name: Publish package distributions to PyPI
+      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+      - name: Publish summary
+        run: |
+          {
+            echo "### PyPI publish fallback dry-run"
+            echo "- project: {{ project_name }}"
+            echo "- tag: {% raw %}${{ steps.publish_ref.outputs.ref }}{% endraw %}"
+            echo "- mode: uv publish --dry-run"
+            echo "- to enable real publish: uncomment the trusted publishing step in this workflow"
+          } >> "$GITHUB_STEP_SUMMARY"

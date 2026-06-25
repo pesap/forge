@@ -12,14 +12,16 @@ const PRETTIER_FORMAT_COMMAND: &str =
     "npx --yes prettier@3.8.3 --write --ignore-path .prettierignore --ignore-unknown .";
 const PRETTIER_CHECK_COMMAND: &str =
     "npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown .";
-const PRETTIER_PRE_COMMIT_HOOK: &str = "      - id: prettier\n        name: prettier check\n        entry: npx --yes prettier@3.8.3 --check --ignore-path .prettierignore --ignore-unknown\n        language: system\n        types_or: [json, yaml, markdown]\n";
+const PRETTIER_PRE_COMMIT_HOOK: &str =
+    include_str!("templates/shared/prettier-pre-commit-hook.yaml.j2");
 const PRETTIER_REQUIRED_TOOLS: &[&str] = &["npx"];
 const EDITORCONFIG_CLEANUP_PATHS: &[&str] = &[".editorconfig"];
 const EDITORCONFIG_REQUIRED_TOOLS: &[&str] = &[];
 const MARKDOWNLINT_CLEANUP_PATHS: &[&str] = &[".markdownlint.jsonc"];
 const MARKDOWNLINT_FORMAT_COMMAND: &str = "npx --yes markdownlint-cli2@0.18.1 --fix \"**/*.md\"";
 const MARKDOWNLINT_CHECK_COMMAND: &str = "npx --yes markdownlint-cli2@0.18.1 \"**/*.md\"";
-const MARKDOWNLINT_PRE_COMMIT_HOOK: &str = "      - id: markdownlint\n        name: markdownlint check\n        entry: npx --yes markdownlint-cli2@0.18.1\n        language: system\n        files: \\.(md|markdown)$\n";
+const MARKDOWNLINT_PRE_COMMIT_HOOK: &str =
+    include_str!("templates/shared/markdownlint-pre-commit-hook.yaml.j2");
 const MARKDOWNLINT_REQUIRED_TOOLS: &[&str] = &["npx"];
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]

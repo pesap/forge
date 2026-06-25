@@ -1,22 +1,15 @@
-<img src="assets/forge-mark.svg" alt="forge" align="left" width="192px" height="192px"/>
-<img align="left" width="0" height="192px" hspace="10"/>
+# Forge
 
-### forge
-> Scaffold repositories from blueprints and keep their infrastructure up to date.
->
-> [![Forge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pesap/forge/main/.github/badges/forge.json)](https://github.com/pesap/forge)
-> [![Managed by humans](https://img.shields.io/badge/managed%20by-humans-1f6feb)](https://github.com/pesap/forge)
-> [![Managed with uv](https://img.shields.io/badge/managed%20with-uv-7c3aed.svg)](https://docs.astral.sh/uv/)
-> [![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
-> [![CI](https://github.com/pesap/forge/actions/workflows/ci.yaml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yaml)
-> [![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
-> [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-<br/>
-<br/>
-<br/>
+[![CI](https://github.com/pesap/forge/actions/workflows/ci.yaml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-> [!NOTE]
-> `forge` is currently source-first (`cargo` workflow). Packaging and distribution are expected to evolve.
+Forge is a Rust CLI for creating repositories from blueprints and keeping their
+infrastructure current. It manages files such as CI workflows, hook
+configuration, docs scaffolding, release automation, and task recipes while
+preserving project-owned code and configuration.
+
+Current blueprints: `any-project`, `python-library`, `rust-library`.
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
@@ -26,8 +19,6 @@
   <a href="#workflows">Workflows</a> ·
   <a href="#development">Development</a>
 </p>
-
-Current blueprints: `any-project`, `python-library`, `rust-library`.
 
 ---
 
@@ -48,16 +39,16 @@ forge init \
   --yes
 ```
 
-Then inside the generated project:
+Then verify the generated project:
 
 ```bash
 uv sync --all-groups
 just verify
 ```
 
-That is it. Generated projects include managed CI, release-please
-configuration, agent instructions, `prek` hooks, and a scheduled Forge sync
-workflow that opens an infrastructure sync PR when drift is detected.
+Generated projects include CI, release-please configuration, agent
+instructions, `prek` hooks, docs scaffolding, and a scheduled Forge sync
+workflow that opens an infrastructure pull request when managed files drift.
 
 ---
 
@@ -90,17 +81,15 @@ with that package manager instead.
 
 ## Commands
 
-| Command             | What it does                                                                      |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `forge init`         | Create a new project from a blueprint                                             |
-| `forge init`        | Adopt Forge-managed infrastructure in an existing repository                      |
-| `forge sync`      | Refresh managed infrastructure in a Forge-managed project                         |
-| `forge self update` | Update a standalone-installer Forge binary                                        |
-| `forge blueprints`  | List available blueprints and their setup fields                                  |
-| `forge components`  | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
-| `forge doctor`      | Check local toolchain health                                                      |
-| `forge completions` | Emit shell completion scripts (bash, zsh, fish, powershell, elvish)               |
-| `forge self update` | Update the forge binary                                                           |
+| Command             | What it does                                                        |
+| ------------------- | ------------------------------------------------------------------- |
+| `forge init`        | Create a new project or adopt infrastructure in an existing repo    |
+| `forge sync`        | Refresh managed files in a Forge-managed project                    |
+| `forge blueprints`  | List available blueprints and setup fields                          |
+| `forge components`  | List optional managed components                                    |
+| `forge doctor`      | Check local toolchain health                                        |
+| `forge completions` | Emit shell completion scripts                                       |
+| `forge self update` | Update a standalone-installer Forge binary                          |
 
 Running `forge` with no subcommand prints top-level help and quickstart examples
 for first-run discovery.
@@ -136,7 +125,7 @@ Managed files are tracked through `[tool.forge]` metadata embedded in
 ### Optional components
 
 Components are reusable managed features like Prettier, EditorConfig, PyPI
-publishing, MkDocs, and Codecov. Forge uses sensible blueprint defaults and
+publishing, Astro Starlight docs, and Codecov. Forge uses sensible blueprint defaults and
 records only explicit deviations in `[tool.forge.overrides]`.
 
 ```bash
@@ -463,9 +452,9 @@ All blueprints generate:
 
 | Blueprint        | Generates                                                                                                                                      |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional MkDocs, optional PyPI publishing via OIDC |
-| `rust-library`   | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional MkDocs                                                                        |
-| `any-project`    | Language-agnostic: the common files above plus MkDocs by default, no package source files                                                      |
+| `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional Astro Starlight docs, optional PyPI publishing via OIDC |
+| `rust-library`   | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional Astro Starlight docs                                                                        |
+| `any-project`    | Language-agnostic: the common files above plus Astro Starlight docs by default, no package source files                                                      |
 
 ### Optional components
 
@@ -473,7 +462,7 @@ All blueprints generate:
 | --------------- | -------------------------------------------------------------------------------------------- |
 | Prettier        | `.prettierrc.json`, `.prettierignore`, and pre-commit hook for JSON/YAML/Markdown formatting |
 | EditorConfig    | `.editorconfig` baseline for cross-editor whitespace consistency                             |
-| MkDocs          | Documentation scaffold, `just docs` recipe                                                   |
+| Docs            | Astro Starlight documentation scaffold and `just docs` recipe                                |
 | Codecov         | CI integration for coverage reporting (where supported)                                      |
 | PyPI publishing | Trusted publishing via OIDC, `pypi` GitHub environment, serialized release/publish workflows |
 

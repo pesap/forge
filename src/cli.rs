@@ -463,6 +463,9 @@ pub struct SyncArgs {
     /// Emit a machine-readable JSON sync report
     #[arg(long, action = ArgAction::SetTrue)]
     pub json: bool,
+    /// Write GitHub Actions step outputs to the file named by GITHUB_OUTPUT
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub github_output: bool,
     /// Non-interactive mode
     #[arg(long, action = ArgAction::SetTrue)]
     pub yes: bool,

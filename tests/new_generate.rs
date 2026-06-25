@@ -267,8 +267,8 @@ fn new_generates_python_project_with_metadata() {
     assert!(readme.contains("forge sync --path . --check"));
     assert!(readme.contains("uv lock"));
     assert!(readme.contains("[tool.forge]"));
-    assert!(readme.contains("Automated Forge Syncs"));
-    assert!(readme.contains("Forge-managed infrastructure syncs"));
+    assert!(readme.contains("Infrastructure Sync"));
+    assert!(readme.contains("Forge-managed infrastructure changes"));
     assert!(!readme.contains("infra-only"));
     assert!(!readme.contains("template-managed"));
 
@@ -309,11 +309,10 @@ fn new_generates_python_project_with_metadata() {
         fs::read_to_string(project_path.join(".github/workflows/forge-sync.yaml"))
             .expect("forge sync workflow should be generated");
     assert!(update_workflow.contains(FORGE_INSTALL_FROM_GIT));
-    assert!(update_workflow.contains("forge sync --path . --yes"));
-    assert!(update_workflow.contains("Detect lockfile-relevant metadata changes"));
-    assert!(update_workflow.contains("\"dependency-groups\": data.get(\"dependency-groups\")"));
-    assert!(update_workflow.contains("\"tool.uv\": tool.get(\"uv\")"));
-    assert!(update_workflow.contains("if: steps.forge_changes.outputs.lockfile == 'true'"));
+    assert!(update_workflow.contains("forge sync --path . --yes --github-output"));
+    assert!(!update_workflow.contains("python3"));
+    assert!(!update_workflow.contains("tomllib"));
+    assert!(update_workflow.contains("if: steps.forge_sync.outputs.lockfile == 'true'"));
     assert!(update_workflow.contains("uv lock"));
     assert!(update_workflow.contains("persist-credentials: false"));
     assert!(update_workflow.contains("peter-evans/create-pull-request"));

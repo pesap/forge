@@ -6,44 +6,77 @@ pub fn setup_uv_step() -> &'static str {
     include_str!("templates/shared/setup-uv-step.yaml.j2")
 }
 
-pub fn uv_sync_locked_step() -> &'static str {
-    "      - run: uv sync --all-groups --locked\n"
+pub fn uv_sync_locked_step() -> String {
+    crate::blueprint::template_engine::render_template("shared/uv-sync-locked-step.yaml.j2", ())
 }
 
-pub fn uv_lock_check_step() -> &'static str {
-    "      - run: uv lock --check\n"
+pub fn uv_lock_check_step() -> String {
+    crate::blueprint::template_engine::render_template("shared/uv-lock-check-step.yaml.j2", ())
 }
 
 pub fn uv_run_locked_step(command: &str) -> String {
-    format!("      - run: uv run --locked {command}\n")
+    crate::blueprint::template_engine::render_template(
+        "shared/uv-run-locked-step.yaml.j2",
+        serde_json::json!({ "command": command }),
+    )
 }
 
 pub fn read_only_checkout_step() -> &'static str {
     include_str!("templates/shared/read-only-checkout-step.yaml.j2")
 }
 
-pub fn read_only_permissions() -> &'static str {
-    "permissions:\n  contents: read\n\n"
+pub fn read_only_permissions() -> String {
+    format!(
+        "{}\n",
+        crate::blueprint::template_engine::render_template(
+            "shared/read-only-permissions.yaml.j2",
+            ()
+        )
+    )
 }
 
-pub fn cancel_redundant_ci_concurrency() -> &'static str {
-    "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
+pub fn cancel_redundant_ci_concurrency() -> String {
+    format!(
+        "{}\n",
+        crate::blueprint::template_engine::render_template(
+            "shared/cancel-redundant-ci-concurrency.yaml.j2",
+            (),
+        )
+    )
 }
 
-pub fn serialized_sync_concurrency() -> &'static str {
-    "concurrency:\n  group: ${{ github.workflow }}\n  cancel-in-progress: false\n\n"
+pub fn serialized_sync_concurrency() -> String {
+    format!(
+        "{}\n",
+        crate::blueprint::template_engine::render_template(
+            "shared/serialized-sync-concurrency.yaml.j2",
+            (),
+        )
+    )
 }
 
-pub fn serialized_ref_concurrency() -> &'static str {
-    "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: false\n\n"
+pub fn serialized_ref_concurrency() -> String {
+    format!(
+        "{}\n",
+        crate::blueprint::template_engine::render_template(
+            "shared/serialized-ref-concurrency.yaml.j2",
+            (),
+        )
+    )
 }
 
-pub fn serialized_release_concurrency() -> &'static str {
-    "concurrency:\n  group: ${{ github.workflow }}-${{ github.event.release.id }}\n  cancel-in-progress: false\n\n"
+pub fn serialized_release_concurrency() -> String {
+    format!(
+        "{}\n",
+        crate::blueprint::template_engine::render_template(
+            "shared/serialized-release-concurrency.yaml.j2",
+            (),
+        )
+    )
 }
 
-pub fn job_timeout() -> &'static str {
-    "    timeout-minutes: 20\n"
+pub fn job_timeout() -> String {
+    crate::blueprint::template_engine::render_template("shared/job-timeout.yaml.j2", ())
 }
 
 pub fn render_forge_sync_workflow() -> String {
@@ -118,7 +151,7 @@ mod tests {
     fn forge_sync_workflow_serializes_runs_without_canceling_in_progress_syncs() {
         let workflow = render_forge_sync_workflow();
 
-        assert!(workflow.contains(serialized_sync_concurrency()));
+        assert!(workflow.contains(&serialized_sync_concurrency()));
         assert!(workflow.contains("  cancel-in-progress: false\n\npermissions:"));
     }
 
@@ -128,18 +161,17 @@ mod tests {
 
         assert!(workflow.contains("name: forge-sync"));
         assert!(workflow.contains(install_forge_step()));
-        assert!(workflow.contains("run: forge sync --path . --yes"));
+        assert!(workflow.contains("id: forge_sync"));
+        assert!(workflow.contains("run: forge sync --path . --yes --github-output"));
         assert!(workflow.contains("- Runs `forge sync --path . --yes`"));
-        assert!(workflow.contains("id: forge_changes"));
-        assert!(workflow.contains("Detect lockfile-relevant metadata changes"));
-        assert!(workflow.contains("import tomllib"));
-        assert!(workflow.contains("\"dependency-groups\": data.get(\"dependency-groups\")"));
-        assert!(workflow.contains("\"tool.uv\": tool.get(\"uv\")"));
-        assert!(workflow.contains("lockfile={str(lockfile).lower()}"));
-        assert!(workflow.contains("if: steps.forge_changes.outputs.lockfile == 'true'"));
+        assert!(!workflow.contains("python3"));
+        assert!(!workflow.contains("tomllib"));
+        assert!(!workflow.contains("<<'PY'"));
+        assert!(!workflow.contains("Detect lockfile-relevant metadata changes"));
+        assert!(workflow.contains("if: steps.forge_sync.outputs.lockfile == 'true'"));
         assert!(workflow.contains("run: uv lock"));
         assert!(workflow.contains(
-            "- Runs `uv lock` only when Forge changes lockfile-relevant `pyproject.toml` metadata"
+            "- Runs `uv lock` only when Forge reports lockfile-relevant metadata changed"
         ));
         assert!(workflow.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
         assert!(workflow.contains("persist-credentials: false"));
@@ -149,7 +181,7 @@ mod tests {
             )
         );
         assert!(workflow.contains("pull-requests: write"));
-        assert!(workflow.contains(job_timeout()));
+        assert!(workflow.contains(&job_timeout()));
         assert!(workflow.contains("Forge-managed infrastructure"));
         assert!(!workflow.contains("template-managed"));
     }

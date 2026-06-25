@@ -1,0 +1,3 @@
+concurrency:
+  group: {% raw %}${{ github.workflow }}-${{ github.event.release.id }}{% endraw %}
+  cancel-in-progress: false

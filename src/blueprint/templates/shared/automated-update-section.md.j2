@@ -1,0 +1,16 @@
+## Infrastructure Sync
+
+This repository includes `.github/workflows/forge-sync.yaml`. The workflow runs weekly, applies `forge sync --path . --yes`, and opens a pull request when Forge-managed infrastructure changes.
+
+Forge reads project state from `[tool.forge]` in `pyproject.toml`; it does not write a separate status file. The workflow asks Forge whether lockfile-relevant `pyproject.toml` metadata changed and runs `uv lock` only when needed.
+
+Use these commands for local maintenance:
+
+```bash
+forge sync --path . --dry-run
+forge sync --path . --check
+forge sync --path . --yes
+uv lock
+```
+
+Run `uv lock` when Forge prints it as a next step after changing dependency or build metadata.
