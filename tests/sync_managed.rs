@@ -446,8 +446,8 @@ fn sync_set_creates_missing_overrides_table() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject should be readable");
-    assert!(!pyproject.contains("[tool.forge.overrides]"));
-    assert!(!pyproject.contains("prettier = true"));
+    assert!(pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("prettier = true"));
 }
 
 #[test]
@@ -1347,6 +1347,99 @@ fn sync_check_succeeds_when_managed_infra_is_current() {
 }
 
 #[test]
+fn sync_check_preserves_user_selected_components_after_new_python_init() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project_with_extra_args(
+        &project_path,
+        ["--pypi-publish", "--prettier", "--markdownlint"],
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("pypi-publish = true"));
+    assert!(pyproject.contains("prettier = true"));
+    assert!(pyproject.contains("markdownlint = true"));
+    assert!(project_path.join(".prettierrc.json").exists());
+    assert!(project_path.join(".prettierignore").exists());
+    assert!(project_path.join(".markdownlint.jsonc").exists());
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("changes: 0"))
+        .stdout(contains("managed infrastructure is current"));
+}
+
+#[test]
+fn sync_check_preserves_user_selected_components_after_existing_python_adoption() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    fs::create_dir_all(project_path.join("src/ops_tools")).expect("source tree should create");
+    fs::write(project_path.join("src/ops_tools/__init__.py"), "").expect("init should write");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[project]
+name = "ops-tools"
+version = "0.1.0"
+description = "Ops toolchain"
+requires-python = ">=3.12"
+"#,
+    )
+    .expect("pyproject should write");
+
+    let mut init = Command::cargo_bin("forge").expect("forge binary should build");
+    init.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "ops-tools",
+        "--package-name",
+        "ops_tools",
+        "--description",
+        "Ops toolchain",
+        "--pypi-publish",
+        "--prettier",
+        "--markdownlint",
+        "--yes",
+    ]);
+    init.assert().success();
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("pyproject = \"external\""));
+    assert!(pyproject.contains("pypi-publish = true"));
+    assert!(pyproject.contains("prettier = true"));
+    assert!(pyproject.contains("markdownlint = true"));
+    assert!(project_path.join(".prettierrc.json").exists());
+    assert!(project_path.join(".prettierignore").exists());
+    assert!(project_path.join(".markdownlint.jsonc").exists());
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--check",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("changes: 0"))
+        .stdout(contains("managed infrastructure is current"));
+}
+
+#[test]
 fn sync_check_json_reports_current_when_managed_infra_is_current() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
@@ -1556,7 +1649,7 @@ fn sync_set_can_enable_prettier_component() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(!pyproject.contains("prettier = true"));
+    assert!(pyproject.contains("prettier = true"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should exist");
@@ -1623,7 +1716,7 @@ fn sync_set_can_enable_markdownlint_component() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(!pyproject.contains("markdownlint = true"));
+    assert!(pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -2113,7 +2206,7 @@ fn sync_set_markdownlint_disable_dry_run_previews_option_change_without_writing(
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(!pyproject.contains("markdownlint = true"));
+    assert!(pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 
@@ -2141,7 +2234,7 @@ fn sync_set_markdownlint_disable_check_reports_option_change_without_writing() {
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(!pyproject.contains("markdownlint = true"));
+    assert!(pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 
@@ -2194,7 +2287,7 @@ fn sync_set_markdownlint_disable_dry_run_json_reports_option_change_without_writ
 
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
-    assert!(!pyproject.contains("markdownlint = true"));
+    assert!(pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 }
 

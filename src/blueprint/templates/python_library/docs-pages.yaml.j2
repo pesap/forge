@@ -2,7 +2,7 @@ name: docs-pages
 
 on:
   push:
-    branches: [main]
+    branches: [{{ default_branch }}]
     paths:
       - "docs/**"
       - ".github/workflows/docs-pages.yaml"

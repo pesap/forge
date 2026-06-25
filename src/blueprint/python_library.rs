@@ -14,10 +14,10 @@ use crate::blueprint::precommit;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, DEFAULT_LICENSE, ManagedOption, apply_ignored_files,
-    is_supported_license, managed_option_enabled, render_forge_ignore,
-    render_forge_overrides_table, supported_license_message,
-    validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, DEFAULT_BRANCH, DEFAULT_LICENSE, ManagedOption,
+    apply_ignored_files, default_branch_message, is_supported_license, is_valid_default_branch,
+    managed_option_enabled, render_forge_ignore, render_forge_overrides_table,
+    supported_license_message, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "python-library";
@@ -37,6 +37,7 @@ pub struct ProjectConfig {
     pub author_email: Option<String>,
     pub license: String,
     pub python_min: String,
+    pub default_branch: String,
     pub gitignore_profile: String,
     pub docs: bool,
     pub ci: bool,
@@ -73,6 +74,9 @@ impl ProjectConfig {
         }
         if !is_valid_python_version(&self.python_min) {
             bail!("python-min must be between 3.8 and 3.14 as a major.minor Python 3 version");
+        }
+        if !is_valid_default_branch(&self.default_branch) {
+            bail!(default_branch_message());
         }
         Ok(())
     }
@@ -218,7 +222,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     if config.workflow_quality {
         files.insert(
             PathBuf::from(".github/workflows/workflow-quality.yaml"),
-            GeneratedFile::text(render_workflow_quality_workflow()),
+            GeneratedFile::text(render_workflow_quality_workflow(config)),
         );
     }
     if config.forge_sync {
@@ -240,7 +244,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         if config.docs_pages {
             files.insert(
                 PathBuf::from(".github/workflows/docs-pages.yaml"),
-                GeneratedFile::text(render_docs_pages_workflow()),
+                GeneratedFile::text(render_docs_pages_workflow(config)),
             );
         }
         files.insert(
@@ -381,6 +385,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "description": toml_value::string_literal(&config.description),
             "authors": render_authors(config),
             "requires_python": toml_value::string_literal(&format!(">={},<3.15", config.python_min)),
+            "default_branch": toml_value::string_literal(&config.default_branch),
             "docs_group": render_docs_dependency_group(config.docs),
             "package_name": toml_value::string_literal(&config.package_name),
             "coverage_arg": toml_value::string_literal(&format!("--cov={}", config.package_name)),
@@ -436,6 +441,14 @@ fn render_python_forge_overrides(config: &ProjectConfig) -> String {
             (
                 ManagedOption::Editorconfig,
                 config.components.is_enabled(ManagedComponent::Editorconfig),
+            ),
+            (
+                ManagedOption::Prettier,
+                config.components.is_enabled(ManagedComponent::Prettier),
+            ),
+            (
+                ManagedOption::Markdownlint,
+                config.components.is_enabled(ManagedComponent::Markdownlint),
             ),
         ],
     )
@@ -503,6 +516,7 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
         "python_library/ci.yaml.j2",
         serde_json::json!({
             "cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(),
+            "default_branch": toml_value::string_literal(&config.default_branch),
             "read_only_permissions": github_actions::read_only_permissions(),
             "job_timeout": github_actions::job_timeout(),
             "python_matrix": render_python_matrix(&config.python_min),
@@ -549,20 +563,32 @@ fn ci_python_versions(python_min: &str) -> Vec<String> {
         .collect()
 }
 
-fn render_workflow_quality_workflow() -> String {
-    template_engine::render_template("python_library/workflow-quality.yaml.j2", ())
+fn render_workflow_quality_workflow(config: &ProjectConfig) -> String {
+    template_engine::render_template(
+        "python_library/workflow-quality.yaml.j2",
+        serde_json::json!({"default_branch": toml_value::string_literal(&config.default_branch)}),
+    )
 }
 
-fn render_docs_pages_workflow() -> String {
-    template_engine::render_template("python_library/docs-pages.yaml.j2", ())
+fn render_docs_pages_workflow(config: &ProjectConfig) -> String {
+    template_engine::render_template(
+        "python_library/docs-pages.yaml.j2",
+        serde_json::json!({"default_branch": toml_value::string_literal(&config.default_branch)}),
+    )
 }
 
 fn render_release_please_workflow(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/release-please.yaml.j2",
         serde_json::json!({
+            "default_branch": toml_value::string_literal(&config.default_branch),
             "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
             "job_timeout": github_actions::job_timeout(),
+            "pypi_publish_inputs": if config.pypi_publish {
+                template_engine::render_template("python_library/pypi-publish-inputs.yaml.j2", ())
+            } else {
+                String::new()
+            },
             "pypi_publish_job_block": if config.pypi_publish {
                 template_engine::render_template(
                     "python_library/pypi-publish-job.yaml.j2",
@@ -697,6 +723,7 @@ struct ForgeSection {
     author_email: Option<String>,
     license: Option<String>,
     python_min: Option<String>,
+    default_branch: Option<String>,
     gitignore_profile: Option<GitignoreProfileMetadata>,
     #[serde(rename = "pyproject")]
     _pyproject: Option<String>,
@@ -785,6 +812,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         author_email: forge.author_email.or(project_author_email),
         license: forge.license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min,
+        default_branch: forge
+            .default_branch
+            .unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         gitignore_profile: forge
             .gitignore_profile
             .map(fn_gitignore_profile_from_metadata)
@@ -901,6 +931,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.13".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1096,6 +1127,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs,
             ci: true,
@@ -1138,6 +1170,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1163,6 +1196,7 @@ mod tests {
             author_email: Some("not-an-email".to_string()), // Invalid
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1188,6 +1222,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "GPL-3.0".to_string(), // Not in allowed list
             python_min: "3.11".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1213,6 +1248,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11\n3.12".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1313,6 +1349,7 @@ prettier = true
             author_email: Some("ada@example.com".to_string()),
             license: "MIT".to_string(),
             python_min: "3.11".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
             ci: true,
@@ -1387,10 +1424,14 @@ prettier = true
         assert!(release_please.contains("config-file: .github/release-please-config.json"));
         assert!(release_please.contains("manifest-file: .github/release-please-manifest.json"));
         assert!(!release_please.contains("publish is handled"));
+        assert!(!release_please.contains("publish_pypi:"));
+        assert!(!release_please.contains("Existing release tag to publish"));
 
         let mut with_publish = test_config(true);
         with_publish.pypi_publish = true;
         let release_please_with_publish = render_release_please_workflow(&with_publish);
+        assert!(release_please_with_publish.contains("publish_pypi:"));
+        assert!(release_please_with_publish.contains("Existing release tag to publish"));
         assert!(release_please_with_publish.contains("publish-pypi:"));
         assert!(release_please_with_publish.contains("needs: release-please"));
         assert!(release_please_with_publish.contains("if: ${{ needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true') }}"));
@@ -1427,6 +1468,7 @@ prettier = true
             author_email: Some("grace@example.com".to_string()),
             license: "BSD-3-Clause".to_string(),
             python_min: "3.12".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: false,
             ci: true,

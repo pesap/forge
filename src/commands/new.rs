@@ -16,8 +16,8 @@ use crate::blueprint::files::{
 use crate::blueprint::python_library;
 use crate::blueprint::rust_library;
 use crate::blueprint::{
-    BlueprintName, DEFAULT_LICENSE, ManagedOption, ManagedOptionValues, SUPPORTED_LICENSES,
-    managed_option_enabled,
+    BlueprintName, DEFAULT_BRANCH, DEFAULT_LICENSE, ManagedOption, ManagedOptionValues,
+    SUPPORTED_LICENSES, default_branch_message, is_valid_default_branch, managed_option_enabled,
 };
 use crate::cli::{GithubVisibility, NewArgs};
 use crate::commands::diff;
@@ -141,7 +141,12 @@ pub fn run(args: NewArgs) -> Result<()> {
         file_paths.sort();
     }
     if !args.no_git_history {
-        initialize_git_repository(&destination, args.github, args.json)?;
+        initialize_git_repository(
+            &destination,
+            &project.default_branch,
+            args.github,
+            args.json,
+        )?;
     }
 
     if args.github {
@@ -263,6 +268,7 @@ macro_rules! render_blueprint_arm {
         };
         Ok(ProjectRender {
             project_name: config.project_name.clone(),
+            default_branch: config.default_branch.clone(),
             options: selected_options_from_values($blueprint, &options)?,
             files,
         })
@@ -532,6 +538,10 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
             })
         })
     });
+    resolved.default_branch = forge
+        .get("default_branch")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
     resolved.docs = option_flag(options, "docs").unwrap_or(resolved.docs);
     resolved.ci = option_flag(options, "ci").unwrap_or(resolved.ci);
@@ -572,6 +582,11 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
         &mut parts,
         "--gitignore-profile",
         args.gitignore_profile.as_deref(),
+    );
+    push_option(
+        &mut parts,
+        "--default-branch",
+        args.default_branch.as_deref(),
     );
     push_managed_option_flags(
         &mut parts,
@@ -868,6 +883,7 @@ fn prompt_blueprint() -> Result<BlueprintName> {
 
 pub(crate) struct ProjectRender {
     pub(crate) project_name: String,
+    pub(crate) default_branch: String,
     pub(crate) options: Vec<SelectedOption>,
     pub(crate) files: GeneratedFiles,
 }
@@ -881,6 +897,7 @@ pub(crate) enum RenderScope {
 fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfig> {
     let mut project_name = args.project_name.clone();
     let mut description = args.description.clone();
+    let mut default_branch = args.default_branch.clone();
     let mut docs = docs_enabled(args);
     let mut ci = ci_enabled(args);
     let mut forge_sync = forge_sync_enabled(args);
@@ -901,6 +918,13 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
             is_non_empty_text,
             "description cannot be empty",
         )?;
+        prompt_if_missing_with_default_validated(
+            &mut default_branch,
+            "Default branch",
+            DEFAULT_BRANCH,
+            is_valid_default_branch,
+            default_branch_message(),
+        )?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
         ci = prompt_bool("Manage GitHub Actions CI workflow?", ci)?;
         forge_sync = prompt_bool("Manage scheduled Forge sync workflow?", forge_sync)?;
@@ -910,6 +934,7 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
     Ok(any_project::ProjectConfig {
         project_name: require_field("project-name", project_name)?,
         description: require_field("description", description)?,
+        default_branch: default_branch.unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         docs,
         ci,
         forge_sync,
@@ -926,6 +951,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
     let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut python_min = args.python_min.clone();
+    let mut default_branch = args.default_branch.clone();
     let gitignore_profile = args.gitignore_profile.clone();
     let mut docs = docs_enabled(args);
     let mut ci = ci_enabled(args);
@@ -972,6 +998,13 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
             python_library::is_valid_python_version,
             "python-min must be between 3.8 and 3.14 as major.minor",
         )?;
+        prompt_if_missing_with_default_validated(
+            &mut default_branch,
+            "Default branch",
+            DEFAULT_BRANCH,
+            is_valid_default_branch,
+            default_branch_message(),
+        )?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
         if docs {
             docs_pages = prompt_bool("Manage GitHub Pages docs workflow?", docs_pages)?;
@@ -1001,6 +1034,7 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         python_min: python_min.unwrap_or_else(|| DEFAULT_PYTHON_MIN.to_string()),
+        default_branch: default_branch.unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         gitignore_profile: gitignore_profile
             .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs,
@@ -1023,6 +1057,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
     let author_name = args.author_name.clone();
     let author_email = args.author_email.clone();
     let mut license = args.license.clone();
+    let mut default_branch = args.default_branch.clone();
     let mut docs = docs_enabled(args);
     let mut ci = ci_enabled(args);
     let mut forge_sync = forge_sync_enabled(args);
@@ -1057,6 +1092,13 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
             "description cannot be empty",
         )?;
         prompt_license_if_missing(&mut license)?;
+        prompt_if_missing_with_default_validated(
+            &mut default_branch,
+            "Default branch",
+            DEFAULT_BRANCH,
+            is_valid_default_branch,
+            default_branch_message(),
+        )?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
         ci = prompt_bool("Manage GitHub Actions CI workflow?", ci)?;
         forge_sync = prompt_bool("Manage scheduled Forge sync workflow?", forge_sync)?;
@@ -1074,6 +1116,7 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         author_email,
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         rust_edition: "2024".to_string(),
+        default_branch: default_branch.unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         docs,
         ci,
         forge_sync,
@@ -1630,10 +1673,11 @@ fn lock_dependencies_before_push(
 
 fn initialize_git_repository(
     destination: &Path,
+    default_branch: &str,
     github_requested: bool,
     quiet: bool,
 ) -> Result<()> {
-    run_command(destination, "git", &["init", "-b", "main"], quiet)?;
+    run_command(destination, "git", &["init", "-b", default_branch], quiet)?;
     run_command(destination, "git", &["add", "."], quiet)?;
 
     if github_requested {
@@ -2017,6 +2061,7 @@ mod tests {
             license: Some("MIT".to_string()),
             python_min: Some("3.12".to_string()),
             gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
+            default_branch: Some("trunk".to_string()),
             docs: false,
             ci: true,
             forge_sync: true,
@@ -2046,7 +2091,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --docs-pages=false --workflow-quality=false --codecov=false --pypi-publish=true --prettier --github --github-owner example-org --github-visibility private --yes"
+            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --default-branch trunk --docs=false --docs-pages=false --workflow-quality=false --codecov=false --pypi-publish=true --prettier --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -2127,6 +2172,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2167,6 +2213,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2270,6 +2317,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2317,6 +2365,7 @@ mod tests {
             license: Some("MIT".to_string()),
             python_min: Some("3.12".to_string()),
             gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2367,6 +2416,7 @@ mod tests {
             license: Some("MIT".to_string()),
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2469,6 +2519,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2491,6 +2542,7 @@ mod tests {
         };
         let project = ProjectRender {
             project_name: "repo-infra".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             options: vec![SelectedOption::new(ManagedOption::Docs, true)],
             files: GeneratedFiles::from([
                 (
@@ -2580,6 +2632,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -2602,6 +2655,7 @@ mod tests {
         };
         let project = ProjectRender {
             project_name: "grid-tools".to_string(),
+            default_branch: "develop".to_string(),
             options: vec![],
             files: GeneratedFiles::from([(
                 PathBuf::from("pyproject.toml"),
@@ -2615,6 +2669,7 @@ author_name = "Ada Lovelace"
 author_email = "ada@example.com"
 license = "MIT"
 python_min = "3.12"
+default_branch = "develop"
 
 [tool.forge.overrides]
 docs = false
@@ -2640,6 +2695,7 @@ markdownlint = true
         assert_eq!(resolved.author_email.as_deref(), Some("ada@example.com"));
         assert_eq!(resolved.license.as_deref(), Some("MIT"));
         assert_eq!(resolved.python_min.as_deref(), Some("3.12"));
+        assert_eq!(resolved.default_branch.as_deref(), Some("develop"));
         assert!(!resolved.docs);
         assert_eq!(resolved.docs_pages, Some(false));
         assert_eq!(resolved.workflow_quality, Some(false));

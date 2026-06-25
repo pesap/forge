@@ -14,9 +14,10 @@ use crate::blueprint::precommit;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, apply_ignored_files, is_supported_license,
-    managed_option_enabled, render_forge_ignore, render_forge_overrides_table,
-    supported_license_message, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, DEFAULT_BRANCH, ManagedOption, apply_ignored_files,
+    default_branch_message, is_supported_license, is_valid_default_branch, managed_option_enabled,
+    render_forge_ignore, render_forge_overrides_table, supported_license_message,
+    validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "rust-library";
@@ -31,6 +32,7 @@ pub struct ProjectConfig {
     pub author_email: Option<String>,
     pub license: String,
     pub rust_edition: String,
+    pub default_branch: String,
     pub docs: bool,
     pub ci: bool,
     pub forge_sync: bool,
@@ -65,6 +67,9 @@ impl ProjectConfig {
         }
         if !matches!(self.rust_edition.as_str(), "2021" | "2024") {
             bail!("rust edition must be 2021 or 2024");
+        }
+        if !is_valid_default_branch(&self.default_branch) {
+            bail!(default_branch_message());
         }
         Ok(())
     }
@@ -143,7 +148,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     if config.ci {
         files.insert(
             PathBuf::from(".github/workflows/ci.yaml"),
-            GeneratedFile::text(render_ci_workflow()),
+            GeneratedFile::text(render_ci_workflow(config)),
         );
     }
     if config.forge_sync {
@@ -288,6 +293,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             "author_email": render_optional_forge_field("author_email", &config.author_email),
             "license": toml_value::string_literal(&config.license),
             "rust_edition": toml_value::string_literal(&config.rust_edition),
+            "default_branch": toml_value::string_literal(&config.default_branch),
             "docs_group": render_docs_dependency_group(config.docs),
             "forge_ignore": render_forge_ignore(&config.ignored_files),
             "forge_overrides": render_forge_overrides_table(
@@ -347,10 +353,10 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_ci_workflow() -> String {
+fn render_ci_workflow(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/ci.yaml.j2",
-        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files")}),
+        serde_json::json!({"default_branch": toml_value::string_literal(&config.default_branch), "cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files")}),
     )
 }
 
@@ -406,6 +412,7 @@ struct ForgeSection {
     author_email: Option<String>,
     license: String,
     rust_edition: String,
+    default_branch: Option<String>,
     ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
@@ -432,6 +439,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         author_email: forge.author_email,
         license: forge.license,
         rust_edition: forge.rust_edition,
+        default_branch: forge
+            .default_branch
+            .unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         ci: managed_option_enabled(&options, ManagedOption::Ci)?,
         forge_sync: managed_option_enabled(&options, ManagedOption::ForgeSync)?,
@@ -512,6 +522,7 @@ mod tests {
             author_email: Some("test@example.com".to_string()),
             license: "MIT".to_string(),
             rust_edition: "2024".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs,
             ci: true,
             forge_sync: true,
@@ -557,7 +568,7 @@ mod tests {
 
     #[test]
     fn ci_workflow_runs_full_rust_quality_gate_explicitly() {
-        let workflow = render_ci_workflow();
+        let workflow = render_ci_workflow(&test_config(true));
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
         assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));

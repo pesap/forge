@@ -6,7 +6,7 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
   push:
-    branches: [main]
+    branches: [{{ default_branch }}]
     paths:
       - ".github/actions/**"
       - ".github/workflows/**"
