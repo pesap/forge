@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.7.0](https://github.com/pesap/forge/compare/v0.6.1...v0.7.0) (2026-06-25)
+
+
+### Features
+
+* **python-library:** generate safe commitizen hooks ([#121](https://github.com/pesap/forge/issues/121)) ([cf5faa8](https://github.com/pesap/forge/commit/cf5faa8989dac2f78ae820e1d728e0070818a093))
+* **sync:** preserve external platform infrastructure ([#125](https://github.com/pesap/forge/issues/125)) ([918fa3e](https://github.com/pesap/forge/commit/918fa3ec4aafa9fbc1b93c939ab02cb3bc31aa57))
+
+
+### Bug Fixes
+
+* **templates:** preserve CI branch and option choices ([#126](https://github.com/pesap/forge/issues/126)) ([069bc56](https://github.com/pesap/forge/commit/069bc56666e9884e5a86ed5f680bd834bf0f7a04))
+
+
+### Refactors
+
+* **tests:** simplify commitizen hook setup ([#123](https://github.com/pesap/forge/issues/123)) ([aa6cfcf](https://github.com/pesap/forge/commit/aa6cfcfb8d9488cba8b060a8ae4e289de8e20a8a))
+
+
+### Chores
+
+* **deps:** bump http from 1.4.1 to 1.4.2 ([#120](https://github.com/pesap/forge/issues/120)) ([d5656bd](https://github.com/pesap/forge/commit/d5656bd0d724f5c1e8d87ee4a1c820772d4f5242))
+* **deps:** bump minijinja from 2.20.0 to 2.21.0 ([#124](https://github.com/pesap/forge/issues/124)) ([2f74d14](https://github.com/pesap/forge/commit/2f74d14b66b5f7cad1107a8fb036fba85d5dde1b))
+
 ## [0.6.1](https://github.com/pesap/forge/compare/v0.6.0...v0.6.1) (2026-06-12)
 
 
