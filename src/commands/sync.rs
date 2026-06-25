@@ -659,7 +659,7 @@ fn apply_forge_ignore_paths_to_text(pyproject: &str, paths: &[PathBuf]) -> Resul
     let mut remaining_paths = Vec::new();
     for path in paths {
         let path = path.to_string_lossy().to_string();
-        if !update_forge_ignore_option(&mut lines, &path, false) {
+        if !update_forge_ignore_entry(&mut lines, &path, false, true) {
             remaining_paths.push(path);
         }
     }
@@ -896,7 +896,7 @@ fn apply_option_overrides_to_text(
         .collect();
     let mut remaining_overrides = Vec::new();
     for (option, value) in overrides {
-        if update_forge_ignore_option(&mut lines, option.as_str(), *value) {
+        if update_forge_ignore_entry(&mut lines, option.as_str(), *value, false) {
             continue;
         }
         remaining_overrides.push((*option, *value));
@@ -931,7 +931,12 @@ fn apply_option_overrides_to_text(
     Ok(lines.concat())
 }
 
-fn update_forge_ignore_option(lines: &mut Vec<String>, option_name: &str, enabled: bool) -> bool {
+fn update_forge_ignore_entry(
+    lines: &mut Vec<String>,
+    entry_name: &str,
+    enabled: bool,
+    insert_when_disabled: bool,
+) -> bool {
     let Some((start, end)) = table_range(&lines.concat(), "tool.forge") else {
         return false;
     };
@@ -943,14 +948,16 @@ fn update_forge_ignore_option(lines: &mut Vec<String>, option_name: &str, enable
         return false;
     };
 
-    let had_option = entries.iter().any(|entry| entry == option_name);
+    let had_entry = entries.iter().any(|entry| entry == entry_name);
     if enabled {
-        if !had_option {
+        if !had_entry {
             return false;
         }
-        entries.retain(|entry| entry != option_name);
-    } else if !had_option {
-        entries.push(option_name.to_string());
+        entries.retain(|entry| entry != entry_name);
+    } else if insert_when_disabled && !had_entry {
+        entries.push(entry_name.to_string());
+    } else {
+        return false;
     }
 
     lines.splice(
@@ -1633,8 +1640,8 @@ fn directory_will_be_empty_after_removals(
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::blueprint::BlueprintName;
     use crate::blueprint::files::{ManagedFileAction, ManagedFileConflict};
+    use crate::blueprint::{BlueprintName, ManagedOption};
     use crate::commands::new::SelectedOption;
     use crate::commands::sync::{
         NonInteractiveApplyGuardInput, action_breakdown, cleanup_action_for_optional_path,
@@ -1758,7 +1765,41 @@ markdownlint = false
     }
 
     #[test]
-    fn forge_ignore_updates_keep_long_arrays_taplo_formatted() {
+    fn option_override_disable_uses_overrides_when_ignore_exists() {
+        let pyproject = r#"[tool.forge]
+blueprint = "python-library>=0.1.0"
+ignore = ["codecov"]
+"#;
+
+        let updated =
+            super::apply_option_overrides_to_text(pyproject, &[(ManagedOption::Ci, false)])
+                .expect("option override should apply");
+
+        assert!(updated.contains("ignore = [\"codecov\"]"));
+        assert!(updated.contains("[tool.forge.overrides]\nci = false"));
+        assert!(!updated.contains("\"ci\""));
+        toml::from_str::<Value>(&updated).expect("updated metadata should remain valid TOML");
+    }
+
+    #[test]
+    fn option_override_enable_removes_legacy_ignore_entry() {
+        let pyproject = r#"[tool.forge]
+blueprint = "python-library>=0.1.0"
+ignore = ["codecov", "ci"]
+"#;
+
+        let updated =
+            super::apply_option_overrides_to_text(pyproject, &[(ManagedOption::Ci, true)])
+                .expect("option override should apply");
+
+        assert!(updated.contains("ignore = [\"codecov\"]"));
+        assert!(!updated.contains("\"ci\""));
+        assert!(!updated.contains("ci = true"));
+        toml::from_str::<Value>(&updated).expect("updated metadata should remain valid TOML");
+    }
+
+    #[test]
+    fn forge_ignore_path_updates_keep_long_arrays_taplo_formatted() {
         let mut lines: Vec<String> = r#"[tool.forge]
 blueprint = "python-library>=0.1.0"
 ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
@@ -1767,10 +1808,11 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
         .map(str::to_string)
         .collect();
 
-        assert!(super::update_forge_ignore_option(
+        assert!(super::update_forge_ignore_entry(
             &mut lines,
             ".github/workflows/release-please.yaml",
-            false
+            false,
+            true
         ));
 
         let pyproject = lines.concat();
