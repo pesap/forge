@@ -33,6 +33,8 @@ pub struct ProjectConfig {
     pub license: String,
     pub rust_edition: String,
     pub docs: bool,
+    pub ci: bool,
+    pub forge_sync: bool,
     pub rust_rules: bool,
     pub components: ComponentSelection,
     pub ignored_files: Vec<String>,
@@ -139,14 +141,18 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         "Run `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test` before handoff.",
         "Preserve user-authored Rust source during managed infrastructure syncs.",
     ]));
-    files.insert(
-        PathBuf::from(".github/workflows/ci.yaml"),
-        GeneratedFile::text(render_ci_workflow()),
-    );
-    files.insert(
-        PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
-    );
+    if config.ci {
+        files.insert(
+            PathBuf::from(".github/workflows/ci.yaml"),
+            GeneratedFile::text(render_ci_workflow()),
+        );
+    }
+    if config.forge_sync {
+        files.insert(
+            PathBuf::from(".github/workflows/forge-sync.yaml"),
+            GeneratedFile::text(github_actions::render_forge_sync_workflow()),
+        );
+    }
     if config.docs {
         files.insert(
             PathBuf::from("docs/package.json"),
@@ -289,6 +295,8 @@ fn render_pyproject(config: &ProjectConfig) -> String {
                 BlueprintName::RustLibrary,
                 &[
                     (ManagedOption::Docs, config.docs),
+                    (ManagedOption::Ci, config.ci),
+                    (ManagedOption::ForgeSync, config.forge_sync),
                     (ManagedOption::RustRules, config.rust_rules),
                     (
                         ManagedOption::Prettier,
@@ -313,12 +321,10 @@ fn render_docs_dependency_group(_enabled: bool) -> &'static str {
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
-    let mut justfile = template_engine::render_template(
+    template_engine::render_template(
         "rust_library/justfile.j2",
         serde_json::json!({"docs_recipe": if config.docs {"docs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config)}),
-    );
-    justfile.push('\n');
-    justfile
+    )
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
@@ -345,7 +351,7 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
 fn render_ci_workflow() -> String {
     template_engine::render_template(
         "rust_library/ci.yaml.j2",
-        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "install_forge_step": github_actions::install_forge_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files"), "forge_sync_check_step": github_actions::forge_sync_check_step()}),
+        serde_json::json!({"cancel_redundant_ci_concurrency": github_actions::cancel_redundant_ci_concurrency(), "read_only_permissions": github_actions::read_only_permissions(), "job_timeout": github_actions::job_timeout(), "read_only_checkout_step": github_actions::read_only_checkout_step(), "setup_uv_step": github_actions::setup_uv_step(), "uv_sync_locked_step": github_actions::uv_sync_locked_step(), "uv_lock_check_step": github_actions::uv_lock_check_step(), "prek_step": github_actions::uv_run_locked_step("prek run --all-files")}),
     )
 }
 
@@ -428,6 +434,8 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         license: forge.license,
         rust_edition: forge.rust_edition,
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
+        ci: managed_option_enabled(&options, ManagedOption::Ci)?,
+        forge_sync: managed_option_enabled(&options, ManagedOption::ForgeSync)?,
         rust_rules: managed_option_enabled(&options, ManagedOption::RustRules)?,
         components: ComponentSelection::from_options(&options)?,
         ignored_files: forge.ignore.unwrap_or_default(),
@@ -506,6 +514,8 @@ mod tests {
             license: "MIT".to_string(),
             rust_edition: "2024".to_string(),
             docs,
+            ci: true,
+            forge_sync: true,
             rust_rules: true,
             components: ComponentSelection::default(),
             ignored_files: Vec::new(),
@@ -564,7 +574,8 @@ mod tests {
                 "run: cargo clippy --workspace --all-targets --all-features -- -D warnings"
             )
         );
-        assert!(workflow.contains("run: forge sync --path . --check"));
+        assert!(!workflow.contains("run: forge sync --path . --check"));
+        assert!(!workflow.contains("Install forge"));
         assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
         assert!(workflow.contains("run: cargo test"));
     }

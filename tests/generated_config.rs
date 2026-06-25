@@ -45,6 +45,16 @@ fn generated_python_project_configs_are_structurally_valid() {
         project_path.join(".github/workflows/forge-sync.yaml"),
         &["name", "on", "jobs"],
     );
+    assert_file_contains(
+        project_path.join(".github/workflows/workflow-quality.yaml"),
+        &[
+            ".github/actions/**",
+            ".github/workflows/**",
+            "rhysd/actionlint",
+            "permissions:\n  contents: read",
+            "timeout-minutes: 20",
+        ],
+    );
     assert_yaml_file(
         project_path.join(".github/workflows/release-please.yaml"),
         &["name", "on", "jobs"],
@@ -69,6 +79,16 @@ fn generated_python_project_configs_are_structurally_valid() {
     assert_file_contains(
         project_path.join("docs/src/content/docs/index.mdx"),
         &["---\ntitle: grid-tools", "head: []"],
+    );
+    assert_file_contains(
+        project_path.join(".github/workflows/docs-pages.yaml"),
+        &[
+            "cache-dependency-path: docs/package*.json",
+            "if [ -f package-lock.json ]; then",
+            "npm ci",
+            "npm install",
+            "timeout-minutes: 20",
+        ],
     );
     assert_file_contains(
         project_path.join(".github/workflows/release-please.yaml"),

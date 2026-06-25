@@ -1728,6 +1728,94 @@ dependencies = ["click>=8"]
 }
 
 #[test]
+fn sync_preserves_rich_python_pyproject_as_external_when_marker_is_missing() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("nodal-like");
+    fs::create_dir_all(&project_path).expect("project dir should create");
+    fs::write(
+        project_path.join("pyproject.toml"),
+        r#"[build-system]
+requires = ["uv_build~=0.11.7"]
+build-backend = "uv_build"
+
+[project]
+name = "z2n"
+version = "0.0.0"
+description = "Existing workspace package"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "folium",
+  "r2x-nodal",
+  "r2x-ssc",
+]
+
+[dependency-groups]
+dev = [
+  { include-group = "code-quality" },
+  { include-group = "test" },
+  "prek~=0.4.1",
+]
+code-quality = ["prek~=0.4.1", "ruff~=0.14.0", "ty~=0.0.1"]
+test = ["pytest~=9.0.0", "pytest-cov~=7.0.0"]
+
+[tool.uv.sources]
+r2x-ssc = { git = "ssh://git@github.nrel.gov/PCM/r2x-ssc.git" }
+r2x-nodal = { git = "ssh://git@github.nrel.gov/PCM/r2x-nodal", branch = "main" }
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "packages/z2n-cli/src"]
+testpaths = ["tests", "packages/z2n-data/tests"]
+
+[tool.ty.environment]
+root = [".", "packages/z2n-data/src"]
+
+[tool.forge]
+blueprint = "python-library>=0.1.0"
+gitignore_profile = ["python", "macos", "visualstudiocode", "jetbrains", "node"]
+ignore = ["codecov"]
+"#,
+    )
+    .expect("pyproject should be writable");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("update  pyproject.toml"))
+        .stdout(contains("uv lock").not());
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("pyproject = \"external\""));
+    assert!(pyproject.contains("\"r2x-nodal\""));
+    assert!(pyproject.contains("[tool.uv.sources]"));
+    assert!(pyproject.contains("ssh://git@github.nrel.gov/PCM/r2x-ssc.git"));
+    assert!(pyproject.contains("[tool.uv.workspace]"));
+    assert!(pyproject.contains("members = [\"packages/*\"]"));
+    assert!(pyproject.contains("packages/z2n-data/src"));
+    assert!(!pyproject.contains("dependencies = []"));
+    assert!(!pyproject.contains("version = \"0.1.0\""));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
 fn sync_set_preserves_pyproject_comments_and_unmanaged_formatting() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
@@ -2230,6 +2318,721 @@ fn sync_set_can_disable_python_pypi_publish_workflow() {
 }
 
 #[test]
+fn sync_set_removes_generated_workflows_when_management_is_disabled() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "ci=false",
+        "--set",
+        "forge-sync=false",
+        "--set",
+        "docs-pages=false",
+        "--set",
+        "workflow-quality=false",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("remove  .github/workflows/ci.yaml"))
+        .stdout(contains("remove  .github/workflows/docs-pages.yaml"))
+        .stdout(contains("remove  .github/workflows/forge-sync.yaml"))
+        .stdout(contains("remove  .github/workflows/workflow-quality.yaml"));
+
+    assert!(!project_path.join(".github/workflows/ci.yaml").exists());
+    assert!(
+        !project_path
+            .join(".github/workflows/forge-sync.yaml")
+            .exists()
+    );
+    assert!(
+        !project_path
+            .join(".github/workflows/docs-pages.yaml")
+            .exists()
+    );
+    assert!(
+        !project_path
+            .join(".github/workflows/workflow-quality.yaml")
+            .exists()
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+    assert!(pyproject.contains("forge-sync = false"));
+    assert!(pyproject.contains("docs-pages = false"));
+    assert!(pyproject.contains("workflow-quality = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_disable_python_ci_without_touching_existing_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let ci_workflow = project_path.join(".github/workflows/ci.yaml");
+    let custom_ci = r#"name: CI
+
+on:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: uv sync --all-groups --locked --no-install-package networkit
+"#;
+    fs::write(&ci_workflow, custom_ci).expect("custom CI workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "ci=false",
+    ]);
+    sync.assert().success();
+
+    let ci_after = fs::read_to_string(&ci_workflow).expect("CI workflow should remain readable");
+    assert_eq!(ci_after, custom_ci);
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_disable_forge_sync_without_touching_existing_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let sync_workflow = project_path.join(".github/workflows/forge-sync.yaml");
+    let custom_sync = r#"name: forge-sync
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: forge sync --path . --yes
+      - run: uv lock
+"#;
+    fs::write(&sync_workflow, custom_sync).expect("custom sync workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "forge-sync=false",
+    ]);
+    sync.assert().success();
+
+    let sync_after =
+        fs::read_to_string(&sync_workflow).expect("sync workflow should remain readable");
+    assert_eq!(sync_after, custom_sync);
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("forge-sync = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_disable_docs_pages_without_touching_existing_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let docs_pages_workflow = project_path.join(".github/workflows/docs-pages.yaml");
+    let custom_docs_pages = r#"name: docs-pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - run: npm install
+        working-directory: docs
+"#;
+    fs::write(&docs_pages_workflow, custom_docs_pages)
+        .expect("custom docs Pages workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "docs-pages=false",
+    ]);
+    sync.assert().success();
+
+    let docs_pages_after = fs::read_to_string(&docs_pages_workflow)
+        .expect("docs Pages workflow should remain readable");
+    assert_eq!(docs_pages_after, custom_docs_pages);
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("docs-pages = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_removes_generated_docs_pages_when_docs_are_disabled() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "docs=false",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("remove  .github/workflows/docs-pages.yaml"))
+        .stdout(contains("remove  docs/package.json"));
+
+    assert!(
+        !project_path
+            .join(".github/workflows/docs-pages.yaml")
+            .exists()
+    );
+    assert!(!project_path.join("docs/package.json").exists());
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ignore = [\"docs\"]"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_disable_docs_without_touching_custom_docs_pages_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let docs_pages_workflow = project_path.join(".github/workflows/docs-pages.yaml");
+    let custom_docs_pages = r#"name: docs-pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - run: npm install
+        working-directory: docs
+"#;
+    fs::write(&docs_pages_workflow, custom_docs_pages)
+        .expect("custom docs Pages workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "docs=false",
+    ]);
+    sync.assert().success();
+
+    let docs_pages_after = fs::read_to_string(&docs_pages_workflow)
+        .expect("docs Pages workflow should remain readable");
+    assert_eq!(docs_pages_after, custom_docs_pages);
+    assert!(!project_path.join("docs/package.json").exists());
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ignore = [\"docs\"]"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_disable_workflow_quality_without_touching_existing_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let workflow_quality = project_path.join(".github/workflows/workflow-quality.yaml");
+    let custom_workflow_quality = r#"name: workflow-quality
+
+on:
+  pull_request:
+
+jobs:
+  actionlint:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: actionlint
+"#;
+    fs::write(&workflow_quality, custom_workflow_quality)
+        .expect("custom workflow-quality workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "workflow-quality=false",
+    ]);
+    sync.assert().success();
+
+    let workflow_quality_after = fs::read_to_string(&workflow_quality)
+        .expect("workflow-quality workflow should remain readable");
+    assert_eq!(workflow_quality_after, custom_workflow_quality);
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("workflow-quality = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_set_can_preserve_enterprise_workflow_stack() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let ci_workflow = project_path.join(".github/workflows/ci.yaml");
+    let custom_ci = r#"name: CI
+
+on:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+        with:
+          repos: |
+            PCM/r2x-nodal
+            PCM/r2x-ssc
+      - run: uv sync --all-groups --locked --no-install-package networkit
+
+  ty:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: uv sync --all-groups --locked --no-install-package networkit
+      - run: UV_NO_SYNC=1 uv run --locked prek run ty-check --all-files
+"#;
+    fs::write(&ci_workflow, custom_ci).expect("custom CI workflow should write");
+
+    let sync_workflow = project_path.join(".github/workflows/forge-sync.yaml");
+    let custom_sync = r#"name: forge-sync
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: forge sync --path . --yes
+      - run: uv lock
+"#;
+    fs::write(&sync_workflow, custom_sync).expect("custom sync workflow should write");
+
+    let docs_pages_workflow = project_path.join(".github/workflows/docs-pages.yaml");
+    let custom_docs_pages = r#"name: docs-pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - run: npm install
+        working-directory: docs
+"#;
+    fs::write(&docs_pages_workflow, custom_docs_pages)
+        .expect("custom docs Pages workflow should write");
+
+    let workflow_quality = project_path.join(".github/workflows/workflow-quality.yaml");
+    let custom_workflow_quality = r#"name: workflow-quality
+
+on:
+  pull_request:
+
+jobs:
+  actionlint:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
+"#;
+    fs::write(&workflow_quality, custom_workflow_quality)
+        .expect("custom workflow-quality workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "ci=false",
+        "--set",
+        "forge-sync=false",
+        "--set",
+        "docs-pages=false",
+        "--set",
+        "workflow-quality=false",
+        "--set",
+        "codecov=false",
+    ]);
+    sync.assert().success();
+
+    assert_eq!(
+        fs::read_to_string(&ci_workflow).expect("CI workflow should remain readable"),
+        custom_ci
+    );
+    assert_eq!(
+        fs::read_to_string(&sync_workflow).expect("sync workflow should remain readable"),
+        custom_sync
+    );
+    assert_eq!(
+        fs::read_to_string(&docs_pages_workflow)
+            .expect("docs Pages workflow should remain readable"),
+        custom_docs_pages
+    );
+    assert_eq!(
+        fs::read_to_string(&workflow_quality)
+            .expect("workflow-quality workflow should remain readable"),
+        custom_workflow_quality
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+    assert!(pyproject.contains("forge-sync = false"));
+    assert!(pyproject.contains("docs-pages = false"));
+    assert!(pyproject.contains("workflow-quality = false"));
+    assert!(pyproject.contains("ignore = [\"codecov\"]"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_adopts_enterprise_workflow_stack_as_external_ownership() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let ci_workflow = project_path.join(".github/workflows/ci.yaml");
+    let custom_ci = r#"name: CI
+
+on:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+        with:
+          repos: |
+            PCM/r2x-nodal
+            PCM/r2x-ssc
+      - run: uv sync --all-groups --locked --no-install-package networkit
+
+  ty:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: uv sync --all-groups --locked --no-install-package networkit
+      - run: UV_NO_SYNC=1 uv run --locked prek run ty-check --all-files
+"#;
+    fs::write(&ci_workflow, custom_ci).expect("custom CI workflow should write");
+
+    let sync_workflow = project_path.join(".github/workflows/forge-sync.yaml");
+    let custom_sync = r#"name: forge-sync
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: pcm-runners
+    steps:
+      - uses: PCM/setup-internal-git@4b05eb443a15f2a6fb92e40e584d79d56f8add61
+      - run: forge sync --path . --yes
+      - run: uv lock
+"#;
+    fs::write(&sync_workflow, custom_sync).expect("custom sync workflow should write");
+
+    let docs_pages_workflow = project_path.join(".github/workflows/docs-pages.yaml");
+    let custom_docs_pages = r#"name: docs-pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - run: npm install
+        working-directory: docs
+"#;
+    fs::write(&docs_pages_workflow, custom_docs_pages)
+        .expect("custom docs Pages workflow should write");
+
+    let workflow_quality = project_path.join(".github/workflows/workflow-quality.yaml");
+    let custom_workflow_quality = r#"name: workflow-quality
+
+on:
+  pull_request:
+
+jobs:
+  actionlint:
+    runs-on: pcm-runners
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
+"#;
+    fs::write(&workflow_quality, custom_workflow_quality)
+        .expect("custom workflow-quality workflow should write");
+
+    let release_please = project_path.join(".github/workflows/release-please.yaml");
+    let custom_release_please = r#"name: release-please
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-please:
+    runs-on: pcm-runners
+    steps:
+      - uses: googleapis/release-please-action@c2a5a2bd6a758a0937f1ddb1e8950609867ed15c
+"#;
+    fs::write(&release_please, custom_release_please)
+        .expect("custom release-please workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("update  .github/workflows/ci.yaml").not())
+        .stdout(contains("update  .github/workflows/docs-pages.yaml").not())
+        .stdout(contains("update  .github/workflows/forge-sync.yaml").not())
+        .stdout(contains("update  .github/workflows/release-please.yaml").not())
+        .stdout(contains("update  .github/workflows/workflow-quality.yaml").not());
+
+    assert_eq!(
+        fs::read_to_string(&ci_workflow).expect("CI workflow should remain readable"),
+        custom_ci
+    );
+    assert_eq!(
+        fs::read_to_string(&sync_workflow).expect("sync workflow should remain readable"),
+        custom_sync
+    );
+    assert_eq!(
+        fs::read_to_string(&docs_pages_workflow)
+            .expect("docs Pages workflow should remain readable"),
+        custom_docs_pages
+    );
+    assert_eq!(
+        fs::read_to_string(&workflow_quality)
+            .expect("workflow-quality workflow should remain readable"),
+        custom_workflow_quality
+    );
+    assert_eq!(
+        fs::read_to_string(&release_please).expect("release workflow should remain readable"),
+        custom_release_please
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+    assert!(pyproject.contains("forge-sync = false"));
+    assert!(pyproject.contains("docs-pages = false"));
+    assert!(pyproject.contains("workflow-quality = false"));
+    assert!(pyproject.contains(".github/workflows/release-please.yaml"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn sync_adopts_external_release_workflow_with_multiline_ignore() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let pyproject_path = project_path.join("pyproject.toml");
+    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
+    let pyproject = pyproject.replace(
+        "[tool.forge]\n",
+        "[tool.forge]\nignore = [\n  \"codecov\",\n]\n",
+    );
+    fs::write(&pyproject_path, pyproject).expect("pyproject should write");
+
+    let release_please = project_path.join(".github/workflows/release-please.yaml");
+    let custom_release_please = r#"name: release-please
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-please:
+    runs-on: pcm-runners
+    steps:
+      - uses: googleapis/release-please-action@c2a5a2bd6a758a0937f1ddb1e8950609867ed15c
+"#;
+    fs::write(&release_please, custom_release_please)
+        .expect("custom release workflow should write");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("update  .github/workflows/release-please.yaml").not());
+
+    assert_eq!(
+        fs::read_to_string(&release_please).expect("release workflow should remain readable"),
+        custom_release_please
+    );
+
+    let pyproject = fs::read_to_string(&pyproject_path).expect("pyproject should exist");
+    toml::from_str::<toml::Value>(&pyproject).expect("synced pyproject should remain valid TOML");
+    assert!(pyproject.contains("\"codecov\""));
+    assert!(pyproject.contains("\".github/workflows/release-please.yaml\""));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
 fn sync_set_rejects_options_not_supported_by_detected_blueprint() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
@@ -2512,13 +3315,72 @@ fn sync_refreshes_language_agnostic_infra_project() {
     assert!(just_after.contains("uv lock --check"));
     assert!(!just_after.contains("forge sync --path . --check"));
     let ci_after = fs::read_to_string(ci_workflow).expect("CI workflow should remain readable");
-    assert!(ci_after.contains("forge sync --path . --check"));
+    assert!(!ci_after.contains("forge sync --path . --check"));
+    assert!(!ci_after.contains(FORGE_INSTALL_FROM_GIT));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path
             .join("docs/src/content/docs/index.mdx")
             .exists()
     );
+}
+
+#[test]
+fn sync_set_removes_generated_any_project_workflows_when_management_is_disabled() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("repo-infra");
+
+    let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
+    new_project.args([
+        "init",
+        "--blueprint",
+        "any-project",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "repo-infra",
+        "--description",
+        "Shared repository infrastructure",
+        "--yes",
+    ]);
+    new_project.assert().success();
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "ci=false",
+        "--set",
+        "forge-sync=false",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("remove  .github/workflows/ci.yaml"))
+        .stdout(contains("remove  .github/workflows/forge-sync.yaml"));
+
+    assert!(!project_path.join(".github/workflows/ci.yaml").exists());
+    assert!(
+        !project_path
+            .join(".github/workflows/forge-sync.yaml")
+            .exists()
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+    assert!(pyproject.contains("forge-sync = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
 }
 
 #[test]
@@ -2732,13 +3594,76 @@ fn sync_refreshes_rust_library_managed_infra_without_touching_source() {
     assert!(
         ci_after.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     );
-    assert!(ci_after.contains("forge sync --path . --check"));
+    assert!(!ci_after.contains("forge sync --path . --check"));
+    assert!(!ci_after.contains(FORGE_INSTALL_FROM_GIT));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path
             .join("docs/src/content/docs/index.mdx")
             .exists()
     );
+}
+
+#[test]
+fn sync_set_removes_generated_rust_workflows_when_management_is_disabled() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-rs");
+
+    let mut new_project = Command::cargo_bin("forge").expect("forge binary should build");
+    new_project.args([
+        "init",
+        "--blueprint",
+        "rust-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-rs",
+        "--description",
+        "Grid utilities for Rust",
+        "--author-name",
+        "Ferris Engineer",
+        "--author-email",
+        "ferris@example.com",
+        "--yes",
+    ]);
+    new_project.assert().success();
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--yes",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--set",
+        "ci=false",
+        "--set",
+        "forge-sync=false",
+    ]);
+    sync.assert()
+        .success()
+        .stdout(contains("remove  .github/workflows/ci.yaml"))
+        .stdout(contains("remove  .github/workflows/forge-sync.yaml"));
+
+    assert!(!project_path.join(".github/workflows/ci.yaml").exists());
+    assert!(
+        !project_path
+            .join(".github/workflows/forge-sync.yaml")
+            .exists()
+    );
+
+    let pyproject =
+        fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
+    assert!(pyproject.contains("ci = false"));
+    assert!(pyproject.contains("forge-sync = false"));
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
 }
 
 #[test]

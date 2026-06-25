@@ -22,10 +22,6 @@ pub fn read_only_checkout_step() -> &'static str {
     include_str!("templates/shared/read-only-checkout-step.yaml.j2")
 }
 
-pub fn forge_sync_check_step() -> &'static str {
-    "      - run: forge sync --path . --check\n"
-}
-
 pub fn read_only_permissions() -> &'static str {
     "permissions:\n  contents: read\n\n"
 }
@@ -66,20 +62,16 @@ pub fn render_forge_sync_workflow() -> String {
 #[cfg(test)]
 mod tests {
     use crate::blueprint::github_actions::{
-        cancel_redundant_ci_concurrency, forge_sync_check_step, install_forge_step, job_timeout,
-        read_only_checkout_step, read_only_permissions, render_forge_sync_workflow,
-        serialized_ref_concurrency, serialized_release_concurrency, serialized_sync_concurrency,
-        setup_uv_step, uv_lock_check_step, uv_run_locked_step, uv_sync_locked_step,
+        cancel_redundant_ci_concurrency, install_forge_step, job_timeout, read_only_checkout_step,
+        read_only_permissions, render_forge_sync_workflow, serialized_ref_concurrency,
+        serialized_release_concurrency, serialized_sync_concurrency, setup_uv_step,
+        uv_lock_check_step, uv_run_locked_step, uv_sync_locked_step,
     };
 
     #[test]
     fn forge_ci_steps_install_and_check_managed_infrastructure() {
         assert!(install_forge_step().contains("cargo install --git"));
         assert!(install_forge_step().contains("--locked forge"));
-        assert_eq!(
-            forge_sync_check_step(),
-            "      - run: forge sync --path . --check\n"
-        );
         assert_eq!(
             read_only_permissions(),
             "permissions:\n  contents: read\n\n"
@@ -136,8 +128,19 @@ mod tests {
 
         assert!(workflow.contains("name: forge-sync"));
         assert!(workflow.contains(install_forge_step()));
-        assert!(workflow.contains("run: forge sync --path ."));
+        assert!(workflow.contains("run: forge sync --path . --yes"));
+        assert!(workflow.contains("- Runs `forge sync --path . --yes`"));
+        assert!(workflow.contains("id: forge_changes"));
+        assert!(workflow.contains("Detect lockfile-relevant metadata changes"));
+        assert!(workflow.contains("import tomllib"));
+        assert!(workflow.contains("\"dependency-groups\": data.get(\"dependency-groups\")"));
+        assert!(workflow.contains("\"tool.uv\": tool.get(\"uv\")"));
+        assert!(workflow.contains("lockfile={str(lockfile).lower()}"));
+        assert!(workflow.contains("if: steps.forge_changes.outputs.lockfile == 'true'"));
         assert!(workflow.contains("run: uv lock"));
+        assert!(workflow.contains(
+            "- Runs `uv lock` only when Forge changes lockfile-relevant `pyproject.toml` metadata"
+        ));
         assert!(workflow.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
         assert!(workflow.contains("persist-credentials: false"));
         assert!(

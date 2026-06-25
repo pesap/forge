@@ -129,9 +129,13 @@ impl BlueprintName {
         matches!(
             (self, option),
             (_, ManagedOption::Docs)
+                | (_, ManagedOption::Ci)
+                | (_, ManagedOption::ForgeSync)
                 | (_, ManagedOption::Editorconfig)
+                | (Self::PythonLibrary, ManagedOption::DocsPages)
                 | (Self::PythonLibrary, ManagedOption::Codecov)
                 | (Self::PythonLibrary, ManagedOption::PythonRules)
+                | (Self::PythonLibrary, ManagedOption::WorkflowQuality)
                 | (Self::RustLibrary, ManagedOption::RustRules)
         )
     }
@@ -181,6 +185,8 @@ pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
         fields: ANY_PROJECT_FIELDS,
         options: &[
             ManagedOption::Docs,
+            ManagedOption::Ci,
+            ManagedOption::ForgeSync,
             ManagedOption::Prettier,
             ManagedOption::Editorconfig,
             ManagedOption::Markdownlint,
@@ -199,6 +205,10 @@ pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
         fields: PYTHON_LIBRARY_FIELDS,
         options: &[
             ManagedOption::Docs,
+            ManagedOption::Ci,
+            ManagedOption::ForgeSync,
+            ManagedOption::DocsPages,
+            ManagedOption::WorkflowQuality,
             ManagedOption::Codecov,
             ManagedOption::PypiPublish,
             ManagedOption::PythonRules,
@@ -220,6 +230,8 @@ pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
         fields: RUST_LIBRARY_FIELDS,
         options: &[
             ManagedOption::Docs,
+            ManagedOption::Ci,
+            ManagedOption::ForgeSync,
             ManagedOption::RustRules,
             ManagedOption::Prettier,
             ManagedOption::Editorconfig,
@@ -276,6 +288,10 @@ impl BlueprintField {
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ManagedOption {
     Docs,
+    Ci,
+    ForgeSync,
+    DocsPages,
+    WorkflowQuality,
     Prettier,
     Editorconfig,
     Markdownlint,
@@ -289,6 +305,10 @@ impl ManagedOption {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Docs => "docs",
+            Self::Ci => "ci",
+            Self::ForgeSync => "forge-sync",
+            Self::DocsPages => "docs-pages",
+            Self::WorkflowQuality => "workflow-quality",
             Self::Prettier => ManagedComponent::Prettier.option_name(),
             Self::Editorconfig => ManagedComponent::Editorconfig.option_name(),
             Self::Markdownlint => ManagedComponent::Markdownlint.option_name(),
@@ -302,6 +322,10 @@ impl ManagedOption {
     pub fn description(self) -> &'static str {
         match self {
             Self::Docs => "Starlight documentation site and docs index",
+            Self::Ci => "GitHub Actions CI workflow",
+            Self::ForgeSync => "Scheduled Forge-managed infrastructure sync workflow",
+            Self::DocsPages => "GitHub Pages documentation deployment workflow",
+            Self::WorkflowQuality => "GitHub Actions workflow linting workflow",
             Self::Prettier => ManagedComponent::Prettier.description(),
             Self::Editorconfig => ManagedComponent::Editorconfig.description(),
             Self::Markdownlint => ManagedComponent::Markdownlint.description(),
@@ -319,6 +343,10 @@ impl ManagedOption {
     pub fn parse_with_error_code(value: &str, error_code: ErrorCode) -> Result<Self> {
         match value {
             "docs" => Ok(Self::Docs),
+            "ci" => Ok(Self::Ci),
+            "forge-sync" => Ok(Self::ForgeSync),
+            "docs-pages" => Ok(Self::DocsPages),
+            "workflow-quality" => Ok(Self::WorkflowQuality),
             "prettier" => Ok(Self::Prettier),
             "editorconfig" => Ok(Self::Editorconfig),
             "markdownlint" => Ok(Self::Markdownlint),
@@ -374,12 +402,25 @@ pub fn render_forge_ignore(ignored_files: &[String]) -> String {
         return String::new();
     }
 
-    let ignored = ignored_files
+    render_toml_string_array_assignment("ignore", ignored_files)
+}
+
+pub(crate) fn render_toml_string_array_assignment(key: &str, values: &[String]) -> String {
+    let rendered_values = values
         .iter()
         .map(|path| toml_value::string_literal(path))
         .collect::<Vec<_>>()
         .join(", ");
-    format!("ignore = [{ignored}]\n")
+    let inline = format!("{key} = [{rendered_values}]");
+    if inline.len() <= 80 {
+        return format!("{inline}\n");
+    }
+
+    let entries = values
+        .iter()
+        .map(|path| format!("  {},\n", toml_value::string_literal(path)))
+        .collect::<String>();
+    format!("{key} = [\n{entries}]\n")
 }
 
 pub fn render_forge_overrides_table(
@@ -480,11 +521,10 @@ pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Strin
             let ignored = ignore
                 .iter()
                 .filter_map(Value::as_str)
-                .map(toml_value::string_literal)
-                .collect::<Vec<_>>()
-                .join(", ");
+                .map(str::to_string)
+                .collect::<Vec<_>>();
             if !ignored.is_empty() {
-                metadata.push_str(&format!("ignore = [{ignored}]\n"));
+                metadata.push_str(&render_toml_string_array_assignment("ignore", &ignored));
             }
         }
     }
@@ -791,6 +831,25 @@ mod tests {
     }
 
     #[test]
+    fn forge_ignore_uses_multiline_toml_for_long_arrays() {
+        let ignored_files = vec![
+            "codecov".to_string(),
+            "ci".to_string(),
+            "forge-sync".to_string(),
+            "workflow-quality".to_string(),
+            "docs-pages".to_string(),
+            ".github/workflows/release-please.yaml".to_string(),
+        ];
+
+        let rendered = render_forge_ignore(&ignored_files);
+
+        assert!(rendered.starts_with("ignore = [\n"));
+        assert!(rendered.contains("  \"workflow-quality\",\n"));
+        assert!(rendered.ends_with("]\n"));
+        toml::from_str::<Value>(&rendered).expect("ignore array should be valid TOML");
+    }
+
+    #[test]
     fn definition_lookup_matches_registry_metadata() {
         for blueprint in BlueprintName::ALL {
             let definition = blueprint.definition();
@@ -837,7 +896,11 @@ mod tests {
 
     #[test]
     fn metadata_option_validation_rejects_missing_supported_options() {
-        let options = BTreeMap::from([(String::from("docs"), false)]);
+        let options = BTreeMap::from([
+            (String::from("docs"), false),
+            (String::from("ci"), true),
+            (String::from("forge-sync"), true),
+        ]);
 
         let error = validate_managed_options_from_metadata(BlueprintName::AnyProject, options)
             .expect_err("missing supported options should fail");

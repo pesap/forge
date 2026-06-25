@@ -20,13 +20,7 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: mixed-line-ending
-        name: mixed line ending (LF-normalized files)
         args: ["--fix=lf"]
-        exclude: '(?i)\.(bat|cmd)$'
-      - id: mixed-line-ending
-        name: mixed line ending (Windows command scripts)
-        args: ["--fix=crlf"]
-        files: '(?i)\.(bat|cmd)$'
       - id: check-merge-conflict
       - id: detect-private-key
       - id: check-added-large-files

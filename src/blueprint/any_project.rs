@@ -27,6 +27,8 @@ pub struct ProjectConfig {
     pub project_name: String,
     pub description: String,
     pub docs: bool,
+    pub ci: bool,
+    pub forge_sync: bool,
     pub components: ComponentSelection,
     pub ignored_files: Vec<String>,
 }
@@ -82,14 +84,18 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         GeneratedFile::text(render_precommit_config(config)),
     );
     files.extend(agents::render_agent_files(&[]));
-    files.insert(
-        PathBuf::from(".github/workflows/ci.yaml"),
-        GeneratedFile::text(render_ci_workflow()),
-    );
-    files.insert(
-        PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
-    );
+    if config.ci {
+        files.insert(
+            PathBuf::from(".github/workflows/ci.yaml"),
+            GeneratedFile::text(render_ci_workflow()),
+        );
+    }
+    if config.forge_sync {
+        files.insert(
+            PathBuf::from(".github/workflows/forge-sync.yaml"),
+            GeneratedFile::text(github_actions::render_forge_sync_workflow()),
+        );
+    }
     if config.docs {
         files.insert(
             PathBuf::from("docs/package.json"),
@@ -204,6 +210,8 @@ fn render_pyproject(config: &ProjectConfig) -> String {
                 BlueprintName::AnyProject,
                 &[
                     (ManagedOption::Docs, config.docs),
+                    (ManagedOption::Ci, config.ci),
+                    (ManagedOption::ForgeSync, config.forge_sync),
                     (
                         ManagedOption::Prettier,
                         config.components.is_enabled(ManagedComponent::Prettier),
@@ -233,7 +241,7 @@ fn render_justfile(config: &ProjectConfig) -> String {
         format_steps: String,
     }
 
-    let mut justfile = template_engine::render_template(
+    template_engine::render_template(
         "any_project/justfile.j2",
         Context {
             docs_recipe: if config.docs {
@@ -243,9 +251,7 @@ fn render_justfile(config: &ProjectConfig) -> String {
             },
             format_steps: render_component_format_steps(config),
         },
-    );
-    justfile.push('\n');
-    justfile
+    )
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
@@ -287,11 +293,9 @@ fn render_ci_workflow() -> String {
         job_timeout: &'a str,
         read_only_checkout_step: &'a str,
         setup_uv_step: &'a str,
-        install_forge_step: &'a str,
         uv_sync_locked_step: &'a str,
         uv_lock_check_step: &'a str,
         uv_run_locked_step: String,
-        forge_sync_check_step: &'a str,
     }
 
     template_engine::render_template(
@@ -302,11 +306,9 @@ fn render_ci_workflow() -> String {
             job_timeout: github_actions::job_timeout(),
             read_only_checkout_step: github_actions::read_only_checkout_step(),
             setup_uv_step: github_actions::setup_uv_step(),
-            install_forge_step: github_actions::install_forge_step(),
             uv_sync_locked_step: github_actions::uv_sync_locked_step(),
             uv_lock_check_step: github_actions::uv_lock_check_step(),
             uv_run_locked_step: github_actions::uv_run_locked_step("prek run --all-files"),
-            forge_sync_check_step: github_actions::forge_sync_check_step(),
         },
     )
 }
@@ -389,6 +391,8 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
         project_name: forge.project_name,
         description: forge.description,
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
+        ci: managed_option_enabled(&options, ManagedOption::Ci)?,
+        forge_sync: managed_option_enabled(&options, ManagedOption::ForgeSync)?,
         components: ComponentSelection::from_options(&options)?,
         ignored_files: forge.ignore.unwrap_or_default(),
     };
@@ -410,6 +414,8 @@ mod tests {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
             docs: false,
+            ci: true,
+            forge_sync: true,
             components: ComponentSelection::default(),
             ignored_files: Vec::new(),
         };
@@ -435,6 +441,9 @@ mod tests {
         assert!(workflow.contains(github_actions::uv_sync_locked_step()));
         assert!(workflow.contains(github_actions::uv_lock_check_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
+        assert!(!workflow.contains("forge sync --path . --check"));
+        assert!(!workflow.contains("Install forge"));
+        assert!(!workflow.contains("Install Rust"));
         assert!(workflow.contains("  windows-smoke:\n    runs-on: windows-latest"));
         assert!(workflow.contains("uv sync --all-groups --locked"));
     }
@@ -445,6 +454,8 @@ mod tests {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
             components: ComponentSelection::default(),
             ignored_files: Vec::new(),
         });
@@ -467,6 +478,8 @@ mod tests {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
             components: ComponentSelection::default(),
             ignored_files: Vec::new(),
         });
@@ -487,6 +500,8 @@ mod tests {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
             components: ComponentSelection::from_prettier(true),
             ignored_files: Vec::new(),
         };
@@ -511,6 +526,8 @@ mod tests {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
             components: ComponentSelection::default(),
             ignored_files: Vec::new(),
         };

@@ -164,7 +164,7 @@ fn new_generates_python_project_with_metadata() {
         .stdout(contains("[ok] generated grid-tools"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
+            "options: enabled: docs, ci, forge-sync, docs-pages, workflow-quality, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))
@@ -262,7 +262,7 @@ fn new_generates_python_project_with_metadata() {
     ));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
-    assert!(readme.contains("forge sync --path ."));
+    assert!(readme.contains("forge sync --path . --yes"));
     assert!(readme.contains("forge sync --path . --dry-run"));
     assert!(readme.contains("forge sync --path . --check"));
     assert!(readme.contains("uv lock"));
@@ -309,7 +309,11 @@ fn new_generates_python_project_with_metadata() {
         fs::read_to_string(project_path.join(".github/workflows/forge-sync.yaml"))
             .expect("forge sync workflow should be generated");
     assert!(update_workflow.contains(FORGE_INSTALL_FROM_GIT));
-    assert!(update_workflow.contains("forge sync --path ."));
+    assert!(update_workflow.contains("forge sync --path . --yes"));
+    assert!(update_workflow.contains("Detect lockfile-relevant metadata changes"));
+    assert!(update_workflow.contains("\"dependency-groups\": data.get(\"dependency-groups\")"));
+    assert!(update_workflow.contains("\"tool.uv\": tool.get(\"uv\")"));
+    assert!(update_workflow.contains("if: steps.forge_changes.outputs.lockfile == 'true'"));
     assert!(update_workflow.contains("uv lock"));
     assert!(update_workflow.contains("persist-credentials: false"));
     assert!(update_workflow.contains("peter-evans/create-pull-request"));
@@ -331,17 +335,22 @@ fn new_generates_python_project_with_metadata() {
     assert!(precommit.contains("id: commitizen\n        stages: [commit-msg]"));
     assert!(precommit.contains("repo: https://github.com/crate-ci/typos"));
     assert!(precommit.contains("id: typos"));
+    assert!(precommit.contains("args: [\"--force-exclude\"]"));
     assert!(!precommit.contains("cspell"));
     assert!(!precommit.contains("uv run ruff check --fix"));
     let pretty_format_json = precommit
         .find("id: pretty-format-json")
         .expect("precommit config should include JSON formatter");
+    assert!(precommit.contains("files: ^(?!.*(^|/)package-lock\\.json$).+\\.json$"));
     assert!(precommit.find("repo: builtin").expect("builtin repo") < pretty_format_json);
     assert!(pretty_format_json < precommit.find("repo: meta").expect("meta repo"));
 
     let typos = fs::read_to_string(project_path.join(".typos.toml"))
         .expect("typos config should be generated");
     assert!(typos.contains("[default.extend-words]"));
+    assert!(typos.contains("\"data/**\""));
+    assert!(typos.contains("\"tests/data/**\""));
+    assert!(typos.contains("extend-ignore-identifiers-re = [\"PTDFs?\"]"));
     assert!(!project_path.join("typos.toml").exists());
     assert!(!project_path.join(".cspell.json").exists());
 }
@@ -573,7 +582,7 @@ fn new_dry_run_previews_files_without_writing() {
         .stdout(contains("Project creation preview"))
         .stdout(contains("blueprint: python-library"))
         .stdout(contains(
-            "options: enabled: docs, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
+            "options: enabled: docs, ci, forge-sync, docs-pages, workflow-quality, codecov, python-rules, editorconfig; disabled: pypi-publish, prettier, markdownlint",
         ))
         .stdout(contains("required tools: uv, just"))
         .stdout(contains("infrastructure:"))
@@ -1835,6 +1844,203 @@ fn new_accepts_explicit_false_flags_for_default_enabled_workflows() {
 }
 
 #[test]
+fn new_can_disable_managed_ci_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--author-name",
+        "Ada Lovelace",
+        "--author-email",
+        "ada@example.com",
+        "--ci=false",
+        "--yes",
+    ]);
+
+    cmd.assert().success();
+
+    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+        .expect("pyproject.toml should be generated");
+    assert!(pyproject.contains("ci = false"));
+    assert!(!project_path.join(".github/workflows/ci.yaml").exists());
+    assert!(
+        project_path
+            .join(".github/workflows/forge-sync.yaml")
+            .exists()
+    );
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn new_can_disable_managed_forge_sync_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--author-name",
+        "Ada Lovelace",
+        "--author-email",
+        "ada@example.com",
+        "--forge-sync=false",
+        "--yes",
+    ]);
+
+    cmd.assert().success();
+
+    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+        .expect("pyproject.toml should be generated");
+    assert!(pyproject.contains("forge-sync = false"));
+    assert!(project_path.join(".github/workflows/ci.yaml").exists());
+    assert!(
+        !project_path
+            .join(".github/workflows/forge-sync.yaml")
+            .exists()
+    );
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn new_can_disable_managed_docs_pages_workflow_without_disabling_docs() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--author-name",
+        "Ada Lovelace",
+        "--author-email",
+        "ada@example.com",
+        "--docs-pages=false",
+        "--yes",
+    ]);
+
+    cmd.assert().success();
+
+    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+        .expect("pyproject.toml should be generated");
+    assert!(pyproject.contains("docs-pages = false"));
+    assert!(
+        !project_path
+            .join(".github/workflows/docs-pages.yaml")
+            .exists()
+    );
+    assert!(project_path.join("docs/package.json").exists());
+    assert!(
+        project_path
+            .join("docs/src/content/docs/index.mdx")
+            .exists()
+    );
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
+fn new_can_disable_managed_workflow_quality_workflow() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "python-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-tools",
+        "--package-name",
+        "grid_tools",
+        "--description",
+        "Grid toolchain",
+        "--author-name",
+        "Ada Lovelace",
+        "--author-email",
+        "ada@example.com",
+        "--workflow-quality=false",
+        "--yes",
+    ]);
+
+    cmd.assert().success();
+
+    let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
+        .expect("pyproject.toml should be generated");
+    assert!(pyproject.contains("workflow-quality = false"));
+    assert!(
+        !project_path
+            .join(".github/workflows/workflow-quality.yaml")
+            .exists()
+    );
+    assert!(project_path.join(".github/workflows/ci.yaml").exists());
+
+    let mut check = Command::cargo_bin("forge").expect("forge binary should build");
+    check.args([
+        "sync",
+        "--check",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+    ]);
+    check.assert().success();
+}
+
+#[test]
 fn new_rejects_python_only_managed_options_for_rust_blueprint() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("grid-rs");
@@ -1860,6 +2066,66 @@ fn new_rejects_python_only_managed_options_for_rust_blueprint() {
 
     cmd.assert().failure().stderr(contains(
         "option 'codecov' is not supported by rust-library",
+    ));
+    assert!(!project_path.exists());
+}
+
+#[test]
+fn new_rejects_workflow_quality_for_rust_blueprint() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-rs");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "rust-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-rs",
+        "--description",
+        "Grid utilities for Rust",
+        "--author-name",
+        "Ferris Engineer",
+        "--author-email",
+        "ferris@example.com",
+        "--workflow-quality=false",
+        "--yes",
+    ]);
+
+    cmd.assert().failure().stderr(contains(
+        "option 'workflow-quality' is not supported by rust-library",
+    ));
+    assert!(!project_path.exists());
+}
+
+#[test]
+fn new_rejects_docs_pages_for_rust_blueprint() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-rs");
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "rust-library",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "grid-rs",
+        "--description",
+        "Grid utilities for Rust",
+        "--author-name",
+        "Ferris Engineer",
+        "--author-email",
+        "ferris@example.com",
+        "--docs-pages=false",
+        "--yes",
+    ]);
+
+    cmd.assert().failure().stderr(contains(
+        "option 'docs-pages' is not supported by rust-library",
     ));
     assert!(!project_path.exists());
 }
@@ -2256,7 +2522,8 @@ fn new_generates_language_agnostic_infra_project() {
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
     assert!(ci.contains("permissions:\n  contents: read\n\njobs:"));
-    assert!(ci.contains("forge sync --path . --check"));
+    assert!(!ci.contains("forge sync --path . --check"));
+    assert!(!ci.contains(FORGE_INSTALL_FROM_GIT));
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
     assert!(precommit.contains("id: check-added-large-files"));
@@ -2353,7 +2620,8 @@ fn new_generates_rust_library_project() {
     assert!(ci.contains("uv lock --check"));
     assert!(ci.contains("cargo fmt --all --check"));
     assert!(ci.contains("cargo clippy --workspace --all-targets --all-features -- -D warnings"));
-    assert!(ci.contains("forge sync --path . --check"));
+    assert!(!ci.contains("forge sync --path . --check"));
+    assert!(!ci.contains(FORGE_INSTALL_FROM_GIT));
     assert!(project_path.join("docs/package.json").exists());
     assert!(
         project_path

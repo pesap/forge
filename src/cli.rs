@@ -136,6 +136,44 @@ pub struct InitArgs {
         default_value_t = true
     )]
     pub docs: bool,
+    /// Manage GitHub Actions CI workflow. Accepts --ci, --ci=true, or --ci=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = true
+    )]
+    pub ci: bool,
+    /// Manage scheduled Forge sync pull-request workflow. Accepts --forge-sync, --forge-sync=true, or --forge-sync=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = true
+    )]
+    pub forge_sync: bool,
+    /// Manage GitHub Pages documentation deployment workflow. Accepts --docs-pages, --docs-pages=true, or --docs-pages=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    pub docs_pages: Option<bool>,
+    /// Manage workflow-quality actionlint workflow. Accepts --workflow-quality, --workflow-quality=true, or --workflow-quality=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    pub workflow_quality: Option<bool>,
     /// Enable Codecov upload for python-library CI. Accepts --codecov, --codecov=true, or --codecov=false.
     #[arg(
         long,
@@ -277,6 +315,44 @@ pub struct NewArgs {
         default_value_t = true
     )]
     pub docs: bool,
+    /// Manage GitHub Actions CI workflow. Accepts --ci, --ci=true, or --ci=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = true
+    )]
+    pub ci: bool,
+    /// Manage scheduled Forge sync pull-request workflow. Accepts --forge-sync, --forge-sync=true, or --forge-sync=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = true
+    )]
+    pub forge_sync: bool,
+    /// Manage GitHub Pages documentation deployment workflow. Accepts --docs-pages, --docs-pages=true, or --docs-pages=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    pub docs_pages: Option<bool>,
+    /// Manage workflow-quality actionlint workflow. Accepts --workflow-quality, --workflow-quality=true, or --workflow-quality=false.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        action = ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    pub workflow_quality: Option<bool>,
     /// Enable Codecov upload for python-library CI. Accepts --codecov, --codecov=true, or --codecov=false.
     #[arg(
         long,

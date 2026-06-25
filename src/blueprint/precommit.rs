@@ -7,16 +7,14 @@ mod tests {
     use crate::blueprint::{precommit::uv_lock_hook, template_engine};
 
     #[test]
-    fn shared_header_aligns_line_ending_hooks_with_windows_script_policy() {
+    fn shared_header_uses_portable_line_ending_hook() {
         let header = template_engine::render_template(
             "shared/_pre_commit_header.yaml.j2",
             serde_json::json!({"install_commit_msg_hook": false}),
         );
-        let lf_hook = "      - id: mixed-line-ending\n        name: mixed line ending (LF-normalized files)\n        args: [\"--fix=lf\"]\n        exclude: '(?i)\\.(bat|cmd)$'";
-        let windows_script_hook = "      - id: mixed-line-ending\n        name: mixed line ending (Windows command scripts)\n        args: [\"--fix=crlf\"]\n        files: '(?i)\\.(bat|cmd)$'";
 
-        assert!(header.contains(lf_hook));
-        assert!(header.contains(windows_script_hook));
+        assert!(header.contains("      - id: mixed-line-ending\n        args: [\"--fix=lf\"]\n"));
+        assert!(!header.contains("(?i)\\.(bat|cmd)$"));
     }
 
     #[test]

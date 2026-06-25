@@ -17,7 +17,7 @@ use crate::blueprint::{
     BlueprintMetadata, BlueprintName, ManagedOption, ManagedOptionValues,
     detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
     managed_option_enabled, minimal_external_pyproject_metadata,
-    validate_managed_overrides_from_metadata,
+    render_toml_string_array_assignment, validate_managed_overrides_from_metadata,
 };
 use crate::cli::SyncArgs;
 use crate::commands::diff;
@@ -36,6 +36,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
     let pyproject_path = root.join("pyproject.toml");
     let pyproject = read_pyproject_for_update(&root, &pyproject_path)?;
     ensure_forge_metadata_for_update(&root, &pyproject)?;
+    let original_pyproject = pyproject.clone();
     let metadata = detect_blueprint_metadata_from_pyproject(&pyproject).with_context(|| {
         format!(
             "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and valid [tool.forge.overrides] keys",
@@ -49,6 +50,15 @@ pub fn run(args: SyncArgs) -> Result<()> {
         .expect("blueprint version metadata is required");
 
     let pyproject = apply_option_overrides(&pyproject, blueprint, &args.set)?;
+    let pyproject = adopt_external_pyproject_for_rich_python_project(blueprint, &pyproject)
+        .with_context(|| {
+            format!(
+                "failed to preserve existing project metadata at {}",
+                pyproject_path.display()
+            )
+        })?;
+    let pyproject = adopt_external_workflow_ownership(blueprint, &root, &pyproject, &args.set)?;
+    let pyproject = adopt_external_managed_file_ownership(blueprint, &root, &pyproject)?;
     let options = selected_options_from_pyproject(&pyproject, blueprint).with_context(|| {
         format!(
             "failed to validate Forge metadata at {}; ensure [tool.forge] includes blueprint_version and valid [tool.forge.overrides] keys",
@@ -79,9 +89,19 @@ pub fn run(args: SyncArgs) -> Result<()> {
         preserve_pyproject_format_if_equivalent(&pyproject, &mut managed_files)?;
     }
     let infrastructure = managed_infrastructure_summary(&managed_files);
+    let lockfile_update_needed =
+        planned_lockfile_update_needed(&original_pyproject, &managed_files)?;
 
     let mut actions = plan_generated_files(&root, &managed_files);
     actions.extend(cleanup_actions_for_blueprint(blueprint, &root, &pyproject)?);
+    let retired_managed_workflow_actions = cleanup_actions_for_disabled_generated_workflows(
+        blueprint,
+        &root,
+        &original_pyproject,
+        &pyproject,
+    )?;
+    actions.extend(retired_managed_workflow_actions.clone());
+    sort_managed_actions(&mut actions);
     let changes = count_changes(&actions);
     let conflicts = count_conflicts(&actions);
     let read_only = args.dry_run || args.check;
@@ -110,6 +130,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
                 option_overrides: &args.set,
                 options: &options,
                 actions: &actions,
+                lockfile_update_needed,
             })?;
         } else {
             print_sync_context(
@@ -119,7 +140,14 @@ pub fn run(args: SyncArgs) -> Result<()> {
                 &options,
                 &infrastructure,
             );
-            print_next_steps(&root, args.dry_run, args.check, &args.set, &actions);
+            print_next_steps(
+                &root,
+                args.dry_run,
+                args.check,
+                &args.set,
+                &actions,
+                lockfile_update_needed,
+            );
         }
         return Err(coded_error(
             ErrorCode::Conflict,
@@ -165,6 +193,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
     if !read_only {
         write_generated_files(&root, managed_files)?;
         clean_optional_files_for_blueprint(blueprint, &root, &pyproject)?;
+        remove_retired_managed_files(&root, &retired_managed_workflow_actions)?;
     }
 
     if args.json {
@@ -178,6 +207,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
             option_overrides: &args.set,
             options: &options,
             actions: &actions,
+            lockfile_update_needed,
         })?;
         if args.check && changes > 0 {
             return Err(coded_error(
@@ -197,7 +227,14 @@ pub fn run(args: SyncArgs) -> Result<()> {
             &options,
             &infrastructure,
         );
-        print_next_steps(&root, args.dry_run, args.check, &args.set, &actions);
+        print_next_steps(
+            &root,
+            args.dry_run,
+            args.check,
+            &args.set,
+            &actions,
+            lockfile_update_needed,
+        );
         return Err(coded_error(
             ErrorCode::Conflict,
             format!(
@@ -221,7 +258,14 @@ pub fn run(args: SyncArgs) -> Result<()> {
         &options,
         &infrastructure,
     );
-    print_next_steps(&root, args.dry_run, args.check, &args.set, &actions);
+    print_next_steps(
+        &root,
+        args.dry_run,
+        args.check,
+        &args.set,
+        &actions,
+        lockfile_update_needed,
+    );
     Ok(())
 }
 
@@ -446,6 +490,243 @@ fn uses_external_pyproject(pyproject: &str) -> Result<bool> {
         == Some("external"))
 }
 
+fn adopt_external_pyproject_for_rich_python_project(
+    blueprint: BlueprintName,
+    pyproject: &str,
+) -> Result<String> {
+    if blueprint != BlueprintName::PythonLibrary
+        || uses_external_pyproject(pyproject)?
+        || !python_pyproject_has_external_ownership_signals(pyproject)?
+    {
+        return Ok(pyproject.to_string());
+    }
+
+    let generated_files = blueprint.render_managed_files_from_pyproject(pyproject)?;
+    let generated_pyproject = generated_files
+        .get(Path::new("pyproject.toml"))
+        .and_then(GeneratedFile::as_text)
+        .context("generated managed files are missing pyproject.toml")?;
+    sync_external_pyproject(pyproject, generated_pyproject)
+}
+
+fn python_pyproject_has_external_ownership_signals(pyproject: &str) -> Result<bool> {
+    let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
+    let project = parsed.get("project").and_then(Value::as_table);
+    let tool_uv = parsed
+        .get("tool")
+        .and_then(Value::as_table)
+        .and_then(|tool| tool.get("uv"))
+        .and_then(Value::as_table);
+
+    Ok(table_has_nonempty_array(project, "dependencies")
+        || table_has_nonempty_table(project, "optional-dependencies")
+        || table_has_nonempty_table(project, "scripts")
+        || table_has_nonempty_table(project, "gui-scripts")
+        || table_has_nonempty_table(project, "entry-points")
+        || table_has_nonempty_table(tool_uv, "sources")
+        || table_has_nonempty_table(tool_uv, "workspace"))
+}
+
+fn adopt_external_workflow_ownership(
+    blueprint: BlueprintName,
+    root: &Path,
+    pyproject: &str,
+    requested_overrides: &[String],
+) -> Result<String> {
+    let requested_options = requested_option_overrides(requested_overrides)?;
+    let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
+    let options = forge_option_values(&parsed, blueprint)?;
+    let generated_files = blueprint.render_managed_files_from_pyproject(pyproject)?;
+    let mut external_workflows = Vec::new();
+
+    for (option, relative_path) in managed_workflow_option_paths(blueprint) {
+        if requested_options.contains(&option)
+            || !managed_workflow_enabled(&options, option)?
+            || !external_workflow_ownership_detected(root, &relative_path, &generated_files)?
+        {
+            continue;
+        }
+        external_workflows.push((option, false));
+    }
+
+    if external_workflows.is_empty() {
+        return Ok(pyproject.to_string());
+    }
+
+    apply_option_overrides_to_text(pyproject, &external_workflows)
+}
+
+fn requested_option_overrides(overrides: &[String]) -> Result<BTreeSet<ManagedOption>> {
+    let mut requested = BTreeSet::new();
+    for override_value in overrides {
+        let (key, _) = parse_option_override(override_value)?;
+        requested.insert(ManagedOption::parse(key)?);
+    }
+    Ok(requested)
+}
+
+fn external_workflow_ownership_detected(
+    root: &Path,
+    relative_path: &Path,
+    generated_files: &GeneratedFiles,
+) -> Result<bool> {
+    let Some(generated) = generated_files
+        .get(relative_path)
+        .and_then(GeneratedFile::as_text)
+    else {
+        return Ok(false);
+    };
+    let Ok(current) = fs::read_to_string(root.join(relative_path)) else {
+        return Ok(false);
+    };
+
+    Ok(current != generated && workflow_has_external_ownership_signals(&current))
+}
+
+fn workflow_has_external_ownership_signals(content: &str) -> bool {
+    const STRONG_SIGNALS: &[&str] = &[
+        "runs-on: pcm-runners",
+        "PCM/setup-internal-git",
+        "PCM_INTERNAL_READER_PRIVATE_KEY",
+        "--no-install-package networkit",
+        "github.nrel.gov",
+    ];
+
+    STRONG_SIGNALS.iter().any(|signal| content.contains(signal))
+}
+
+fn adopt_external_managed_file_ownership(
+    blueprint: BlueprintName,
+    root: &Path,
+    pyproject: &str,
+) -> Result<String> {
+    let generated_files = blueprint.render_managed_files_from_pyproject(pyproject)?;
+    let mut ignored_paths = Vec::new();
+
+    for relative_path in externally_owned_workflow_ignore_paths(blueprint) {
+        if external_workflow_ownership_detected(root, &relative_path, &generated_files)? {
+            ignored_paths.push(relative_path);
+        }
+    }
+
+    if ignored_paths.is_empty() {
+        return Ok(pyproject.to_string());
+    }
+
+    apply_forge_ignore_paths_to_text(pyproject, &ignored_paths)
+}
+
+fn externally_owned_workflow_ignore_paths(blueprint: BlueprintName) -> Vec<PathBuf> {
+    if blueprint == BlueprintName::PythonLibrary {
+        return vec![PathBuf::from(".github/workflows/release-please.yaml")];
+    }
+
+    Vec::new()
+}
+
+fn apply_forge_ignore_paths_to_text(pyproject: &str, paths: &[PathBuf]) -> Result<String> {
+    let mut lines: Vec<String> = pyproject
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect();
+    let mut remaining_paths = Vec::new();
+    for path in paths {
+        let path = path.to_string_lossy().to_string();
+        if !update_forge_ignore_option(&mut lines, &path, false) {
+            remaining_paths.push(path);
+        }
+    }
+    if remaining_paths.is_empty() {
+        return Ok(lines.concat());
+    }
+
+    let current_pyproject = lines.concat();
+    let Some((_, table_end)) = table_range(&current_pyproject, "tool.forge") else {
+        return Ok(pyproject.to_string());
+    };
+    lines.insert(
+        table_end,
+        render_toml_string_array_assignment("ignore", &remaining_paths),
+    );
+    Ok(lines.concat())
+}
+
+fn table_has_nonempty_array(table: Option<&toml::Table>, key: &str) -> bool {
+    table
+        .and_then(|table| table.get(key))
+        .and_then(Value::as_array)
+        .is_some_and(|entries| !entries.is_empty())
+}
+
+fn table_has_nonempty_table(table: Option<&toml::Table>, key: &str) -> bool {
+    table
+        .and_then(|table| table.get(key))
+        .and_then(Value::as_table)
+        .is_some_and(|entries| !entries.is_empty())
+}
+
+fn planned_lockfile_update_needed(
+    original_pyproject: &str,
+    managed_files: &GeneratedFiles,
+) -> Result<bool> {
+    let Some(planned_pyproject) = managed_files
+        .get(Path::new("pyproject.toml"))
+        .and_then(GeneratedFile::as_text)
+    else {
+        return Ok(false);
+    };
+
+    lockfile_relevant_pyproject_changed(original_pyproject, planned_pyproject)
+}
+
+fn lockfile_relevant_pyproject_changed(before: &str, after: &str) -> Result<bool> {
+    Ok(lockfile_relevant_pyproject_metadata(before)?
+        != lockfile_relevant_pyproject_metadata(after)?)
+}
+
+fn lockfile_relevant_pyproject_metadata(pyproject: &str) -> Result<Value> {
+    let parsed: Value = toml::from_str(pyproject).context("failed to parse pyproject.toml")?;
+    let Some(root) = parsed.as_table() else {
+        return Ok(Value::Table(toml::Table::new()));
+    };
+
+    let mut relevant = toml::Table::new();
+    for key in ["build-system", "dependency-groups"] {
+        if let Some(value) = root.get(key) {
+            relevant.insert(key.to_string(), value.clone());
+        }
+    }
+
+    if let Some(project) = root.get("project").and_then(Value::as_table) {
+        let mut relevant_project = toml::Table::new();
+        for key in [
+            "name",
+            "version",
+            "requires-python",
+            "dependencies",
+            "optional-dependencies",
+            "dynamic",
+        ] {
+            if let Some(value) = project.get(key) {
+                relevant_project.insert(key.to_string(), value.clone());
+            }
+        }
+        if !relevant_project.is_empty() {
+            relevant.insert("project".to_string(), Value::Table(relevant_project));
+        }
+    }
+
+    if let Some(uv) = root
+        .get("tool")
+        .and_then(Value::as_table)
+        .and_then(|tool| tool.get("uv"))
+    {
+        relevant.insert("tool.uv".to_string(), uv.clone());
+    }
+
+    Ok(Value::Table(relevant))
+}
+
 fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
     let forge_metadata = forge_metadata_block(generated_pyproject)
         .context("generated pyproject.toml is missing [tool.forge]")?;
@@ -623,45 +904,65 @@ fn apply_option_overrides_to_text(
     Ok(lines.concat())
 }
 
-fn update_forge_ignore_option(lines: &mut [String], option_name: &str, enabled: bool) -> bool {
+fn update_forge_ignore_option(lines: &mut Vec<String>, option_name: &str, enabled: bool) -> bool {
     let Some((start, end)) = table_range(&lines.concat(), "tool.forge") else {
         return false;
     };
-    for line in &mut lines[start + 1..end] {
-        if option_assignment_key(line) == Some("ignore") {
-            let Some((_, value)) = line.split_once('=') else {
-                return false;
-            };
-            let mut entries = value
-                .trim()
-                .trim_end_matches(',')
-                .trim_start_matches('[')
-                .trim_end_matches(']')
-                .split(',')
-                .map(|entry| entry.trim().trim_matches('"').to_string())
-                .filter(|entry| !entry.is_empty())
-                .collect::<Vec<_>>();
-            let had_option = entries.iter().any(|entry| entry == option_name);
-            if enabled {
-                if !had_option {
-                    return false;
-                }
-                entries.retain(|entry| entry != option_name);
-            } else if !had_option {
-                entries.push(option_name.to_string());
-            }
-            *line = format!(
-                "ignore = [{}]\n",
-                entries
-                    .iter()
-                    .map(|entry| format!("\"{entry}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            return true;
+
+    let Some(ignore_range) = forge_ignore_assignment_range(lines, start + 1, end) else {
+        return false;
+    };
+    let Some(mut entries) = forge_ignore_entries(lines, ignore_range.clone()) else {
+        return false;
+    };
+
+    let had_option = entries.iter().any(|entry| entry == option_name);
+    if enabled {
+        if !had_option {
+            return false;
+        }
+        entries.retain(|entry| entry != option_name);
+    } else if !had_option {
+        entries.push(option_name.to_string());
+    }
+
+    lines.splice(
+        ignore_range,
+        [render_toml_string_array_assignment("ignore", &entries)],
+    );
+    true
+}
+
+fn forge_ignore_assignment_range(
+    lines: &[String],
+    table_start: usize,
+    table_end: usize,
+) -> Option<std::ops::Range<usize>> {
+    let assignment_start = lines[table_start..table_end]
+        .iter()
+        .position(|line| option_assignment_key(line) == Some("ignore"))?
+        + table_start;
+
+    for assignment_end in assignment_start + 1..=table_end {
+        let snippet = lines[assignment_start..assignment_end].concat();
+        if toml::from_str::<Value>(&snippet).is_ok() {
+            return Some(assignment_start..assignment_end);
         }
     }
-    false
+
+    None
+}
+
+fn forge_ignore_entries(
+    lines: &[String],
+    ignore_range: std::ops::Range<usize>,
+) -> Option<Vec<String>> {
+    let parsed: Value = toml::from_str(&lines[ignore_range].concat()).ok()?;
+    let entries = parsed.get("ignore")?.as_array()?;
+    entries
+        .iter()
+        .map(|entry| entry.as_str().map(str::to_string))
+        .collect()
 }
 
 fn append_option_table(pyproject: &str, overrides: &[(ManagedOption, bool)]) -> Result<String> {
@@ -911,8 +1212,16 @@ fn print_next_steps(
     check: bool,
     option_overrides: &[String],
     actions: &[ManagedFileAction],
+    lockfile_update_needed: bool,
 ) {
-    let next_steps = next_steps_for_actions(root, dry_run, check, option_overrides, actions);
+    let next_steps = next_steps_for_actions(
+        root,
+        dry_run,
+        check,
+        option_overrides,
+        actions,
+        lockfile_update_needed,
+    );
     if !next_steps.is_empty() {
         ui::section("Next steps");
         for step in next_steps {
@@ -927,6 +1236,7 @@ fn next_steps_for_actions(
     check: bool,
     option_overrides: &[String],
     actions: &[ManagedFileAction],
+    lockfile_update_needed: bool,
 ) -> Vec<String> {
     if count_conflicts(actions) > 0 {
         return vec!["resolve conflicted paths and rerun sync".to_string()];
@@ -936,10 +1246,7 @@ fn next_steps_for_actions(
     if (dry_run || check) && count_changes(actions) > 0 {
         next_steps.push(sync_command(root, option_overrides));
     }
-    if actions
-        .iter()
-        .any(|action| action.changes_filesystem() && action.path() == Path::new("pyproject.toml"))
-    {
+    if lockfile_update_needed {
         next_steps.push("uv lock".to_string());
     }
 
@@ -969,6 +1276,7 @@ struct SyncJsonReportInput<'a> {
     option_overrides: &'a [String],
     options: &'a [SelectedOption],
     actions: &'a [ManagedFileAction],
+    lockfile_update_needed: bool,
 }
 
 fn print_json_report(input: SyncJsonReportInput<'_>) -> Result<()> {
@@ -995,6 +1303,7 @@ fn print_json_report(input: SyncJsonReportInput<'_>) -> Result<()> {
             input.check,
             input.option_overrides,
             input.actions,
+            input.lockfile_update_needed,
         ),
         actions: input
             .actions
@@ -1083,6 +1392,103 @@ fn cleanup_actions_for_blueprint(
     )?);
 
     Ok(cleanup_actions)
+}
+
+fn cleanup_actions_for_disabled_generated_workflows(
+    blueprint: BlueprintName,
+    root: &Path,
+    before_pyproject: &str,
+    after_pyproject: &str,
+) -> Result<Vec<ManagedFileAction>> {
+    let before_value: Value =
+        toml::from_str(before_pyproject).context("failed to parse current pyproject.toml")?;
+    let after_value: Value =
+        toml::from_str(after_pyproject).context("failed to parse updated pyproject.toml")?;
+    let before_options = forge_option_values(&before_value, blueprint)?;
+    let after_options = forge_option_values(&after_value, blueprint)?;
+    let before_files = blueprint.render_managed_files_from_pyproject(before_pyproject)?;
+    let ignored_paths = ignored_paths_from_pyproject(after_pyproject);
+
+    let mut actions = Vec::new();
+    for (option, relative_path) in managed_workflow_option_paths(blueprint) {
+        if !managed_workflow_enabled(&before_options, option)?
+            || managed_workflow_enabled(&after_options, option)?
+            || ignored_paths
+                .iter()
+                .any(|ignored| path_matches_prefix(&relative_path, ignored))
+        {
+            continue;
+        }
+        let Some(generated) = before_files
+            .get(&relative_path)
+            .and_then(GeneratedFile::as_text)
+        else {
+            continue;
+        };
+        let Ok(current) = fs::read_to_string(root.join(&relative_path)) else {
+            continue;
+        };
+        if current == generated {
+            actions.push(ManagedFileAction::Remove(relative_path));
+        }
+    }
+
+    Ok(actions)
+}
+
+fn managed_workflow_enabled(options: &ManagedOptionValues, option: ManagedOption) -> Result<bool> {
+    if option == ManagedOption::DocsPages {
+        return Ok(managed_option_enabled(options, ManagedOption::Docs)?
+            && managed_option_enabled(options, ManagedOption::DocsPages)?);
+    }
+
+    managed_option_enabled(options, option)
+}
+
+fn managed_workflow_option_paths(blueprint: BlueprintName) -> Vec<(ManagedOption, PathBuf)> {
+    let mut paths = Vec::new();
+    if blueprint.supports_option(ManagedOption::Ci) {
+        paths.push((
+            ManagedOption::Ci,
+            PathBuf::from(".github/workflows/ci.yaml"),
+        ));
+    }
+    if blueprint.supports_option(ManagedOption::ForgeSync) {
+        paths.push((
+            ManagedOption::ForgeSync,
+            PathBuf::from(".github/workflows/forge-sync.yaml"),
+        ));
+    }
+    if blueprint.supports_option(ManagedOption::WorkflowQuality) {
+        paths.push((
+            ManagedOption::WorkflowQuality,
+            PathBuf::from(".github/workflows/workflow-quality.yaml"),
+        ));
+    }
+    if blueprint.supports_option(ManagedOption::DocsPages) {
+        paths.push((
+            ManagedOption::DocsPages,
+            PathBuf::from(".github/workflows/docs-pages.yaml"),
+        ));
+    }
+    paths
+}
+
+fn remove_retired_managed_files(root: &Path, actions: &[ManagedFileAction]) -> Result<()> {
+    for action in actions {
+        if let ManagedFileAction::Remove(relative_path) = action {
+            remove_managed_file_if_exists(&root.join(relative_path))?;
+        }
+    }
+    Ok(())
+}
+
+fn sort_managed_actions(actions: &mut [ManagedFileAction]) {
+    actions.sort_by(|left, right| {
+        left.path()
+            .cmp(right.path())
+            .then(left.label().cmp(right.label()))
+    });
 }
 
 fn ignored_paths_from_pyproject(pyproject: &str) -> Vec<String> {
@@ -1206,10 +1612,12 @@ mod tests {
     use crate::commands::sync::{
         NonInteractiveApplyGuardInput, action_breakdown, cleanup_action_for_optional_path,
         cleanup_actions_for_blueprint, ensure_noninteractive_apply_allowed,
-        required_tools_summary_for_options, should_confirm_sync, sync_command,
-        sync_result_section_title, sync_review_summary, sync_status_code,
+        lockfile_relevant_pyproject_changed, required_tools_summary_for_options,
+        should_confirm_sync, sync_command, sync_result_section_title, sync_review_summary,
+        sync_status_code,
     };
     use tempfile::TempDir;
+    use toml::Value;
 
     #[cfg(unix)]
     #[test]
@@ -1323,6 +1731,28 @@ markdownlint = false
     }
 
     #[test]
+    fn forge_ignore_updates_keep_long_arrays_taplo_formatted() {
+        let mut lines: Vec<String> = r#"[tool.forge]
+blueprint = "python-library>=0.1.0"
+ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
+"#
+        .split_inclusive('\n')
+        .map(str::to_string)
+        .collect();
+
+        assert!(super::update_forge_ignore_option(
+            &mut lines,
+            ".github/workflows/release-please.yaml",
+            false
+        ));
+
+        let pyproject = lines.concat();
+        assert!(pyproject.contains("ignore = [\n"));
+        assert!(pyproject.contains("  \"workflow-quality\",\n"));
+        toml::from_str::<Value>(&pyproject).expect("updated metadata should remain valid TOML");
+    }
+
+    #[test]
     fn sync_confirmation_gate_requires_interactive_apply_mode() {
         assert!(should_confirm_sync(false, false, false, false, true, 1));
         assert!(!should_confirm_sync(true, false, false, false, true, 1));
@@ -1427,6 +1857,76 @@ markdownlint = false
         assert_eq!(
             command,
             "forge sync --path '/tmp/ops tools' --set prettier=true --set markdownlint=false --yes"
+        );
+    }
+
+    #[test]
+    fn lockfile_relevance_ignores_forge_and_tooling_metadata() {
+        let before = r#"[project]
+name = "ops-tools"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["click"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.forge]
+blueprint = "python-library>=0.1.0"
+"#;
+        let after = r#"[project]
+name = "ops-tools"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["click"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.forge]
+blueprint = "python-library>=0.1.0"
+pyproject = "external"
+
+[tool.forge.overrides]
+ci = false
+"#;
+
+        assert!(
+            !lockfile_relevant_pyproject_changed(before, after)
+                .expect("valid pyproject should compare")
+        );
+    }
+
+    #[test]
+    fn lockfile_relevance_detects_dependency_metadata() {
+        let before = r#"[project]
+name = "ops-tools"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["click"]
+
+[dependency-groups]
+dev = ["pytest"]
+"#;
+        let after = r#"[project]
+name = "ops-tools"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["click", "rich"]
+
+[dependency-groups]
+dev = ["pytest"]
+"#;
+
+        assert!(
+            lockfile_relevant_pyproject_changed(before, after)
+                .expect("valid pyproject should compare")
         );
     }
 

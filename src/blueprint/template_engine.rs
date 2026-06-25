@@ -6,12 +6,17 @@ use serde::Serialize;
 static TEMPLATE_ENV: OnceLock<Environment<'static>> = OnceLock::new();
 
 pub fn render_template(context_name: &str, context: impl Serialize) -> String {
-    TEMPLATE_ENV
+    let mut rendered = TEMPLATE_ENV
         .get_or_init(build_environment)
         .get_template(context_name)
         .unwrap_or_else(|error| panic!("missing template {context_name}: {error}"))
         .render(context)
-        .unwrap_or_else(|error| panic!("failed to render template {context_name}: {error}"))
+        .unwrap_or_else(|error| panic!("failed to render template {context_name}: {error}"));
+    rendered.truncate(rendered.trim_end_matches('\n').len());
+    if !rendered.is_empty() {
+        rendered.push('\n');
+    }
+    rendered
 }
 
 macro_rules! templates {
@@ -97,4 +102,30 @@ fn build_environment() -> Environment<'static> {
     );
 
     environment
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::blueprint::template_engine::render_template;
+
+    #[test]
+    fn rendered_templates_keep_trailing_newline() {
+        let rendered = render_template(
+            "shared/forge-sync.yaml.j2",
+            serde_json::json!({
+                "serialized_sync_concurrency": "",
+                "job_timeout": "",
+                "read_only_checkout_step": "",
+                "setup_uv_step": "",
+                "install_forge_step": "",
+            }),
+        );
+
+        assert!(rendered.ends_with('\n'));
+    }
+
+    #[test]
+    fn empty_templates_remain_empty() {
+        assert_eq!(render_template("shared/py.typed.j2", ()), "");
+    }
 }
