@@ -35,7 +35,6 @@ fn build_environment() -> Environment<'static> {
     templates!(environment,
         "shared/_pre_commit_header.yaml.j2" => "templates/shared/_pre_commit_header.yaml.j2",
         "shared/agents.md.j2" => "templates/shared/agents.md.j2",
-        "shared/automated-update-section.md.j2" => "templates/shared/automated-update-section.md.j2",
         "shared/prettierrc.json.j2" => "templates/shared/prettierrc.json.j2",
         "shared/prettierignore.j2" => "templates/shared/prettierignore.j2",
         "shared/editorconfig.j2" => "templates/shared/editorconfig.j2",

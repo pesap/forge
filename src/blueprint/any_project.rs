@@ -11,7 +11,6 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file
 use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
-use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
@@ -166,8 +165,6 @@ fn render_readme(config: &ProjectConfig) -> String {
     struct Context<'a> {
         project_name: &'a str,
         description: &'a str,
-        automated_update_section: &'a str,
-        blueprint_name: &'a str,
     }
 
     template_engine::render_template(
@@ -175,8 +172,6 @@ fn render_readme(config: &ProjectConfig) -> String {
         Context {
             project_name: &config.project_name,
             description: &config.description,
-            automated_update_section: readme::automated_update_section(),
-            blueprint_name: BLUEPRINT_NAME,
         },
     )
 }

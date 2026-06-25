@@ -11,7 +11,6 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file
 use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
-use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
@@ -221,7 +220,7 @@ pub fn optional_cleanup_paths_from_pyproject(content: &str) -> Result<Vec<PathBu
 fn render_readme(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "rust_library/readme.md.j2",
-        serde_json::json!({"project_name": config.project_name, "description": config.description, "automated_update_section": readme::automated_update_section(), "blueprint_name": BLUEPRINT_NAME}),
+        serde_json::json!({"project_name": config.project_name, "description": config.description}),
     )
 }
 

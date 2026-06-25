@@ -19,7 +19,6 @@ pub mod gitattributes;
 pub mod github_actions;
 pub mod precommit;
 pub mod python_library;
-pub mod readme;
 pub mod rust_library;
 pub mod template_engine;
 pub mod toml_value;

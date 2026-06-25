@@ -262,13 +262,10 @@ fn new_generates_python_project_with_metadata() {
     ));
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
-    assert!(readme.contains("forge sync --path . --yes"));
-    assert!(readme.contains("forge sync --path . --dry-run"));
-    assert!(readme.contains("forge sync --path . --check"));
-    assert!(readme.contains("uv lock"));
-    assert!(readme.contains("[tool.forge]"));
-    assert!(readme.contains("Infrastructure Sync"));
-    assert!(readme.contains("Forge-managed infrastructure changes"));
+    assert!(readme.contains("[![Managed by Forge]"));
+    assert!(readme.contains("https://github.com/pesap/forge"));
+    assert!(!readme.contains("Infrastructure Sync"));
+    assert!(!readme.contains("Forge Management"));
     assert!(!readme.contains("infra-only"));
     assert!(!readme.contains("template-managed"));
 

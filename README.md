@@ -1,15 +1,22 @@
-# Forge
+<img src="assets/forge-mark.svg" alt="forge" align="left" width="192px" height="192px"/>
+<img align="left" width="0" height="192px" hspace="10"/>
 
-[![CI](https://github.com/pesap/forge/actions/workflows/ci.yaml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
-[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+### forge
+> Scaffold repositories from blueprints and keep their infrastructure up to date.
+>
+> [![Forge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pesap/forge/main/.github/badges/forge.json)](https://github.com/pesap/forge)
+> [![Managed by humans](https://img.shields.io/badge/managed%20by-humans-1f6feb)](https://github.com/pesap/forge)
+> [![Managed with uv](https://img.shields.io/badge/managed%20with-uv-7c3aed.svg)](https://docs.astral.sh/uv/)
+> [![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
+> [![CI](https://github.com/pesap/forge/actions/workflows/ci.yaml/badge.svg)](https://github.com/pesap/forge/actions/workflows/ci.yaml)
+> [![Release](https://img.shields.io/github/v/release/pesap/forge)](https://github.com/pesap/forge/releases)
+> [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+<br/>
+<br/>
+<br/>
 
-Forge is a Rust CLI for creating repositories from blueprints and keeping their
-infrastructure current. It manages files such as CI workflows, hook
-configuration, docs scaffolding, release automation, and task recipes while
-preserving project-owned code and configuration.
-
-Current blueprints: `any-project`, `python-library`, `rust-library`.
+> [!NOTE]
+> `forge` is currently source-first (`cargo` workflow). Packaging and distribution are expected to evolve.
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
@@ -19,6 +26,8 @@ Current blueprints: `any-project`, `python-library`, `rust-library`.
   <a href="#workflows">Workflows</a> ·
   <a href="#development">Development</a>
 </p>
+
+Current blueprints: `any-project`, `python-library`, `rust-library`.
 
 ---
 

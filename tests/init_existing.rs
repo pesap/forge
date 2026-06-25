@@ -1720,7 +1720,8 @@ fn init_yes_overwrites_existing_managed_files_after_explicit_review() {
 
     let readme = fs::read_to_string(project_path.join("README.md")).expect("README should exist");
     assert!(readme.contains("Shared repo infrastructure"));
-    assert!(readme.contains("Forge Management"));
+    assert!(readme.contains("[![Managed by Forge]"));
+    assert!(!readme.contains("Forge Management"));
     let pyproject =
         fs::read_to_string(project_path.join("pyproject.toml")).expect("pyproject should exist");
     assert!(pyproject.contains("blueprint = \"any-project>=0.1.0\""));
