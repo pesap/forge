@@ -6,12 +6,17 @@ use serde::Serialize;
 static TEMPLATE_ENV: OnceLock<Environment<'static>> = OnceLock::new();
 
 pub fn render_template(context_name: &str, context: impl Serialize) -> String {
-    TEMPLATE_ENV
+    let mut rendered = TEMPLATE_ENV
         .get_or_init(build_environment)
         .get_template(context_name)
         .unwrap_or_else(|error| panic!("missing template {context_name}: {error}"))
         .render(context)
-        .unwrap_or_else(|error| panic!("failed to render template {context_name}: {error}"))
+        .unwrap_or_else(|error| panic!("failed to render template {context_name}: {error}"));
+    rendered.truncate(rendered.trim_end_matches('\n').len());
+    if !rendered.is_empty() {
+        rendered.push('\n');
+    }
+    rendered
 }
 
 macro_rules! templates {
@@ -40,6 +45,17 @@ fn build_environment() -> Environment<'static> {
         "shared/install-forge-step.yaml.j2" => "templates/shared/install-forge-step.yaml.j2",
         "shared/setup-uv-step.yaml.j2" => "templates/shared/setup-uv-step.yaml.j2",
         "shared/read-only-checkout-step.yaml.j2" => "templates/shared/read-only-checkout-step.yaml.j2",
+        "shared/read-only-permissions.yaml.j2" => "templates/shared/read-only-permissions.yaml.j2",
+        "shared/cancel-redundant-ci-concurrency.yaml.j2" => "templates/shared/cancel-redundant-ci-concurrency.yaml.j2",
+        "shared/serialized-sync-concurrency.yaml.j2" => "templates/shared/serialized-sync-concurrency.yaml.j2",
+        "shared/serialized-ref-concurrency.yaml.j2" => "templates/shared/serialized-ref-concurrency.yaml.j2",
+        "shared/serialized-release-concurrency.yaml.j2" => "templates/shared/serialized-release-concurrency.yaml.j2",
+        "shared/job-timeout.yaml.j2" => "templates/shared/job-timeout.yaml.j2",
+        "shared/uv-sync-locked-step.yaml.j2" => "templates/shared/uv-sync-locked-step.yaml.j2",
+        "shared/uv-lock-check-step.yaml.j2" => "templates/shared/uv-lock-check-step.yaml.j2",
+        "shared/uv-run-locked-step.yaml.j2" => "templates/shared/uv-run-locked-step.yaml.j2",
+        "shared/prettier-pre-commit-hook.yaml.j2" => "templates/shared/prettier-pre-commit-hook.yaml.j2",
+        "shared/markdownlint-pre-commit-hook.yaml.j2" => "templates/shared/markdownlint-pre-commit-hook.yaml.j2",
         "any_project/readme.md.j2" => "templates/any_project/readme.md.j2",
         "any_project/gitignore.j2" => "templates/any_project/gitignore.j2",
         "any_project/pyproject.toml.j2" => "templates/any_project/pyproject.toml.j2",
@@ -60,11 +76,14 @@ fn build_environment() -> Environment<'static> {
         "python_library/pyproject.toml.j2" => "templates/python_library/pyproject.toml.j2",
         "python_library/justfile.j2" => "templates/python_library/justfile.j2",
         "python_library/pre-commit-config.yaml.j2" => "templates/python_library/pre-commit-config.yaml.j2",
+        "python_library/pretty-format-json-hook.yaml.j2" => "templates/python_library/pretty-format-json-hook.yaml.j2",
         "python_library/typos.toml.j2" => "templates/python_library/typos.toml.j2",
         "python_library/contributing.md.j2" => "templates/python_library/contributing.md.j2",
         "python_library/changelog.md.j2" => "templates/python_library/changelog.md.j2",
         "python_library/ci.yaml.j2" => "templates/python_library/ci.yaml.j2",
+        "python_library/codecov-step.yaml.j2" => "templates/python_library/codecov-step.yaml.j2",
         "python_library/release-please.yaml.j2" => "templates/python_library/release-please.yaml.j2",
+        "python_library/pypi-publish-job.yaml.j2" => "templates/python_library/pypi-publish-job.yaml.j2",
         "python_library/workflow-quality.yaml.j2" => "templates/python_library/workflow-quality.yaml.j2",
         "python_library/docs-pages.yaml.j2" => "templates/python_library/docs-pages.yaml.j2",
         "python_library/release-please-config.json.j2" => "templates/python_library/release-please-config.json.j2",
@@ -97,4 +116,30 @@ fn build_environment() -> Environment<'static> {
     );
 
     environment
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::blueprint::template_engine::render_template;
+
+    #[test]
+    fn rendered_templates_keep_trailing_newline() {
+        let rendered = render_template(
+            "shared/forge-sync.yaml.j2",
+            serde_json::json!({
+                "serialized_sync_concurrency": "",
+                "job_timeout": "",
+                "read_only_checkout_step": "",
+                "setup_uv_step": "",
+                "install_forge_step": "",
+            }),
+        );
+
+        assert!(rendered.ends_with('\n'));
+    }
+
+    #[test]
+    fn empty_templates_remain_empty() {
+        assert_eq!(render_template("shared/py.typed.j2", ()), "");
+    }
 }

@@ -11,7 +11,6 @@ use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file
 use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
-use crate::blueprint::readme;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
@@ -40,6 +39,10 @@ pub struct ProjectConfig {
     pub python_min: String,
     pub gitignore_profile: String,
     pub docs: bool,
+    pub ci: bool,
+    pub forge_sync: bool,
+    pub docs_pages: bool,
+    pub workflow_quality: bool,
     pub codecov: bool,
     pub pypi_publish: bool,
     pub python_rules: bool,
@@ -202,22 +205,28 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     files.extend(agents::render_agent_files(&[
         "Preserve user-authored Python package code during managed infrastructure syncs.",
     ]));
-    files.insert(
-        PathBuf::from(".github/workflows/ci.yaml"),
-        GeneratedFile::text(render_ci_workflow(config)),
-    );
+    if config.ci {
+        files.insert(
+            PathBuf::from(".github/workflows/ci.yaml"),
+            GeneratedFile::text(render_ci_workflow(config)),
+        );
+    }
     files.insert(
         PathBuf::from(".github/workflows/release-please.yaml"),
         GeneratedFile::text(render_release_please_workflow(config)),
     );
-    files.insert(
-        PathBuf::from(".github/workflows/workflow-quality.yaml"),
-        GeneratedFile::text(render_workflow_quality_workflow()),
-    );
-    files.insert(
-        PathBuf::from(".github/workflows/forge-sync.yaml"),
-        GeneratedFile::text(github_actions::render_forge_sync_workflow()),
-    );
+    if config.workflow_quality {
+        files.insert(
+            PathBuf::from(".github/workflows/workflow-quality.yaml"),
+            GeneratedFile::text(render_workflow_quality_workflow()),
+        );
+    }
+    if config.forge_sync {
+        files.insert(
+            PathBuf::from(".github/workflows/forge-sync.yaml"),
+            GeneratedFile::text(github_actions::render_forge_sync_workflow()),
+        );
+    }
     files.insert(
         PathBuf::from(".github/release-please-config.json"),
         GeneratedFile::text(render_release_please_config()),
@@ -228,10 +237,12 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
     );
 
     if config.docs {
-        files.insert(
-            PathBuf::from(".github/workflows/docs-pages.yaml"),
-            GeneratedFile::text(render_docs_pages_workflow()),
-        );
+        if config.docs_pages {
+            files.insert(
+                PathBuf::from(".github/workflows/docs-pages.yaml"),
+                GeneratedFile::text(render_docs_pages_workflow()),
+            );
+        }
         files.insert(
             PathBuf::from("docs/package.json"),
             GeneratedFile::text(render_docs_package_json(config)),
@@ -276,7 +287,6 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
     if !config.docs {
         files.extend(
             [
-                ".github/workflows/docs-pages.yaml",
                 "docs/package.json",
                 "docs/astro.config.mjs",
                 "docs/src/content.config.ts",
@@ -306,7 +316,7 @@ fn remove_if_exists(path: &Path) -> Result<()> {
 fn render_readme(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/readme.md.j2",
-        serde_json::json!({"project_name": config.project_name, "description": config.description, "automated_update_section": readme::automated_update_section(), "blueprint_name": BLUEPRINT_NAME}),
+        serde_json::json!({"project_name": config.project_name, "description": config.description}),
     )
 }
 
@@ -418,6 +428,10 @@ fn render_python_forge_overrides(config: &ProjectConfig) -> String {
     render_forge_overrides_table(
         BlueprintName::PythonLibrary,
         &[
+            (ManagedOption::Ci, config.ci),
+            (ManagedOption::ForgeSync, config.forge_sync),
+            (ManagedOption::DocsPages, config.docs_pages),
+            (ManagedOption::WorkflowQuality, config.workflow_quality),
             (ManagedOption::PypiPublish, config.pypi_publish),
             (
                 ManagedOption::Editorconfig,
@@ -445,12 +459,10 @@ fn render_python_forge_ignore(config: &ProjectConfig) -> String {
 }
 
 fn render_justfile(config: &ProjectConfig) -> String {
-    let mut justfile = template_engine::render_template(
+    template_engine::render_template(
         "python_library/justfile.j2",
         serde_json::json!({"docs_recipe": if config.docs {"\ndocs:\n    cd docs && npm install\n    cd docs && npm run dev\n"} else {""}, "component_format_steps": render_component_format_steps(config), "package_name_unquoted": config.package_name}),
-    );
-    justfile.push('\n');
-    justfile
+    )
 }
 
 fn render_component_format_steps(config: &ProjectConfig) -> String {
@@ -470,7 +482,7 @@ fn render_component_format_steps(config: &ProjectConfig) -> String {
 fn render_precommit_config(config: &ProjectConfig) -> String {
     template_engine::render_template(
         "python_library/pre-commit-config.yaml.j2",
-        serde_json::json!({"builtin_hooks": "      - id: pretty-format-json\n", "commitizen_version": COMMITIZEN_VERSION, "component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": true, "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
+        serde_json::json!({"builtin_hooks": template_engine::render_template("python_library/pretty-format-json-hook.yaml.j2", ()), "commitizen_version": COMMITIZEN_VERSION, "component_hooks": config.components.pre_commit_hooks(), "install_commit_msg_hook": true, "python_rules": config.python_rules, "uv_lock_hook": precommit::uv_lock_hook()}),
     )
 }
 
@@ -504,7 +516,10 @@ fn render_ci_workflow(config: &ProjectConfig) -> String {
             "ty_check_step": github_actions::uv_run_locked_step("ty check"),
             "prek_step": github_actions::uv_run_locked_step("prek run --all-files"),
             "pytest_cov_step": github_actions::uv_run_locked_step("pytest --cov --cov-report=xml"),
-            "codecov_step": if config.codecov {String::from("      - name: Upload coverage to Codecov\n        if: ${{ matrix.python-version == '3.14' }}\n        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n")} else {format!("      # {}\n      # - name: Upload coverage to Codecov\n      #   uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6\n", CODECOV_NOTICE)}
+            "codecov_step": template_engine::render_template(
+                "python_library/codecov-step.yaml.j2",
+                serde_json::json!({"enabled": config.codecov, "notice": CODECOV_NOTICE}),
+            )
         }),
     )
 }
@@ -549,12 +564,13 @@ fn render_release_please_workflow(config: &ProjectConfig) -> String {
             "serialized_ref_concurrency": github_actions::serialized_ref_concurrency(),
             "job_timeout": github_actions::job_timeout(),
             "pypi_publish_job_block": if config.pypi_publish {
-                format!(
-                    "\n  publish-pypi:\n    runs-on: ubuntu-latest\n    needs: release-please\n    if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')\n    concurrency:\n      group: pypi-publish-${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\n      cancel-in-progress: false\n    environment:\n      name: pypi\n      url: https://pypi.org/p/{}\n    permissions:\n      id-token: write\n      contents: read\n{}    steps:\n      - id: publish_ref\n        run: |\n          if [ \"${{{{ github.event_name }}}}\" = \"workflow_dispatch\" ] && [ \"${{{{ github.event.inputs.publish_pypi }}}}\" = \"true\" ] && [ -z \"${{{{ github.event.inputs.release_tag }}}}\" ]; then\n            echo \"release_tag input is required when publish_pypi=true\" >&2\n            exit 1\n          fi\n          REF=\"${{{{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || needs.release-please.outputs.release_tag }}}}\"\n          if [ -z \"$REF\" ]; then\n            echo \"No release tag resolved for publish step\" >&2\n            exit 1\n          fi\n          echo \"ref=$REF\" >> \"$GITHUB_OUTPUT\"\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n        with:\n          ref: ${{{{ steps.publish_ref.outputs.ref }}}}\n          persist-credentials: false\n      - name: Verify release tag exists\n        run: git rev-parse --verify \"refs/tags/${{{{ steps.publish_ref.outputs.ref }}}}\"\n      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.6.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: |\n            pyproject.toml\n            uv.lock\n      - run: uv build --locked\n      - run: uv publish --dry-run\n      # {}\n      # - name: Publish package distributions to PyPI\n      #   uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1\n      - name: Publish summary\n        run: |\n          echo \"### PyPI publish fallback dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- project: {}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- tag: ${{{{ steps.publish_ref.outputs.ref }}}}\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- mode: uv publish --dry-run\" >> \"$GITHUB_STEP_SUMMARY\"\n          echo \"- to enable real publish: uncomment the trusted publishing step in this workflow\" >> \"$GITHUB_STEP_SUMMARY\"\n",
-                    config.project_name,
-                    github_actions::job_timeout(),
-                    PYPI_PUBLISH_NOTICE,
-                    config.project_name
+                template_engine::render_template(
+                    "python_library/pypi-publish-job.yaml.j2",
+                    serde_json::json!({
+                        "project_name": config.project_name,
+                        "job_timeout": github_actions::job_timeout(),
+                        "notice": PYPI_PUBLISH_NOTICE,
+                    }),
                 )
             } else {
                 String::new()
@@ -774,6 +790,10 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
             .map(fn_gitignore_profile_from_metadata)
             .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
+        ci: managed_option_enabled(&options, ManagedOption::Ci)?,
+        forge_sync: managed_option_enabled(&options, ManagedOption::ForgeSync)?,
+        docs_pages: managed_option_enabled(&options, ManagedOption::DocsPages)?,
+        workflow_quality: managed_option_enabled(&options, ManagedOption::WorkflowQuality)?,
         codecov: managed_option_enabled(&options, ManagedOption::Codecov)?,
         pypi_publish: managed_option_enabled(&options, ManagedOption::PypiPublish)?,
         python_rules: managed_option_enabled(&options, ManagedOption::PythonRules)?,
@@ -883,6 +903,10 @@ mod tests {
             python_min: "3.13".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -977,6 +1001,7 @@ mod tests {
         assert!(builtin_repo < pretty_format_json);
         assert!(pretty_format_json < meta_repo);
         assert!(pretty_format_json < local_repo);
+        assert!(precommit.contains("files: ^(?!.*(^|/)package-lock\\.json$).+\\.json$"));
     }
 
     #[test]
@@ -986,7 +1011,11 @@ mod tests {
 
         assert!(precommit.contains("repo: https://github.com/crate-ci/typos"));
         assert!(precommit.contains("id: typos"));
+        assert!(precommit.contains("args: [\"--force-exclude\"]"));
         assert!(!precommit.contains("cspell"));
+        assert!(typos.contains("\"data/**\""));
+        assert!(typos.contains("\"tests/data/**\""));
+        assert!(typos.contains("extend-ignore-identifiers-re = [\"PTDFs?\"]"));
         assert!(typos.contains("[default.extend-words]"));
         assert!(typos.contains("prek = \"prek\""));
     }
@@ -1069,6 +1098,10 @@ mod tests {
             python_min: "3.11".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -1107,6 +1140,10 @@ mod tests {
             python_min: "3.11".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -1128,6 +1165,10 @@ mod tests {
             python_min: "3.11".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -1149,6 +1190,10 @@ mod tests {
             python_min: "3.11".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -1170,6 +1215,10 @@ mod tests {
             python_min: "3.11\n3.12".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: false,
             python_rules: true,
@@ -1266,6 +1315,10 @@ prettier = true
             python_min: "3.11".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: true,
             pypi_publish: false,
             python_rules: true,
@@ -1313,11 +1366,11 @@ prettier = true
         let workflow = render_ci_workflow(&test_config(true));
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
-        assert!(workflow.contains(github_actions::cancel_redundant_ci_concurrency()));
-        assert!(workflow.contains(github_actions::job_timeout()));
+        assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));
+        assert!(workflow.contains(&github_actions::job_timeout()));
         assert!(workflow.contains(github_actions::read_only_checkout_step()));
         assert!(workflow.contains("enable-cache: true"));
-        assert!(workflow.contains(github_actions::uv_sync_locked_step()));
+        assert!(workflow.contains(&github_actions::uv_sync_locked_step()));
         assert!(workflow.contains(&github_actions::uv_run_locked_step("prek run --all-files")));
     }
 
@@ -1325,7 +1378,7 @@ prettier = true
     fn release_workflows_use_job_timeouts() {
         let release_please = render_release_please_workflow(&test_config(true));
 
-        assert!(release_please.contains(github_actions::job_timeout()));
+        assert!(release_please.contains(&github_actions::job_timeout()));
         assert!(
             release_please.contains(
                 "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"
@@ -1340,7 +1393,7 @@ prettier = true
         let release_please_with_publish = render_release_please_workflow(&with_publish);
         assert!(release_please_with_publish.contains("publish-pypi:"));
         assert!(release_please_with_publish.contains("needs: release-please"));
-        assert!(release_please_with_publish.contains("if: needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')"));
+        assert!(release_please_with_publish.contains("if: ${{ needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true') }}"));
         assert!(
             release_please_with_publish
                 .contains("release_tag input is required when publish_pypi=true")
@@ -1376,6 +1429,10 @@ prettier = true
             python_min: "3.12".to_string(),
             gitignore_profile: "python,macos,visualstudiocode,jetbrains,node".to_string(),
             docs: false,
+            ci: true,
+            forge_sync: true,
+            docs_pages: true,
+            workflow_quality: true,
             codecov: false,
             pypi_publish: true,
             python_rules: true,

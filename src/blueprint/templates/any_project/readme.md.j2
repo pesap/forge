@@ -1,15 +1,12 @@
 # {{ project_name }}
 
+[![Managed by Forge](https://img.shields.io/badge/managed%20by-Forge-blue.svg)](https://github.com/pesap/forge)
+
 {{ description }}
 
 ## Development
 
 ```bash
 uv sync --all-groups
-just hooks-install
 just verify
 ```
-
-{{ automated_update_section }}## Forge Metadata
-
-This project is managed with `forge` blueprint `{{ blueprint_name }}`.

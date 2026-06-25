@@ -337,6 +337,8 @@ fn insert_component_options(values: &mut ManagedOptionValues, components: &Compo
 fn any_project_managed_option_values(config: &any_project::ProjectConfig) -> ManagedOptionValues {
     let mut values = ManagedOptionValues::new();
     values.insert(ManagedOption::Docs, config.docs);
+    values.insert(ManagedOption::Ci, config.ci);
+    values.insert(ManagedOption::ForgeSync, config.forge_sync);
     insert_component_options(&mut values, &config.components);
     values
 }
@@ -346,6 +348,10 @@ fn python_library_managed_option_values(
 ) -> ManagedOptionValues {
     let mut values = ManagedOptionValues::new();
     values.insert(ManagedOption::Docs, config.docs);
+    values.insert(ManagedOption::Ci, config.ci);
+    values.insert(ManagedOption::ForgeSync, config.forge_sync);
+    values.insert(ManagedOption::DocsPages, config.docs_pages);
+    values.insert(ManagedOption::WorkflowQuality, config.workflow_quality);
     values.insert(ManagedOption::Codecov, config.codecov);
     values.insert(ManagedOption::PypiPublish, config.pypi_publish);
     values.insert(ManagedOption::PythonRules, config.python_rules);
@@ -356,6 +362,8 @@ fn python_library_managed_option_values(
 fn rust_library_managed_option_values(config: &rust_library::ProjectConfig) -> ManagedOptionValues {
     let mut values = ManagedOptionValues::new();
     values.insert(ManagedOption::Docs, config.docs);
+    values.insert(ManagedOption::Ci, config.ci);
+    values.insert(ManagedOption::ForgeSync, config.forge_sync);
     values.insert(ManagedOption::RustRules, config.rust_rules);
     insert_component_options(&mut values, &config.components);
     values
@@ -526,6 +534,10 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
     });
 
     resolved.docs = option_flag(options, "docs").unwrap_or(resolved.docs);
+    resolved.ci = option_flag(options, "ci").unwrap_or(resolved.ci);
+    resolved.forge_sync = option_flag(options, "forge-sync").unwrap_or(resolved.forge_sync);
+    resolved.docs_pages = option_flag(options, "docs-pages");
+    resolved.workflow_quality = option_flag(options, "workflow-quality");
     resolved.codecov = option_flag(options, "codecov");
     resolved.pypi_publish = option_flag(options, "pypi-publish");
     resolved.prettier = option_flag(options, "prettier").unwrap_or(resolved.prettier);
@@ -565,6 +577,10 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
         &mut parts,
         ManagedOptionFlags {
             docs: args.docs,
+            ci: args.ci,
+            forge_sync: args.forge_sync,
+            docs_pages: args.docs_pages,
+            workflow_quality: args.workflow_quality,
             codecov: args.codecov,
             pypi_publish: args.pypi_publish,
             prettier: args.prettier,
@@ -669,6 +685,10 @@ pub(crate) fn push_option(parts: &mut Vec<String>, name: &str, value: Option<&st
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ManagedOptionFlags {
     pub(crate) docs: bool,
+    pub(crate) ci: bool,
+    pub(crate) forge_sync: bool,
+    pub(crate) docs_pages: Option<bool>,
+    pub(crate) workflow_quality: Option<bool>,
     pub(crate) codecov: Option<bool>,
     pub(crate) pypi_publish: Option<bool>,
     pub(crate) prettier: bool,
@@ -679,6 +699,18 @@ pub(crate) struct ManagedOptionFlags {
 pub(crate) fn push_managed_option_flags(parts: &mut Vec<String>, flags: ManagedOptionFlags) {
     if !flags.docs {
         parts.push("--docs=false".to_string());
+    }
+    if !flags.ci {
+        parts.push("--ci=false".to_string());
+    }
+    if !flags.forge_sync {
+        parts.push("--forge-sync=false".to_string());
+    }
+    if let Some(docs_pages) = flags.docs_pages {
+        parts.push(format!("--docs-pages={docs_pages}"));
+    }
+    if let Some(workflow_quality) = flags.workflow_quality {
+        parts.push(format!("--workflow-quality={workflow_quality}"));
     }
     if let Some(codecov) = flags.codecov {
         parts.push(format!("--codecov={codecov}"));
@@ -850,6 +882,8 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
     let mut project_name = args.project_name.clone();
     let mut description = args.description.clone();
     let mut docs = docs_enabled(args);
+    let mut ci = ci_enabled(args);
+    let mut forge_sync = forge_sync_enabled(args);
     let mut ignored_files = args.ignored_files.clone();
     let mut components = component_selection_from_args(args);
 
@@ -868,6 +902,8 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
             "description cannot be empty",
         )?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
+        ci = prompt_bool("Manage GitHub Actions CI workflow?", ci)?;
+        forge_sync = prompt_bool("Manage scheduled Forge sync workflow?", forge_sync)?;
         prompt_supported_components(&mut components, BlueprintName::AnyProject)?;
     }
 
@@ -875,6 +911,8 @@ fn gather_any_project_config(args: &NewArgs) -> Result<any_project::ProjectConfi
         project_name: require_field("project-name", project_name)?,
         description: require_field("description", description)?,
         docs,
+        ci,
+        forge_sync,
         components,
         ignored_files,
     })
@@ -890,6 +928,10 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
     let mut python_min = args.python_min.clone();
     let gitignore_profile = args.gitignore_profile.clone();
     let mut docs = docs_enabled(args);
+    let mut ci = ci_enabled(args);
+    let mut forge_sync = forge_sync_enabled(args);
+    let mut docs_pages = docs_pages_enabled(args);
+    let mut workflow_quality = workflow_quality_enabled(args);
     let mut codecov = codecov_enabled(args);
     let mut pypi_publish = pypi_publish_enabled(args);
     let mut ignored_files = args.ignored_files.clone();
@@ -931,6 +973,15 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
             "python-min must be between 3.8 and 3.14 as major.minor",
         )?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
+        if docs {
+            docs_pages = prompt_bool("Manage GitHub Pages docs workflow?", docs_pages)?;
+        }
+        ci = prompt_bool("Manage GitHub Actions CI workflow?", ci)?;
+        forge_sync = prompt_bool("Manage scheduled Forge sync workflow?", forge_sync)?;
+        workflow_quality = prompt_bool(
+            "Manage GitHub Actions workflow quality workflow?",
+            workflow_quality,
+        )?;
         codecov = prompt_bool("Enable Codecov upload in CI?", codecov)?;
         pypi_publish = prompt_bool("Add trusted PyPI publish workflow?", pypi_publish)?;
         prompt_supported_components(&mut components, BlueprintName::PythonLibrary)?;
@@ -953,6 +1004,10 @@ fn gather_python_library_config(args: &NewArgs) -> Result<python_library::Projec
         gitignore_profile: gitignore_profile
             .unwrap_or_else(|| "python,macos,visualstudiocode,jetbrains,node".to_string()),
         docs,
+        ci,
+        forge_sync,
+        docs_pages,
+        workflow_quality,
         codecov,
         pypi_publish,
         python_rules: true,
@@ -969,6 +1024,8 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
     let author_email = args.author_email.clone();
     let mut license = args.license.clone();
     let mut docs = docs_enabled(args);
+    let mut ci = ci_enabled(args);
+    let mut forge_sync = forge_sync_enabled(args);
     let mut ignored_files = args.ignored_files.clone();
     let mut components = component_selection_from_args(args);
 
@@ -1001,6 +1058,8 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         )?;
         prompt_license_if_missing(&mut license)?;
         docs = prompt_bool("Generate Starlight documentation?", docs)?;
+        ci = prompt_bool("Manage GitHub Actions CI workflow?", ci)?;
+        forge_sync = prompt_bool("Manage scheduled Forge sync workflow?", forge_sync)?;
         prompt_supported_components(&mut components, BlueprintName::RustLibrary)?;
     }
 
@@ -1016,6 +1075,8 @@ fn gather_rust_library_config(args: &NewArgs) -> Result<rust_library::ProjectCon
         license: license.unwrap_or_else(|| DEFAULT_LICENSE.to_string()),
         rust_edition: "2024".to_string(),
         docs,
+        ci,
+        forge_sync,
         rust_rules: true,
         components,
         ignored_files,
@@ -1262,6 +1323,22 @@ fn docs_enabled(args: &NewArgs) -> bool {
     args.docs
 }
 
+fn ci_enabled(args: &NewArgs) -> bool {
+    args.ci
+}
+
+fn forge_sync_enabled(args: &NewArgs) -> bool {
+    args.forge_sync
+}
+
+fn docs_pages_enabled(args: &NewArgs) -> bool {
+    args.docs_pages.unwrap_or(true)
+}
+
+fn workflow_quality_enabled(args: &NewArgs) -> bool {
+    args.workflow_quality.unwrap_or(true)
+}
+
 fn codecov_enabled(args: &NewArgs) -> bool {
     args.codecov.unwrap_or(true)
 }
@@ -1309,6 +1386,29 @@ pub(crate) fn validate_explicit_options(blueprint: BlueprintName, args: &NewArgs
             format!(
                 "option '{}' is not supported by {}",
                 ManagedOption::Codecov.as_str(),
+                blueprint.as_str()
+            ),
+        ));
+    }
+
+    if !blueprint.supports_option(ManagedOption::WorkflowQuality) && args.workflow_quality.is_some()
+    {
+        return Err(coded_error(
+            ErrorCode::Input,
+            format!(
+                "option '{}' is not supported by {}",
+                ManagedOption::WorkflowQuality.as_str(),
+                blueprint.as_str()
+            ),
+        ));
+    }
+
+    if !blueprint.supports_option(ManagedOption::DocsPages) && args.docs_pages.is_some() {
+        return Err(coded_error(
+            ErrorCode::Input,
+            format!(
+                "option '{}' is not supported by {}",
+                ManagedOption::DocsPages.as_str(),
                 blueprint.as_str()
             ),
         ));
@@ -1918,6 +2018,10 @@ mod tests {
             python_min: Some("3.12".to_string()),
             gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
             docs: false,
+            ci: true,
+            forge_sync: true,
+            docs_pages: Some(false),
+            workflow_quality: Some(false),
             codecov: Some(false),
             pypi_publish: Some(true),
             prettier: true,
@@ -1942,7 +2046,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --codecov=false --pypi-publish=true --prettier --github --github-owner example-org --github-visibility private --yes"
+            "forge init --path '/tmp/grid tools' --blueprint python-library --project-name grid-tools --package-name grid_tools --description 'Grid toolchain' --author-name 'Ada Lovelace' --author-email 'ada@example.com' --license MIT --python-min 3.12 --gitignore-profile 'python,macos,visualstudiocode,jetbrains,node' --docs=false --docs-pages=false --workflow-quality=false --codecov=false --pypi-publish=true --prettier --github --github-owner example-org --github-visibility private --yes"
         );
         assert!(!command.contains("--json"));
         assert!(!command.contains("--dry-run"));
@@ -1957,6 +2061,10 @@ mod tests {
             &mut parts,
             ManagedOptionFlags {
                 docs: false,
+                ci: false,
+                forge_sync: false,
+                docs_pages: Some(false),
+                workflow_quality: Some(false),
                 codecov: Some(false),
                 pypi_publish: Some(true),
                 prettier: true,
@@ -1969,6 +2077,10 @@ mod tests {
             parts,
             vec![
                 "--docs=false".to_string(),
+                "--ci=false".to_string(),
+                "--forge-sync=false".to_string(),
+                "--docs-pages=false".to_string(),
+                "--workflow-quality=false".to_string(),
                 "--codecov=false".to_string(),
                 "--pypi-publish=true".to_string(),
                 "--prettier".to_string(),
@@ -1987,6 +2099,10 @@ mod tests {
             &mut parts,
             ManagedOptionFlags {
                 docs: true,
+                ci: true,
+                forge_sync: true,
+                docs_pages: None,
+                workflow_quality: None,
                 codecov: None,
                 pypi_publish: None,
                 prettier: false,
@@ -2012,6 +2128,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: true,
@@ -2048,6 +2168,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -2147,6 +2271,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -2190,6 +2318,10 @@ mod tests {
             python_min: Some("3.12".to_string()),
             gitignore_profile: Some("python,macos,visualstudiocode,jetbrains,node".to_string()),
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: Some(true),
             codecov: Some(true),
             pypi_publish: Some(false),
             prettier: true,
@@ -2236,6 +2368,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -2334,6 +2470,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -2441,6 +2581,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -2474,6 +2618,8 @@ python_min = "3.12"
 
 [tool.forge.overrides]
 docs = false
+docs-pages = false
+workflow-quality = false
 codecov = false
 pypi-publish = true
 prettier = true
@@ -2495,6 +2641,8 @@ markdownlint = true
         assert_eq!(resolved.license.as_deref(), Some("MIT"));
         assert_eq!(resolved.python_min.as_deref(), Some("3.12"));
         assert!(!resolved.docs);
+        assert_eq!(resolved.docs_pages, Some(false));
+        assert_eq!(resolved.workflow_quality, Some(false));
         assert_eq!(resolved.codecov, Some(false));
         assert_eq!(resolved.pypi_publish, Some(true));
         assert!(resolved.prettier);

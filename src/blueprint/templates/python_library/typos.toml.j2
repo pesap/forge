@@ -1,5 +1,15 @@
 [files]
-extend-exclude = ["CHANGELOG.md", "docs/dist", "node_modules", "uv.lock"]
+extend-exclude = [
+  "CHANGELOG.md",
+  "data/**",
+  "docs/dist",
+  "node_modules",
+  "tests/data/**",
+  "uv.lock",
+]
+
+[default]
+extend-ignore-identifiers-re = ["PTDFs?"]
 
 [default.extend-words]
 codecov = "codecov"

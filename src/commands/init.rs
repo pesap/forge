@@ -1006,6 +1006,10 @@ fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
         python_min: args.python_min.clone(),
         gitignore_profile: args.gitignore_profile.clone(),
         docs: args.docs,
+        ci: args.ci,
+        forge_sync: args.forge_sync,
+        docs_pages: args.docs_pages,
+        workflow_quality: args.workflow_quality,
         codecov: args.codecov,
         pypi_publish: args.pypi_publish,
         prettier: args.prettier,
@@ -1288,6 +1292,10 @@ fn preview_init_command(
     resolved.python_min = resolved_new_args.python_min;
     resolved.gitignore_profile = resolved_new_args.gitignore_profile;
     resolved.docs = resolved_new_args.docs;
+    resolved.ci = resolved_new_args.ci;
+    resolved.forge_sync = resolved_new_args.forge_sync;
+    resolved.docs_pages = resolved_new_args.docs_pages;
+    resolved.workflow_quality = resolved_new_args.workflow_quality;
     resolved.codecov = resolved_new_args.codecov;
     resolved.pypi_publish = resolved_new_args.pypi_publish;
     resolved.prettier = resolved_new_args.prettier;
@@ -1324,6 +1332,10 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName) -> String {
         &mut parts,
         new::ManagedOptionFlags {
             docs: args.docs,
+            ci: args.ci,
+            forge_sync: args.forge_sync,
+            docs_pages: args.docs_pages,
+            workflow_quality: args.workflow_quality,
             codecov: args.codecov,
             pypi_publish: args.pypi_publish,
             prettier: args.prettier,
@@ -1437,6 +1449,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -1479,6 +1495,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -1629,6 +1649,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,
@@ -1692,6 +1716,10 @@ mod tests {
             python_min: None,
             gitignore_profile: None,
             docs: true,
+            ci: true,
+            forge_sync: true,
+            docs_pages: None,
+            workflow_quality: None,
             codecov: None,
             pypi_publish: None,
             prettier: false,

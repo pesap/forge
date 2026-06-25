@@ -48,16 +48,16 @@ forge init \
   --yes
 ```
 
-Then inside the generated project:
+Then verify the generated project:
 
 ```bash
 uv sync --all-groups
 just verify
 ```
 
-That is it. Generated projects include managed CI, release-please
-configuration, agent instructions, `prek` hooks, and a scheduled Forge sync
-workflow that opens an infrastructure sync PR when drift is detected.
+Generated projects include CI, release-please configuration, agent
+instructions, `prek` hooks, docs scaffolding, and a scheduled Forge sync
+workflow that opens an infrastructure pull request when managed files drift.
 
 ---
 
@@ -90,17 +90,15 @@ with that package manager instead.
 
 ## Commands
 
-| Command             | What it does                                                                      |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `forge init`         | Create a new project from a blueprint                                             |
-| `forge init`        | Adopt Forge-managed infrastructure in an existing repository                      |
-| `forge sync`      | Refresh managed infrastructure in a Forge-managed project                         |
-| `forge self update` | Update a standalone-installer Forge binary                                        |
-| `forge blueprints`  | List available blueprints and their setup fields                                  |
-| `forge components`  | List reusable optional components (Prettier, EditorConfig, PyPI publishing, etc.) |
-| `forge doctor`      | Check local toolchain health                                                      |
-| `forge completions` | Emit shell completion scripts (bash, zsh, fish, powershell, elvish)               |
-| `forge self update` | Update the forge binary                                                           |
+| Command             | What it does                                                        |
+| ------------------- | ------------------------------------------------------------------- |
+| `forge init`        | Create a new project or adopt infrastructure in an existing repo    |
+| `forge sync`        | Refresh managed files in a Forge-managed project                    |
+| `forge blueprints`  | List available blueprints and setup fields                          |
+| `forge components`  | List optional managed components                                    |
+| `forge doctor`      | Check local toolchain health                                        |
+| `forge completions` | Emit shell completion scripts                                       |
+| `forge self update` | Update a standalone-installer Forge binary                          |
 
 Running `forge` with no subcommand prints top-level help and quickstart examples
 for first-run discovery.
@@ -136,7 +134,7 @@ Managed files are tracked through `[tool.forge]` metadata embedded in
 ### Optional components
 
 Components are reusable managed features like Prettier, EditorConfig, PyPI
-publishing, MkDocs, and Codecov. Forge uses sensible blueprint defaults and
+publishing, Astro Starlight docs, and Codecov. Forge uses sensible blueprint defaults and
 records only explicit deviations in `[tool.forge.overrides]`.
 
 ```bash
@@ -199,10 +197,14 @@ OSI-approved license IDs are `BSD-3-Clause`, `MIT`, `Apache-2.0`,
 configured minimum through `3.14` on Ubuntu and runs a lightweight Windows smoke
 job on `windows-latest`.
 
-Component flags: `--prettier`, `--editorconfig`, `--docs`, `--codecov`,
-`--pypi-publish`. Use `--editorconfig=false` to disable EditorConfig (enabled by
-default for all blueprints) and `--docs=false` to disable Astro Starlight docs
-(enabled by default).
+Managed option flags: `--ci`, `--forge-sync`, `--docs-pages`,
+`--workflow-quality`, `--docs`, `--prettier`, `--editorconfig`, `--codecov`,
+and `--pypi-publish`. Use `--ci=false`, `--forge-sync=false`,
+`--docs-pages=false`, or `--workflow-quality=false` when a repository needs
+custom GitHub Actions workflows, for example enterprise runners or private
+dependency checkout. Use `--editorconfig=false` to disable
+EditorConfig (enabled by default for all blueprints) and `--docs=false` to
+disable Astro Starlight docs (enabled by default).
 
 If you enable `--pypi-publish`, Forge writes a commented trusted-publishing
 workflow at `.github/workflows/publish-pypi.yaml`; register that workflow as a
@@ -332,6 +334,44 @@ paths before replacing targets.
 | `--set key=value` | Enable or disable a managed option |
 | `--yes`           | Skip confirmation prompt           |
 
+Use `--set` to opt out of Forge-managed workflows that a repository owns
+directly. For example, enterprise repositories with private dependency checkout
+or custom runners can preserve their workflow stack with:
+
+```bash
+forge sync --path . --yes \
+  --set ci=false \
+  --set forge-sync=false \
+  --set docs-pages=false \
+  --set workflow-quality=false
+```
+
+The generated forge-sync workflow only runs `uv lock` when Forge changes
+lockfile-relevant `pyproject.toml` metadata. Pure `[tool.forge]` metadata
+adoption does not refresh the lockfile, so infrastructure syncs do not compete
+with Dependabot or other dependency-update automation for unrelated lockfile
+churn.
+
+For Python repositories with existing project dependencies, entry points,
+`tool.uv.sources`, or `tool.uv.workspace`, Forge treats `pyproject.toml` as
+externally owned during sync and preserves that project metadata. Forge records
+`pyproject = "external"` under `[tool.forge]` and continues managing the
+surrounding infrastructure.
+
+When sync sees existing workflow files with strong enterprise ownership signals,
+such as private checkout actions, private runners, or private dependency install
+flags, it records the matching workflow options as disabled, or records a path
+ignore for Forge-managed workflows without a dedicated option, instead of
+replacing those files. Pass `--set ci=true`, `--set forge-sync=true`,
+`--set docs-pages=true`, or `--set workflow-quality=true` to explicitly hand a
+workflow option back to Forge. To hand back a path-ignored workflow, first
+replace the custom file or remove its enterprise-only requirements, then remove
+the path from `ignore`.
+
+When a managed workflow option is turned off, Forge removes the existing
+workflow only if it still exactly matches the previously generated Forge
+workflow. Custom workflow files are left in place.
+
 <details>
 <summary>Sync behavior details</summary>
 
@@ -410,7 +450,9 @@ All blueprints generate:
 - **CI** -- GitHub Actions with read-only token permissions, `uv` caching,
   lockfile verification (`uv lock --check`), lightweight Windows smoke jobs,
   bounded timeouts, and cancellation of stale runs on the same ref
-- **Hooks** -- `prek` hooks that check Forge infrastructure drift
+- **Hooks** -- `prek` hooks for formatting, linting, metadata hygiene, and
+  lockfile verification. Generated spell-checking skips `data/**` by default so
+  domain datasets and exported CSVs do not break infrastructure-only PRs.
 - **Release** -- `release-please` configuration
 - **Scheduled sync workflow** -- opens an infrastructure sync PR when drift
   is found (write permissions only, serialized runs)
@@ -419,9 +461,9 @@ All blueprints generate:
 
 | Blueprint        | Generates                                                                                                                                      |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional MkDocs, optional PyPI publishing via OIDC |
-| `rust-library`   | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional MkDocs                                                                        |
-| `any-project`    | Language-agnostic: the common files above plus MkDocs by default, no package source files                                                      |
+| `python-library` | `pyproject.toml`, `uv.lock`, `.python-version`, `src/` layout, pytest config, `just` tasks, optional Astro Starlight docs, optional PyPI publishing via OIDC |
+| `rust-library`   | `Cargo.toml`, `src/` layout, Rust-focused `just` tasks, optional Astro Starlight docs                                                                        |
+| `any-project`    | Language-agnostic: the common files above plus Astro Starlight docs by default, no package source files                                                      |
 
 ### Optional components
 
@@ -429,7 +471,7 @@ All blueprints generate:
 | --------------- | -------------------------------------------------------------------------------------------- |
 | Prettier        | `.prettierrc.json`, `.prettierignore`, and pre-commit hook for JSON/YAML/Markdown formatting |
 | EditorConfig    | `.editorconfig` baseline for cross-editor whitespace consistency                             |
-| MkDocs          | Documentation scaffold, `just docs` recipe                                                   |
+| Docs            | Astro Starlight documentation scaffold and `just docs` recipe                                |
 | Codecov         | CI integration for coverage reporting (where supported)                                      |
 | PyPI publishing | Trusted publishing via OIDC, `pypi` GitHub environment, serialized release/publish workflows |
 
