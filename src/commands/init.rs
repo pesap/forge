@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -12,7 +13,7 @@ use crate::blueprint::files::{
 };
 use crate::blueprint::{
     BlueprintName, detect_blueprint_metadata_from_pyproject, forge_metadata_is_python_library,
-    minimal_external_pyproject_metadata, python_library, rust_library,
+    is_valid_default_branch, minimal_external_pyproject_metadata, python_library, rust_library,
 };
 use crate::cli::{InitArgs, NewArgs};
 use crate::commands::diff;
@@ -318,8 +319,45 @@ fn apply_existing_project_defaults(args: &mut InitArgs, blueprint: BlueprintName
             apply_cargo_package_defaults(args)?;
         }
     }
+    if args.default_branch.is_none() {
+        args.default_branch = detect_default_branch(&args.path);
+    }
     apply_existing_path_fallbacks(args, blueprint);
     Ok(())
+}
+
+fn detect_default_branch(path: &Path) -> Option<String> {
+    let remote_head = git_output(
+        path,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    )
+    .map(|branch| {
+        branch
+            .strip_prefix("origin/")
+            .unwrap_or(&branch)
+            .to_string()
+    });
+    remote_head
+        .or_else(|| git_output(path, &["branch", "--show-current"]))
+        .filter(|branch| is_valid_default_branch(branch))
+}
+
+fn git_output(path: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
 }
 
 fn apply_semantic_adoption_defaults(
@@ -1005,6 +1043,7 @@ fn new_args_from_init_args(args: &InitArgs) -> NewArgs {
         license: args.license.clone(),
         python_min: args.python_min.clone(),
         gitignore_profile: args.gitignore_profile.clone(),
+        default_branch: args.default_branch.clone(),
         docs: args.docs,
         ci: args.ci,
         forge_sync: args.forge_sync,
@@ -1291,6 +1330,7 @@ fn preview_init_command(
     resolved.license = resolved_new_args.license;
     resolved.python_min = resolved_new_args.python_min;
     resolved.gitignore_profile = resolved_new_args.gitignore_profile;
+    resolved.default_branch = resolved_new_args.default_branch;
     resolved.docs = resolved_new_args.docs;
     resolved.ci = resolved_new_args.ci;
     resolved.forge_sync = resolved_new_args.forge_sync;
@@ -1326,6 +1366,11 @@ fn init_command(args: &InitArgs, blueprint: BlueprintName) -> String {
         &mut parts,
         "--gitignore-profile",
         args.gitignore_profile.as_deref(),
+    );
+    new::push_option(
+        &mut parts,
+        "--default-branch",
+        args.default_branch.as_deref(),
     );
 
     new::push_managed_option_flags(
@@ -1448,6 +1493,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -1494,6 +1540,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -1648,6 +1695,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -1715,6 +1763,7 @@ mod tests {
             license: None,
             python_min: None,
             gitignore_profile: None,
+            default_branch: None,
             docs: true,
             ci: true,
             forge_sync: true,
@@ -1742,6 +1791,7 @@ mod tests {
         };
         let project = new::ProjectRender {
             project_name: "grid-tools".to_string(),
+            default_branch: "develop".to_string(),
             options: vec![],
             files: GeneratedFiles::from([(
                 PathBuf::from("pyproject.toml"),
@@ -1755,6 +1805,7 @@ author_name = "Ada Lovelace"
 author_email = "ada@example.com"
 license = "MIT"
 python_min = "3.12"
+default_branch = "develop"
 
 [tool.forge.overrides]
 docs = false
@@ -1777,6 +1828,7 @@ markdownlint = true
         assert!(command.contains("--author-email 'ada@example.com'"));
         assert!(command.contains("--license MIT"));
         assert!(command.contains("--python-min 3.12"));
+        assert!(command.contains("--default-branch develop"));
         assert!(command.contains("--docs=false"));
         assert!(command.contains("--codecov=false"));
         assert!(command.contains("--pypi-publish=true"));

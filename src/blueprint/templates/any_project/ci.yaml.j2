@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [{{ default_branch }}]
   pull_request:
 
 {{ cancel_redundant_ci_concurrency }}{{ read_only_permissions }}jobs:

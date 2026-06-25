@@ -83,6 +83,7 @@ fn build_environment() -> Environment<'static> {
         "python_library/ci.yaml.j2" => "templates/python_library/ci.yaml.j2",
         "python_library/codecov-step.yaml.j2" => "templates/python_library/codecov-step.yaml.j2",
         "python_library/release-please.yaml.j2" => "templates/python_library/release-please.yaml.j2",
+        "python_library/pypi-publish-inputs.yaml.j2" => "templates/python_library/pypi-publish-inputs.yaml.j2",
         "python_library/pypi-publish-job.yaml.j2" => "templates/python_library/pypi-publish-job.yaml.j2",
         "python_library/workflow-quality.yaml.j2" => "templates/python_library/workflow-quality.yaml.j2",
         "python_library/docs-pages.yaml.j2" => "templates/python_library/docs-pages.yaml.j2",

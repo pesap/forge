@@ -180,6 +180,7 @@ fn new_generates_python_project_with_metadata() {
     assert!(!pyproject.contains("package_name = \"grid_tools\""));
     assert!(!pyproject.contains("license = \"BSD-3-Clause\""));
     assert!(!pyproject.contains("python_min = \"3.11\""));
+    assert!(pyproject.contains("default_branch = \"main\""));
     assert!(pyproject.contains(
         "gitignore_profile = [\"python\", \"macos\", \"visualstudiocode\", \"jetbrains\", \"node\"]"
     ));
@@ -287,6 +288,7 @@ fn new_generates_python_project_with_metadata() {
 
     let ci = fs::read_to_string(project_path.join(".github/workflows/ci.yaml"))
         .expect("CI workflow should be generated");
+    assert!(ci.contains("branches: [\"main\"]"));
     assert!(ci.contains("permissions:\n  contents: read\n\njobs:"));
     assert!(ci.contains("actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"));
     assert!(ci.contains("actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"));
@@ -297,6 +299,12 @@ fn new_generates_python_project_with_metadata() {
     assert!(ci.contains("uv run --locked python -c \"import grid_tools\""));
     assert!(ci.contains("runs-on: windows-latest"));
     assert!(ci.contains("      - run: uv run --locked pytest"));
+    let release_please =
+        fs::read_to_string(project_path.join(".github/workflows/release-please.yaml"))
+            .expect("release-please workflow should be generated");
+    assert!(release_please.contains("branches: [\"main\"]"));
+    assert!(!release_please.contains("publish_pypi:"));
+    assert!(!release_please.contains("Existing release tag to publish"));
     assert_eq!(
         fs::read_link(project_path.join("CLAUDE.md")).expect("CLAUDE.md should be a symlink"),
         std::path::PathBuf::from("AGENTS.md")
@@ -1550,8 +1558,8 @@ fn new_can_generate_prettier_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(!pyproject.contains("prettier = true"));
-    assert!(!pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("prettier = true"));
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
         .expect("pre-commit config should be generated");
@@ -1681,8 +1689,8 @@ fn new_can_generate_markdownlint_component() {
 
     let pyproject = fs::read_to_string(project_path.join("pyproject.toml"))
         .expect("pyproject.toml should be generated");
-    assert!(!pyproject.contains("markdownlint = true"));
-    assert!(!pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("[tool.forge.overrides]"));
+    assert!(pyproject.contains("markdownlint = true"));
     assert!(project_path.join(".markdownlint.jsonc").exists());
 
     let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
@@ -1729,6 +1737,8 @@ fn new_accepts_value_less_optional_workflow_flags() {
     let release_please =
         fs::read_to_string(project_path.join(".github/workflows/release-please.yaml"))
             .expect("release-please workflow should be generated");
+    assert!(release_please.contains("publish_pypi:"));
+    assert!(release_please.contains("Existing release tag to publish"));
     assert!(release_please.contains("publish-pypi:"));
     assert!(release_please.contains("needs: release-please"));
     assert!(release_please.contains("config-file: .github/release-please-config.json"));

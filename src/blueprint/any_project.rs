@@ -14,8 +14,9 @@ use crate::blueprint::precommit;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, ManagedOption, apply_ignored_files, managed_option_enabled,
-    render_forge_ignore, render_forge_overrides_table, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, DEFAULT_BRANCH, ManagedOption, apply_ignored_files,
+    default_branch_message, is_valid_default_branch, managed_option_enabled, render_forge_ignore,
+    render_forge_overrides_table, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "any-project";
@@ -25,6 +26,7 @@ pub const BLUEPRINT_VERSION: &str = "0.1.0";
 pub struct ProjectConfig {
     pub project_name: String,
     pub description: String,
+    pub default_branch: String,
     pub docs: bool,
     pub ci: bool,
     pub forge_sync: bool,
@@ -39,6 +41,9 @@ impl ProjectConfig {
         }
         if self.description.trim().is_empty() {
             bail!("description cannot be empty");
+        }
+        if !is_valid_default_branch(&self.default_branch) {
+            bail!(default_branch_message());
         }
         Ok(())
     }
@@ -86,7 +91,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
     if config.ci {
         files.insert(
             PathBuf::from(".github/workflows/ci.yaml"),
-            GeneratedFile::text(render_ci_workflow()),
+            GeneratedFile::text(render_ci_workflow(config)),
         );
     }
     if config.forge_sync {
@@ -187,6 +192,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
         blueprint_version: &'a str,
         project_name: String,
         description: String,
+        default_branch: String,
         docs_group: &'a str,
         forge_ignore: String,
         forge_overrides: String,
@@ -199,6 +205,7 @@ fn render_pyproject(config: &ProjectConfig) -> String {
             blueprint_version: BLUEPRINT_VERSION,
             project_name: toml_value::string_literal(&config.project_name),
             description: toml_value::string_literal(&config.description),
+            default_branch: toml_value::string_literal(&config.default_branch),
             docs_group: render_docs_dependency_group(config.docs),
             forge_ignore: render_forge_ignore(&config.ignored_files),
             forge_overrides: render_forge_overrides_table(
@@ -280,9 +287,10 @@ fn render_precommit_config(config: &ProjectConfig) -> String {
     )
 }
 
-fn render_ci_workflow() -> String {
+fn render_ci_workflow(config: &ProjectConfig) -> String {
     #[derive(Serialize)]
     struct Context<'a> {
+        default_branch: String,
         cancel_redundant_ci_concurrency: String,
         read_only_permissions: String,
         job_timeout: String,
@@ -296,6 +304,7 @@ fn render_ci_workflow() -> String {
     template_engine::render_template(
         "any_project/ci.yaml.j2",
         Context {
+            default_branch: toml_value::string_literal(&config.default_branch),
             cancel_redundant_ci_concurrency: github_actions::cancel_redundant_ci_concurrency(),
             read_only_permissions: github_actions::read_only_permissions(),
             job_timeout: github_actions::job_timeout(),
@@ -364,6 +373,7 @@ struct ForgeSection {
     _blueprint_version: Option<String>,
     project_name: String,
     description: String,
+    default_branch: Option<String>,
     ignore: Option<Vec<String>>,
     #[serde(alias = "options")]
     overrides: Option<BTreeMap<String, bool>>,
@@ -385,6 +395,9 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
     let config = ProjectConfig {
         project_name: forge.project_name,
         description: forge.description,
+        default_branch: forge
+            .default_branch
+            .unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
         docs: managed_option_enabled(&options, ManagedOption::Docs)?,
         ci: managed_option_enabled(&options, ManagedOption::Ci)?,
         forge_sync: managed_option_enabled(&options, ManagedOption::ForgeSync)?,
@@ -408,6 +421,7 @@ mod tests {
         let config = ProjectConfig {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs: false,
             ci: true,
             forge_sync: true,
@@ -426,7 +440,17 @@ mod tests {
 
     #[test]
     fn ci_workflow_uses_read_only_permissions() {
-        let workflow = render_ci_workflow();
+        let config = ProjectConfig {
+            project_name: "repo-infra".to_string(),
+            description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
+            docs: true,
+            ci: true,
+            forge_sync: true,
+            components: ComponentSelection::default(),
+            ignored_files: Vec::new(),
+        };
+        let workflow = render_ci_workflow(&config);
 
         assert!(workflow.contains("permissions:\n  contents: read\n\njobs:"));
         assert!(workflow.contains(&github_actions::cancel_redundant_ci_concurrency()));
@@ -448,6 +472,7 @@ mod tests {
         let files = render_project_files(&ProjectConfig {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs: true,
             ci: true,
             forge_sync: true,
@@ -472,6 +497,7 @@ mod tests {
         let justfile = render_justfile(&ProjectConfig {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs: true,
             ci: true,
             forge_sync: true,
@@ -494,6 +520,7 @@ mod tests {
         let config = ProjectConfig {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs: true,
             ci: true,
             forge_sync: true,
@@ -520,6 +547,7 @@ mod tests {
         let config = ProjectConfig {
             project_name: "repo-infra".to_string(),
             description: "A test project".to_string(),
+            default_branch: DEFAULT_BRANCH.to_string(),
             docs: true,
             ci: true,
             forge_sync: true,

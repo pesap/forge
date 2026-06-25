@@ -300,6 +300,7 @@ forge init --path . --blueprint python-library --project-name my-library --descr
 | `--takeover-ci`    | Convert existing GitHub workflow files to Forge-managed  |
 | `--takeover-hooks` | Convert existing hook config to Forge-managed            |
 | `--takeover-all`   | Convert all generated-path conflicts to Forge management |
+| `--default-branch` | Branch used by generated branch-scoped workflows         |
 | `--yes`            | Confirm non-interactive apply after reviewing the plan   |
 
 After init succeeds, future changes flow through `forge sync --path .`.
@@ -449,7 +450,8 @@ All blueprints generate:
   privileges are unavailable)
 - **CI** -- GitHub Actions with read-only token permissions, `uv` caching,
   lockfile verification (`uv lock --check`), lightweight Windows smoke jobs,
-  bounded timeouts, and cancellation of stale runs on the same ref
+  bounded timeouts, branch-scoped pushes from the configured default branch,
+  and cancellation of stale runs on the same ref
 - **Hooks** -- `prek` hooks for formatting, linting, metadata hygiene, and
   lockfile verification. Generated spell-checking skips `data/**` by default so
   domain datasets and exported CSVs do not break infrastructure-only PRs.

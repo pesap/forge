@@ -26,6 +26,7 @@ pub mod toml_value;
 pub const DEFAULT_LICENSE: &str = "BSD-3-Clause";
 pub const SUPPORTED_LICENSES: [&str; 5] =
     [DEFAULT_LICENSE, "MIT", "Apache-2.0", "BSD-2-Clause", "ISC"];
+pub const DEFAULT_BRANCH: &str = "main";
 
 pub fn is_supported_license(value: &str) -> bool {
     SUPPORTED_LICENSES.contains(&value)
@@ -33,6 +34,25 @@ pub fn is_supported_license(value: &str) -> bool {
 
 pub fn supported_license_message() -> String {
     format!("license must be one of: {}", SUPPORTED_LICENSES.join(", "))
+}
+
+pub fn is_valid_default_branch(value: &str) -> bool {
+    !value.is_empty()
+        && value == value.trim()
+        && !matches!(value.as_bytes().first(), Some(b'-' | b'/' | b'.'))
+        && !matches!(value.as_bytes().last(), Some(b'/' | b'.'))
+        && !value.ends_with(".lock")
+        && value != "@"
+        && !value.contains("..")
+        && !value.contains("//")
+        && !value.contains("@{")
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/'))
+}
+
+pub fn default_branch_message() -> &'static str {
+    "default branch must be a valid branch name using letters, numbers, '-', '_', '.', or '/'"
 }
 
 const ANY_PROJECT_FIELDS: &[BlueprintField] = &[
@@ -496,6 +516,14 @@ pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Strin
             metadata.push_str(&format!(
                 "license = {}\n",
                 toml_value::string_literal(license)
+            ));
+        }
+        if let Some(default_branch) = forge.get("default_branch").and_then(Value::as_str)
+            && default_branch != DEFAULT_BRANCH
+        {
+            metadata.push_str(&format!(
+                "default_branch = {}\n",
+                toml_value::string_literal(default_branch)
             ));
         }
         if let Some(profile) = forge.get("gitignore_profile") {

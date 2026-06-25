@@ -126,6 +126,9 @@ pub struct InitArgs {
     /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
     #[arg(long)]
     pub gitignore_profile: Option<String>,
+    /// Default repository branch for generated branch-scoped workflows. Defaults to main.
+    #[arg(long)]
+    pub default_branch: Option<String>,
     /// Generate Astro Starlight documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,
@@ -305,6 +308,9 @@ pub struct NewArgs {
     /// Comma-separated gitignore profile (Toptal style), e.g. python,macos,visualstudiocode.
     #[arg(long)]
     pub gitignore_profile: Option<String>,
+    /// Default repository branch for generated branch-scoped workflows. Defaults to main.
+    #[arg(long)]
+    pub default_branch: Option<String>,
     /// Generate Astro Starlight documentation. Accepts --docs, --docs=true, or --docs=false.
     #[arg(
         long,
