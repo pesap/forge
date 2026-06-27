@@ -457,7 +457,7 @@ pub struct SyncArgs {
     /// Preview managed infrastructure changes without writing files
     #[arg(long, action = ArgAction::SetTrue)]
     pub dry_run: bool,
-    /// Show a text diff for managed file changes in human output
+    /// Show a text diff for managed file changes in human output; interactive apply shows it before confirmation
     #[arg(long, action = ArgAction::SetTrue, conflicts_with = "json")]
     pub diff: bool,
     /// Fail if managed infrastructure is not up to date

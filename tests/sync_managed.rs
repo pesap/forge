@@ -1013,7 +1013,7 @@ fn sync_dry_run_diff_shows_text_changes_without_writing() {
 }
 
 #[test]
-fn sync_diff_requires_dry_run_or_check() {
+fn sync_diff_with_yes_is_rejected() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("ops-tools");
     generate_project(&project_path);
@@ -1031,7 +1031,34 @@ fn sync_diff_requires_dry_run_or_check() {
     ]);
     sync.assert()
         .failure()
-        .stderr(contains("--diff requires --dry-run or --check"));
+        .stderr(contains(
+            "--diff cannot be combined with --yes; use --dry-run --diff to preview without writing or omit --yes to review before applying",
+        ));
+
+    let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
+    assert_eq!(just_after, "BROKEN\n");
+}
+
+#[test]
+fn sync_diff_without_tty_requires_dry_run_or_check() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("ops-tools");
+    generate_project(&project_path);
+
+    let justfile = project_path.join("justfile");
+    fs::write(&justfile, "BROKEN\n").expect("should write broken justfile");
+
+    let mut sync = Command::cargo_bin("forge").expect("forge binary should build");
+    sync.args([
+        "sync",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--diff",
+    ]);
+    sync.assert()
+        .failure()
+        .stderr(contains("interactive confirmation requires a terminal"))
+        .stderr(contains("preview without writing"));
 
     let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
     assert_eq!(just_after, "BROKEN\n");
