@@ -111,6 +111,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
         check: args.check,
         stdin_is_terminal,
         changes,
+        conflicts,
     })?;
     let read_only = args.dry_run || args.check;
 
@@ -378,6 +379,7 @@ struct SyncDiffValidationInput {
     check: bool,
     stdin_is_terminal: bool,
     changes: usize,
+    conflicts: usize,
 }
 
 fn validate_sync_diff_mode(input: SyncDiffValidationInput) -> Result<()> {
@@ -396,7 +398,7 @@ fn validate_sync_diff_mode(input: SyncDiffValidationInput) -> Result<()> {
             "interactive confirmation requires a terminal; rerun in a terminal to review before applying, or use --dry-run --diff / --check --diff to preview without writing",
         ));
     }
-    if input.changes == 0 {
+    if input.changes + input.conflicts == 0 {
         return Err(coded_error(
             ErrorCode::Input,
             "--diff requires managed changes; rerun after making managed changes or omit --diff",
@@ -1895,8 +1897,20 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: true,
             changes: 1,
+            conflicts: 0,
         })
         .expect("tty interactive apply should be allowed");
+
+        validate_sync_diff_mode(SyncDiffValidationInput {
+            diff: true,
+            assume_yes: false,
+            dry_run: false,
+            check: false,
+            stdin_is_terminal: true,
+            changes: 0,
+            conflicts: 1,
+        })
+        .expect("conflict-only interactive apply should be allowed");
 
         let error = validate_sync_diff_mode(SyncDiffValidationInput {
             diff: true,
@@ -1905,6 +1919,7 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: false,
             changes: 1,
+            conflicts: 0,
         })
         .expect_err("non-tty diff apply should be rejected");
         let error_message = error.to_string();
@@ -1921,6 +1936,7 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: true,
             changes: 1,
+            conflicts: 0,
         })
         .expect_err("--yes --diff should be rejected");
         assert_eq!(
@@ -1935,6 +1951,7 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: false,
             changes: 1,
+            conflicts: 0,
         })
         .expect("--yes --dry-run --diff should remain allowed");
     }
