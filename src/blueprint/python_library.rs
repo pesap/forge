@@ -1074,11 +1074,15 @@ mod tests {
                 "default_install_hook_types:\n  - pre-commit\n  - commit-msg\n  - pre-push"
             )
         );
+        assert!(precommit.contains(
+            "# Commitizen's upstream pre-push hook exits non-zero on empty ranges, so Forge keeps a small wrapper."
+        ));
         assert!(precommit.contains("id: commitizen-branch"));
         assert!(precommit.contains("No commits to check in $range"));
         assert!(
             precommit.contains("uvx --from commitizen==4.16.2 cz check --rev-range \"$range\"")
         );
+        assert!(!precommit.contains("git rev-parse --verify"));
         assert!(precommit.contains("repo: https://github.com/commitizen-tools/commitizen"));
         assert!(precommit.contains("rev: v4.16.2"));
         assert!(precommit.contains("id: commitizen\n        stages: [commit-msg]"));
