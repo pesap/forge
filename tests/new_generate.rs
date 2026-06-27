@@ -331,9 +331,14 @@ fn new_generates_python_project_with_metadata() {
         precommit
             .contains("default_install_hook_types:\n  - pre-commit\n  - commit-msg\n  - pre-push")
     );
+    assert!(precommit.contains(
+        "# Commitizen's upstream pre-push hook exits non-zero on empty ranges, so Forge keeps a small wrapper that falls back when push refs are missing or unborn."
+    ));
     assert!(precommit.contains("id: commitizen-branch"));
     assert!(precommit.contains("No commits to check in $range"));
     assert!(precommit.contains("uvx --from commitizen==4.16.2 cz check --rev-range \"$range\""));
+    assert!(precommit.contains("git rev-parse --verify \"$PRE_COMMIT_FROM_REF\""));
+    assert!(precommit.contains("git rev-parse --verify \"$PRE_COMMIT_TO_REF\""));
     assert!(precommit.contains("repo: https://github.com/commitizen-tools/commitizen"));
     assert!(precommit.contains("rev: v4.16.2"));
     assert!(precommit.contains("id: commitizen\n        stages: [commit-msg]"));
@@ -357,6 +362,100 @@ fn new_generates_python_project_with_metadata() {
     assert!(typos.contains("extend-ignore-identifiers-re = [\"PTDFs?\"]"));
     assert!(!project_path.join("typos.toml").exists());
     assert!(!project_path.join(".cspell.json").exists());
+}
+
+#[test]
+fn generated_python_commitizen_pre_push_honors_pre_commit_refs() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+    init_python_project_without_git_history(&project_path);
+
+    let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
+        .expect("pre-commit config should be generated");
+    let commitizen_branch_script = generated_commitizen_branch_script(&precommit);
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir(&fake_bin).expect("fake bin dir should create");
+    let uvx_log = temp.path().join("uvx.log");
+    write_executable(
+        &fake_bin.join("uvx"),
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$UVX_LOG\"\nexit 17\n",
+    );
+
+    commit_initial_python_project(&project_path);
+    fs::write(project_path.join("good.txt"), "good\n").expect("test file should be writable");
+    run_git(&project_path, &["add", "good.txt"]);
+    run_git(&project_path, &["commit", "-qm", "feat: add good file"]);
+
+    let output = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(commitizen_branch_script)
+        .current_dir(&project_path)
+        .env("UVX_LOG", &uvx_log)
+        .env("PRE_COMMIT_FROM_REF", "HEAD~1")
+        .env("PRE_COMMIT_TO_REF", "HEAD")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_bin.display(),
+                std::env::var("PATH").expect("PATH should be set")
+            ),
+        )
+        .output()
+        .expect("commitizen branch script should run");
+
+    assert_eq!(output.status.code(), Some(17));
+    assert_eq!(
+        fs::read_to_string(uvx_log).expect("uvx invocation should be logged"),
+        "--from commitizen==4.16.2 cz check --rev-range HEAD~1..HEAD\n"
+    );
+}
+
+#[test]
+fn generated_python_commitizen_pre_push_falls_back_for_invalid_refs() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("grid-tools");
+    init_python_project_without_git_history(&project_path);
+
+    let precommit = fs::read_to_string(project_path.join(".pre-commit-config.yaml"))
+        .expect("pre-commit config should be generated");
+    let commitizen_branch_script = generated_commitizen_branch_script(&precommit);
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir(&fake_bin).expect("fake bin dir should create");
+    let uvx_log = temp.path().join("uvx.log");
+    write_executable(
+        &fake_bin.join("uvx"),
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$UVX_LOG\"\nexit 17\n",
+    );
+
+    commit_initial_python_project(&project_path);
+    fs::write(project_path.join("good.txt"), "good\n").expect("test file should be writable");
+    run_git(&project_path, &["add", "good.txt"]);
+    run_git(&project_path, &["commit", "-qm", "feat: add good file"]);
+
+    let output = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(commitizen_branch_script)
+        .current_dir(&project_path)
+        .env("UVX_LOG", &uvx_log)
+        .env("PRE_COMMIT_FROM_REF", "does-not-exist")
+        .env("PRE_COMMIT_TO_REF", "HEAD")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_bin.display(),
+                std::env::var("PATH").expect("PATH should be set")
+            ),
+        )
+        .output()
+        .expect("commitizen branch script should run");
+
+    assert_eq!(output.status.code(), Some(17));
+    assert_eq!(
+        fs::read_to_string(uvx_log).expect("uvx invocation should be logged"),
+        "--from commitizen==4.16.2 cz check --rev-range origin/main..HEAD\n"
+    );
 }
 
 #[test]

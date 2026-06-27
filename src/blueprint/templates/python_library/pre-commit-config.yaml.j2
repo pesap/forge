@@ -20,12 +20,14 @@
         language: system
         pass_filenames: false
         stages: [pre-push]
-{% endif %}      - id: commitizen-branch
+{% endif %}      # Commitizen's upstream pre-push hook exits non-zero on empty ranges, so Forge keeps a small wrapper that falls back when push refs are missing or unborn.
+      - id: commitizen-branch
         name: commitizen check branch
         entry: >-
           bash -c 'range="origin/main..HEAD";
           if [ -n "$PRE_COMMIT_FROM_REF" ] && [ -n "$PRE_COMMIT_TO_REF" ]; then
-            if git rev-parse --verify "$PRE_COMMIT_FROM_REF" >/dev/null 2>&1 && git rev-parse --verify "$PRE_COMMIT_TO_REF" >/dev/null 2>&1; then
+            if git rev-parse --verify "$PRE_COMMIT_FROM_REF" >/dev/null 2>&1 &&
+               git rev-parse --verify "$PRE_COMMIT_TO_REF" >/dev/null 2>&1; then
               range="$PRE_COMMIT_FROM_REF..$PRE_COMMIT_TO_REF";
             fi;
           fi;
