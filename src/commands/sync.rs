@@ -111,8 +111,6 @@ pub fn run(args: SyncArgs) -> Result<()> {
         check: args.check,
         stdin_is_terminal,
         changes,
-        root: &root,
-        option_overrides: &args.set,
     })?;
     let read_only = args.dry_run || args.check;
 
@@ -373,18 +371,16 @@ fn should_confirm_sync(
     !assume_yes && !json && !dry_run && !check && stdin_is_terminal && changes > 0
 }
 
-struct SyncDiffValidationInput<'a> {
+struct SyncDiffValidationInput {
     diff: bool,
     assume_yes: bool,
     dry_run: bool,
     check: bool,
     stdin_is_terminal: bool,
     changes: usize,
-    root: &'a Path,
-    option_overrides: &'a [String],
 }
 
-fn validate_sync_diff_mode(input: SyncDiffValidationInput<'_>) -> Result<()> {
+fn validate_sync_diff_mode(input: SyncDiffValidationInput) -> Result<()> {
     if !input.diff || input.dry_run || input.check {
         return Ok(());
     }
@@ -395,12 +391,9 @@ fn validate_sync_diff_mode(input: SyncDiffValidationInput<'_>) -> Result<()> {
         ));
     }
     if !input.stdin_is_terminal {
-        let apply_command = sync_command(input.root, input.option_overrides);
         return Err(coded_error(
             ErrorCode::Input,
-            format!(
-                "interactive confirmation requires a terminal; rerun with `{apply_command}` or pass --json, --dry-run, or --check"
-            ),
+            "interactive confirmation requires a terminal; rerun in a terminal to review before applying, or use --dry-run --diff / --check --diff to preview without writing",
         ));
     }
     if input.changes == 0 {
@@ -1902,8 +1895,6 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: true,
             changes: 1,
-            root: Path::new("/tmp/ops"),
-            option_overrides: &[String::from("prettier=true")],
         })
         .expect("tty interactive apply should be allowed");
 
@@ -1914,15 +1905,11 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: false,
             changes: 1,
-            root: Path::new("/tmp/ops"),
-            option_overrides: &[String::from("prettier=true")],
         })
         .expect_err("non-tty diff apply should be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("interactive confirmation requires a terminal")
-        );
+        let error_message = error.to_string();
+        assert!(error_message.contains("interactive confirmation requires a terminal"));
+        assert!(error_message.contains("preview without writing"));
     }
 
     #[test]
@@ -1934,8 +1921,6 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: true,
             changes: 1,
-            root: Path::new("/tmp/ops"),
-            option_overrides: &[String::from("prettier=true")],
         })
         .expect_err("--yes --diff should be rejected");
         assert_eq!(
@@ -1950,8 +1935,6 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
             check: false,
             stdin_is_terminal: false,
             changes: 1,
-            root: Path::new("/tmp/ops"),
-            option_overrides: &[String::from("prettier=true")],
         })
         .expect("--yes --dry-run --diff should remain allowed");
     }

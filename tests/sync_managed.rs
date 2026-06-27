@@ -1057,7 +1057,8 @@ fn sync_diff_without_tty_requires_dry_run_or_check() {
     ]);
     sync.assert()
         .failure()
-        .stderr(contains("interactive confirmation requires a terminal"));
+        .stderr(contains("interactive confirmation requires a terminal"))
+        .stderr(contains("preview without writing"));
 
     let just_after = fs::read_to_string(justfile).expect("justfile should remain readable");
     assert_eq!(just_after, "BROKEN\n");
