@@ -317,6 +317,9 @@ forge sync --path . --check
 # Preview changes
 forge sync --path . --dry-run --diff
 
+# Review changes interactively before applying
+forge sync --path . --diff
+
 # Apply changes
 forge sync --path . --yes
 ```

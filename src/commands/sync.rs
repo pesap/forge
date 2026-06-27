@@ -28,7 +28,6 @@ use crate::ui;
 
 pub fn run(args: SyncArgs) -> Result<()> {
     let stdin_is_terminal = std::io::stdin().is_terminal();
-    crate::commands::validate_diff_mode(args.diff, args.dry_run, args.check)?;
     let root = args
         .path
         .canonicalize()
@@ -105,6 +104,16 @@ pub fn run(args: SyncArgs) -> Result<()> {
     sort_managed_actions(&mut actions);
     let changes = count_changes(&actions);
     let conflicts = count_conflicts(&actions);
+    validate_sync_diff_mode(SyncDiffValidationInput {
+        diff: args.diff,
+        assume_yes: args.yes,
+        dry_run: args.dry_run,
+        check: args.check,
+        stdin_is_terminal,
+        changes,
+        root: &root,
+        option_overrides: &args.set,
+    })?;
     let read_only = args.dry_run || args.check;
 
     if !args.json {
@@ -362,6 +371,46 @@ fn should_confirm_sync(
     changes: usize,
 ) -> bool {
     !assume_yes && !json && !dry_run && !check && stdin_is_terminal && changes > 0
+}
+
+struct SyncDiffValidationInput<'a> {
+    diff: bool,
+    assume_yes: bool,
+    dry_run: bool,
+    check: bool,
+    stdin_is_terminal: bool,
+    changes: usize,
+    root: &'a Path,
+    option_overrides: &'a [String],
+}
+
+fn validate_sync_diff_mode(input: SyncDiffValidationInput<'_>) -> Result<()> {
+    if !input.diff || input.dry_run || input.check {
+        return Ok(());
+    }
+    if input.assume_yes {
+        return Err(coded_error(
+            ErrorCode::Input,
+            "--diff cannot be combined with --yes; use --dry-run --diff to preview without writing or omit --yes to review before applying",
+        ));
+    }
+    if !input.stdin_is_terminal {
+        let apply_command = sync_command(input.root, input.option_overrides);
+        return Err(coded_error(
+            ErrorCode::Input,
+            format!(
+                "interactive confirmation requires a terminal; rerun with `{apply_command}` or pass --json, --dry-run, or --check"
+            ),
+        ));
+    }
+    if input.changes == 0 {
+        return Err(coded_error(
+            ErrorCode::Input,
+            "--diff requires managed changes; rerun after making managed changes or omit --diff",
+        ));
+    }
+
+    Ok(())
 }
 
 struct NonInteractiveApplyGuardInput<'a> {
@@ -1644,11 +1693,11 @@ mod tests {
     use crate::blueprint::{BlueprintName, ManagedOption};
     use crate::commands::new::SelectedOption;
     use crate::commands::sync::{
-        NonInteractiveApplyGuardInput, action_breakdown, cleanup_action_for_optional_path,
-        cleanup_actions_for_blueprint, ensure_noninteractive_apply_allowed,
-        lockfile_relevant_pyproject_changed, required_tools_summary_for_options,
-        should_confirm_sync, sync_command, sync_result_section_title, sync_review_summary,
-        sync_status_code,
+        NonInteractiveApplyGuardInput, SyncDiffValidationInput, action_breakdown,
+        cleanup_action_for_optional_path, cleanup_actions_for_blueprint,
+        ensure_noninteractive_apply_allowed, lockfile_relevant_pyproject_changed,
+        required_tools_summary_for_options, should_confirm_sync, sync_command,
+        sync_result_section_title, sync_review_summary, sync_status_code, validate_sync_diff_mode,
     };
     use tempfile::TempDir;
     use toml::Value;
@@ -1842,6 +1891,69 @@ ignore = ["codecov", "ci", "forge-sync", "workflow-quality", "docs-pages"]
         assert!(!should_confirm_sync(false, false, false, true, true, 1));
         assert!(!should_confirm_sync(false, false, false, false, false, 1));
         assert!(!should_confirm_sync(false, false, false, false, true, 0));
+    }
+
+    #[test]
+    fn sync_diff_validation_allows_interactive_apply_only_when_tty() {
+        validate_sync_diff_mode(SyncDiffValidationInput {
+            diff: true,
+            assume_yes: false,
+            dry_run: false,
+            check: false,
+            stdin_is_terminal: true,
+            changes: 1,
+            root: Path::new("/tmp/ops"),
+            option_overrides: &[String::from("prettier=true")],
+        })
+        .expect("tty interactive apply should be allowed");
+
+        let error = validate_sync_diff_mode(SyncDiffValidationInput {
+            diff: true,
+            assume_yes: false,
+            dry_run: false,
+            check: false,
+            stdin_is_terminal: false,
+            changes: 1,
+            root: Path::new("/tmp/ops"),
+            option_overrides: &[String::from("prettier=true")],
+        })
+        .expect_err("non-tty diff apply should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("interactive confirmation requires a terminal")
+        );
+    }
+
+    #[test]
+    fn sync_diff_validation_rejects_yes_and_non_tty_apply() {
+        let yes_error = validate_sync_diff_mode(SyncDiffValidationInput {
+            diff: true,
+            assume_yes: true,
+            dry_run: false,
+            check: false,
+            stdin_is_terminal: true,
+            changes: 1,
+            root: Path::new("/tmp/ops"),
+            option_overrides: &[String::from("prettier=true")],
+        })
+        .expect_err("--yes --diff should be rejected");
+        assert_eq!(
+            yes_error.to_string(),
+            "--diff cannot be combined with --yes; use --dry-run --diff to preview without writing or omit --yes to review before applying"
+        );
+
+        validate_sync_diff_mode(SyncDiffValidationInput {
+            diff: true,
+            assume_yes: true,
+            dry_run: true,
+            check: false,
+            stdin_is_terminal: false,
+            changes: 1,
+            root: Path::new("/tmp/ops"),
+            option_overrides: &[String::from("prettier=true")],
+        })
+        .expect("--yes --dry-run --diff should remain allowed");
     }
 
     #[test]
