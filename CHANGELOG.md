@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/pesap/forge/compare/v0.7.0...v0.7.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* simplify generated commitizen-branch hook ([#131](https://github.com/pesap/forge/issues/131)) ([af0d126](https://github.com/pesap/forge/commit/af0d12605353d00ac0354a938f1e10ea422889b4))
+* **sync:** show managed diffs before interactive apply ([#128](https://github.com/pesap/forge/issues/128)) ([e19a9b4](https://github.com/pesap/forge/commit/e19a9b48c5970ec2a7a921e455287f201bdd5027))
+
 ## [0.7.0](https://github.com/pesap/forge/compare/v0.6.1...v0.7.0) (2026-06-25)
 
 
