@@ -52,6 +52,7 @@ fn cannot_self_update_message() -> String {
 
 #[cfg(feature = "self-update")]
 async fn self_update(version: Option<String>, token: Option<String>, dry_run: bool) -> Result<()> {
+    use anyhow::Context as _;
     use axoupdater::{AxoUpdater, AxoupdateError, UpdateRequest};
 
     let mut updater = AxoUpdater::new_for("forge");
@@ -65,9 +66,10 @@ async fn self_update(version: Option<String>, token: Option<String>, dry_run: bo
         anyhow::bail!(cannot_self_update_message());
     };
 
-    if let Ok(version) = env!("CARGO_PKG_VERSION").parse() {
-        let _ = updater.set_current_version(version);
-    }
+    let current_version = env!("CARGO_PKG_VERSION")
+        .parse()
+        .context("failed to parse current forge version")?;
+    updater.set_current_version(current_version)?;
 
     if !updater.check_receipt_is_for_this_executable()? {
         anyhow::bail!(cannot_self_update_message());

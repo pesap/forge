@@ -7,16 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
-use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file_if_exists};
+use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_files_if_exists};
 use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
 use crate::blueprint::template_engine;
 use crate::blueprint::toml_value;
 use crate::blueprint::{
-    BlueprintName, BlueprintSpec, DEFAULT_BRANCH, ManagedOption, apply_ignored_files,
-    default_branch_message, is_valid_default_branch, managed_option_enabled, render_forge_ignore,
-    render_forge_overrides_table, validate_managed_overrides_from_metadata,
+    BlueprintName, BlueprintSpec, DEFAULT_BRANCH, ForgePyprojectFile, ManagedOption,
+    apply_ignored_files, default_branch_message, is_valid_default_branch, managed_option_enabled,
+    render_forge_ignore, render_forge_overrides_table, validate_managed_overrides_from_metadata,
 };
 
 pub const BLUEPRINT_NAME: &str = "any-project";
@@ -87,7 +87,7 @@ pub fn render_managed_files(config: &ProjectConfig) -> GeneratedFiles {
         PathBuf::from(".pre-commit-config.yaml"),
         GeneratedFile::text(render_precommit_config(config)),
     );
-    files.extend(agents::render_agent_files(&[]));
+    files.extend(agents::render_agent_files());
     if config.ci {
         files.insert(
             PathBuf::from(".github/workflows/ci.yaml"),
@@ -130,11 +130,7 @@ pub fn render_managed_files_from_pyproject(content: &str) -> Result<GeneratedFil
 }
 
 pub fn clean_optional_files(root: &Path, config: &ProjectConfig) -> Result<()> {
-    for file in optional_cleanup_paths(config) {
-        remove_if_exists(&root.join(file))?;
-    }
-
-    Ok(())
+    remove_managed_files_if_exists(root, optional_cleanup_paths(config))
 }
 
 pub fn clean_optional_files_from_pyproject(root: &Path, content: &str) -> Result<()> {
@@ -356,16 +352,6 @@ fn render_docs_index(config: &ProjectConfig) -> String {
 }
 
 #[derive(Debug, Deserialize)]
-struct PyprojectFile {
-    tool: Option<ToolSection>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ToolSection {
-    forge: Option<ForgeSection>,
-}
-
-#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ForgeSection {
     blueprint: String,
@@ -380,7 +366,7 @@ struct ForgeSection {
 }
 
 pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
-    let parsed: PyprojectFile =
+    let parsed: ForgePyprojectFile<ForgeSection> =
         toml::from_str(content).context("failed to parse pyproject.toml")?;
     let forge = parsed
         .tool
@@ -406,10 +392,6 @@ pub fn config_from_pyproject(content: &str) -> Result<ProjectConfig> {
     };
     config.validate()?;
     Ok(config)
-}
-
-fn remove_if_exists(path: &Path) -> Result<()> {
-    remove_managed_file_if_exists(path)
 }
 
 #[cfg(test)]

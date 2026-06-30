@@ -22,7 +22,10 @@ use crate::blueprint::{
 };
 use crate::cli::SyncArgs;
 use crate::commands::diff;
-use crate::commands::new::managed_infrastructure_summary;
+use crate::commands::managed::{
+    SelectedOption, format_selected_options, managed_infrastructure_summary,
+    required_tools_summary_for_options,
+};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
@@ -44,10 +47,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
         )
     })?;
     let blueprint = metadata.name;
-    let blueprint_version = metadata
-        .version
-        .as_deref()
-        .expect("blueprint version metadata is required");
+    let blueprint_version = metadata.version.as_str();
 
     let pyproject = apply_option_overrides(&pyproject, blueprint, &args.set)?;
     let pyproject = adopt_external_pyproject_for_rich_python_project(blueprint, &pyproject)
@@ -524,9 +524,9 @@ fn apply_option_overrides(
     let mut parsed_overrides = Vec::new();
 
     for override_value in overrides {
-        let (key, value) = parse_option_override(override_value)?;
-        let option = ManagedOption::parse(key)?;
-        if !seen_options.insert(option.as_str()) {
+        let option_override = parse_option_override(override_value)?;
+        let option = option_override.option;
+        if !seen_options.insert(option) {
             return Err(coded_error(
                 ErrorCode::Input,
                 format!("option '{}' was set more than once", option.as_str()),
@@ -543,7 +543,7 @@ fn apply_option_overrides(
             ));
         }
         managed_option_enabled(&options, option)?;
-        parsed_overrides.push((option, value));
+        parsed_overrides.push((option, option_override.enabled));
     }
 
     apply_option_overrides_to_text(pyproject, &parsed_overrides)
@@ -630,8 +630,7 @@ fn adopt_external_workflow_ownership(
 fn requested_option_overrides(overrides: &[String]) -> Result<BTreeSet<ManagedOption>> {
     let mut requested = BTreeSet::new();
     for override_value in overrides {
-        let (key, _) = parse_option_override(override_value)?;
-        requested.insert(ManagedOption::parse(key)?);
+        requested.insert(parse_option_override(override_value)?.option);
     }
     Ok(requested)
 }
@@ -801,7 +800,8 @@ fn lockfile_relevant_pyproject_metadata(pyproject: &str) -> Result<Value> {
 fn sync_external_pyproject(pyproject: &str, generated_pyproject: &str) -> Result<String> {
     let forge_metadata = forge_metadata_block(generated_pyproject)
         .context("generated pyproject.toml is missing [tool.forge]")?;
-    let synced = sync_forge_metadata(pyproject, &external_pyproject_metadata(forge_metadata));
+    let external_metadata = external_pyproject_metadata(forge_metadata)?;
+    let synced = sync_forge_metadata(pyproject, &external_metadata);
     toml::from_str::<Value>(&synced).context("failed to parse synced external pyproject.toml")?;
     Ok(synced)
 }
@@ -855,12 +855,12 @@ fn forge_metadata_block(pyproject: &str) -> Option<&str> {
     Some(&metadata[..end])
 }
 
-fn external_pyproject_metadata(forge_metadata: &str) -> String {
+fn external_pyproject_metadata(forge_metadata: &str) -> Result<String> {
     if forge_metadata_is_python_library(forge_metadata) {
         return minimal_external_pyproject_metadata(forge_metadata);
     }
 
-    forge_metadata.to_string()
+    Ok(forge_metadata.to_string())
 }
 
 fn preserve_pyproject_format_if_equivalent(
@@ -946,13 +946,11 @@ fn apply_option_overrides_to_text(
         remaining_overrides.push((*option, *value));
     }
     let overrides = remaining_overrides;
-    let table_name = if table_range(&lines.concat(), "tool.forge.overrides").is_some() {
-        "tool.forge.overrides"
-    } else {
-        "tool.forge.options"
-    };
+    canonicalize_legacy_options_table(&mut lines);
     let current_pyproject = lines.concat();
-    let Some((table_start, mut table_end)) = table_range(&current_pyproject, table_name) else {
+    let Some((table_start, mut table_end)) =
+        table_range(&current_pyproject, "tool.forge.overrides")
+    else {
         return append_option_table(&current_pyproject, &overrides);
     };
 
@@ -973,6 +971,20 @@ fn apply_option_overrides_to_text(
     }
 
     Ok(lines.concat())
+}
+
+fn canonicalize_legacy_options_table(lines: &mut [String]) {
+    let content = lines.concat();
+    if table_range(&content, "tool.forge.overrides").is_some() {
+        return;
+    }
+
+    let Some((legacy_start, _)) = table_range(&content, "tool.forge.options") else {
+        return;
+    };
+    if let Some(header) = lines.get_mut(legacy_start) {
+        *header = header.replacen("tool.forge.options", "tool.forge.overrides", 1);
+    }
 }
 
 fn update_forge_ignore_entry(
@@ -1112,8 +1124,6 @@ fn replace_boolean_assignment_value(line: &str, value: bool) -> String {
     format!("{before_equals}={leading_whitespace}{value}{suffix}")
 }
 
-use crate::commands::new::SelectedOption;
-
 fn selected_options_from_pyproject(
     pyproject: &str,
     blueprint: BlueprintName,
@@ -1126,19 +1136,18 @@ fn selected_options_from_pyproject(
         .iter()
         .map(|option| {
             let enabled = managed_option_enabled(&options, *option)?;
-            Ok(SelectedOption {
-                name: option.as_str(),
-                enabled,
-            })
+            Ok(SelectedOption::new(*option, enabled))
         })
         .collect()
 }
 
-fn format_selected_options(options: &[SelectedOption]) -> String {
-    crate::commands::new::format_selected_options(options)
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct OptionOverride {
+    option: ManagedOption,
+    enabled: bool,
 }
 
-fn parse_option_override(value: &str) -> Result<(&str, bool)> {
+fn parse_option_override(value: &str) -> Result<OptionOverride> {
     let Some((key, raw_value)) = value.split_once('=') else {
         return Err(coded_error(
             ErrorCode::Input,
@@ -1168,7 +1177,10 @@ fn parse_option_override(value: &str) -> Result<(&str, bool)> {
         }
     };
 
-    Ok((key, enabled))
+    Ok(OptionOverride {
+        option: ManagedOption::parse(key)?,
+        enabled,
+    })
 }
 
 fn clean_optional_files_for_blueprint(
@@ -1275,13 +1287,6 @@ fn sync_result_section_title(read_only: bool, changes: usize) -> &'static str {
     } else {
         "Project synced"
     }
-}
-
-fn required_tools_summary_for_options(
-    blueprint: BlueprintName,
-    options: &[SelectedOption],
-) -> String {
-    crate::commands::new::required_tools_summary_for_options(blueprint, options)
 }
 
 fn print_next_steps(
@@ -1455,15 +1460,16 @@ fn cleanup_actions_for_blueprint(
     }
     paths.push(PathBuf::from(".github/workflows/forge-update.yaml"));
 
-    let mut cleanup_actions: Vec<ManagedFileAction> = paths
-        .into_iter()
-        .filter(|relative_path| {
-            !ignored_paths
-                .iter()
-                .any(|ignored| path_matches_prefix(relative_path, ignored))
-        })
-        .filter_map(|relative_path| cleanup_action_for_optional_path(root, relative_path))
-        .collect();
+    let mut cleanup_actions = Vec::new();
+    for relative_path in paths.into_iter().filter(|relative_path| {
+        !ignored_paths
+            .iter()
+            .any(|ignored| path_matches_prefix(relative_path, ignored))
+    }) {
+        if let Some(action) = cleanup_action_for_optional_path(root, relative_path)? {
+            cleanup_actions.push(action);
+        }
+    }
     cleanup_actions.extend(empty_parent_directory_cleanup_actions(
         root,
         &cleanup_actions,
@@ -1503,8 +1509,21 @@ fn cleanup_actions_for_disabled_generated_workflows(
         else {
             continue;
         };
-        let Ok(current) = fs::read_to_string(root.join(&relative_path)) else {
-            continue;
+        let current_path = root.join(&relative_path);
+        let current = match fs::read_to_string(&current_path) {
+            Ok(current) => current,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read {}", current_path.display()));
+            }
         };
         if current == generated {
             actions.push(ManagedFileAction::Remove(relative_path));
@@ -1602,27 +1621,39 @@ fn path_matches_prefix(path: &Path, ignored: &str) -> bool {
 fn cleanup_action_for_optional_path(
     root: &Path,
     relative_path: PathBuf,
-) -> Option<ManagedFileAction> {
+) -> Result<Option<ManagedFileAction>> {
     let full_path = match managed_file_path(root, &relative_path) {
         Ok(full_path) => full_path,
         Err(_) => {
-            return Some(ManagedFileAction::Conflict {
+            return Ok(Some(ManagedFileAction::Conflict {
                 path: relative_path,
                 reason: ManagedFileConflict::UnsafePath,
-            });
+            }));
         }
     };
-    let Ok(metadata) = full_path.symlink_metadata() else {
-        return None;
+    let metadata = match full_path.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect {}", full_path.display()));
+        }
     };
 
     if metadata.is_dir() {
-        Some(ManagedFileAction::Conflict {
+        Ok(Some(ManagedFileAction::Conflict {
             path: relative_path,
             reason: ManagedFileConflict::Directory,
-        })
+        }))
     } else {
-        Some(ManagedFileAction::Remove(relative_path))
+        Ok(Some(ManagedFileAction::Remove(relative_path)))
     }
 }
 
@@ -1686,13 +1717,13 @@ mod tests {
 
     use crate::blueprint::files::{ManagedFileAction, ManagedFileConflict};
     use crate::blueprint::{BlueprintName, ManagedOption};
-    use crate::commands::new::SelectedOption;
+    use crate::commands::managed::{SelectedOption, required_tools_summary_for_options};
     use crate::commands::sync::{
         NonInteractiveApplyGuardInput, SyncDiffValidationInput, action_breakdown,
         cleanup_action_for_optional_path, cleanup_actions_for_blueprint,
         ensure_noninteractive_apply_allowed, lockfile_relevant_pyproject_changed,
-        required_tools_summary_for_options, should_confirm_sync, sync_command,
-        sync_result_section_title, sync_review_summary, sync_status_code, validate_sync_diff_mode,
+        should_confirm_sync, sync_command, sync_result_section_title, sync_review_summary,
+        sync_status_code, validate_sync_diff_mode,
     };
     use tempfile::TempDir;
     use toml::Value;
@@ -1738,6 +1769,7 @@ markdownlint = false
 
         let action =
             cleanup_action_for_optional_path(temp.path(), PathBuf::from(".prettierrc.json"))
+                .expect("directory should inspect")
                 .expect("directory should produce action");
 
         assert_eq!(
@@ -1754,6 +1786,7 @@ markdownlint = false
         let temp = TempDir::new().expect("temp dir should create");
 
         let action = cleanup_action_for_optional_path(temp.path(), PathBuf::from("../escape"))
+            .expect("unsafe path should inspect")
             .expect("unsafe path should produce action");
 
         assert_eq!(
@@ -1765,17 +1798,58 @@ markdownlint = false
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn optional_cleanup_reports_metadata_errors() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let temp = TempDir::new().expect("temp dir should create");
+        let path = PathBuf::from(OsString::from_vec(b"invalid\0path".to_vec()));
+
+        let error = cleanup_action_for_optional_path(temp.path(), path)
+            .expect_err("invalid path should report metadata failure");
+
+        assert!(error.to_string().contains("failed to inspect"));
+    }
+
+    #[test]
+    fn disabled_workflow_cleanup_reports_read_errors() {
+        let temp = TempDir::new().expect("temp dir should create");
+        std::fs::create_dir_all(temp.path().join(".github/workflows"))
+            .expect("workflow parent should create");
+        std::fs::create_dir(temp.path().join(".github/workflows/ci.yaml"))
+            .expect("workflow path should become directory");
+        let before_pyproject = r#"[tool.forge]
+blueprint = "any-project>=0.1.0"
+project_name = "repo-infra"
+description = "Repository infrastructure"
+"#;
+        let after_pyproject = r#"[tool.forge]
+blueprint = "any-project>=0.1.0"
+project_name = "repo-infra"
+description = "Repository infrastructure"
+
+[tool.forge.overrides]
+ci = false
+"#;
+
+        let error = super::cleanup_actions_for_disabled_generated_workflows(
+            BlueprintName::AnyProject,
+            temp.path(),
+            before_pyproject,
+            after_pyproject,
+        )
+        .expect_err("workflow read error should be reported");
+
+        assert!(error.to_string().contains("failed to read"));
+    }
+
     #[test]
     fn required_tools_summary_includes_component_tools_for_enabled_options() {
         let options = vec![
-            SelectedOption {
-                name: "docs",
-                enabled: true,
-            },
-            SelectedOption {
-                name: "markdownlint",
-                enabled: true,
-            },
+            SelectedOption::new(ManagedOption::Docs, true),
+            SelectedOption::new(ManagedOption::Markdownlint, true),
         ];
 
         assert_eq!(
@@ -1839,6 +1913,24 @@ ignore = ["codecov", "ci"]
         assert!(updated.contains("ignore = [\"codecov\"]"));
         assert!(!updated.contains("\"ci\""));
         assert!(!updated.contains("ci = true"));
+        toml::from_str::<Value>(&updated).expect("updated metadata should remain valid TOML");
+    }
+
+    #[test]
+    fn option_override_migrates_legacy_options_table_to_overrides() {
+        let pyproject = r#"[tool.forge]
+blueprint = "python-library>=0.1.0"
+
+[tool.forge.options]
+ci = false
+"#;
+
+        let updated =
+            super::apply_option_overrides_to_text(pyproject, &[(ManagedOption::Ci, true)])
+                .expect("option override should apply");
+
+        assert!(updated.contains("[tool.forge.overrides]\nci = true"));
+        assert!(!updated.contains("[tool.forge.options]"));
         toml::from_str::<Value>(&updated).expect("updated metadata should remain valid TOML");
     }
 
@@ -2126,14 +2218,8 @@ dev = ["pytest"]
     #[test]
     fn sync_review_summary_includes_apply_and_changes() {
         let options = vec![
-            SelectedOption {
-                name: "docs",
-                enabled: true,
-            },
-            SelectedOption {
-                name: "markdownlint",
-                enabled: false,
-            },
+            SelectedOption::new(ManagedOption::Docs, true),
+            SelectedOption::new(ManagedOption::Markdownlint, false),
         ];
 
         let summary = sync_review_summary(

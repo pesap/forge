@@ -374,14 +374,33 @@ fn temp_path_for(path: &Path) -> Result<PathBuf> {
 }
 
 pub fn remove_managed_file_if_exists(path: &Path) -> Result<()> {
-    let Ok(metadata) = path.symlink_metadata() else {
-        return Ok(());
+    let metadata = match path.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to inspect {}", path.display()));
+        }
     };
 
     let file_type = metadata.file_type();
     if file_type.is_file() || file_type.is_symlink() {
         fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
         remove_empty_parent_dir(path)?;
+    }
+
+    Ok(())
+}
+
+pub fn remove_managed_files_if_exists(root: &Path, relative_paths: Vec<PathBuf>) -> Result<()> {
+    for relative_path in relative_paths {
+        remove_managed_file_if_exists(&root.join(relative_path))?;
     }
 
     Ok(())
@@ -806,6 +825,64 @@ mod tests {
 
         assert!(!file.exists());
         assert!(!temp.path().join("docs").exists());
+    }
+
+    #[test]
+    fn remove_managed_files_removes_relative_paths_from_root() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let first = temp.path().join("docs/index.md");
+        let second = temp.path().join(".github/workflows/ci.yaml");
+        std::fs::create_dir(first.parent().expect("file should have parent"))
+            .expect("docs parent should create");
+        std::fs::create_dir_all(second.parent().expect("file should have parent"))
+            .expect("workflow parent should create");
+        std::fs::write(&first, "# Docs\n").expect("first file should write");
+        std::fs::write(&second, "name: CI\n").expect("second file should write");
+
+        crate::blueprint::files::remove_managed_files_if_exists(
+            temp.path(),
+            vec![
+                PathBuf::from("docs/index.md"),
+                PathBuf::from(".github/workflows/ci.yaml"),
+            ],
+        )
+        .expect("managed files should remove");
+
+        assert!(!first.exists());
+        assert!(!second.exists());
+        assert!(!temp.path().join("docs").exists());
+        assert!(!temp.path().join(".github/workflows").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_managed_file_reports_metadata_errors() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let path = PathBuf::from(OsString::from_vec(b"invalid\0path".to_vec()));
+
+        let error = crate::blueprint::files::remove_managed_file_if_exists(&path)
+            .expect_err("invalid path should report metadata failure");
+
+        assert!(error.to_string().contains("failed to inspect"));
+    }
+
+    #[test]
+    fn remove_managed_file_treats_blocked_child_path_as_absent() {
+        let temp = TempDir::new().expect("temp dir should create");
+        let parent = temp.path().join(".github");
+        std::fs::write(&parent, "not a directory\n").expect("parent file should write");
+
+        crate::blueprint::files::remove_managed_file_if_exists(
+            &temp.path().join(".github/workflows/ci.yaml"),
+        )
+        .expect("blocked child path should be absent");
+
+        assert_eq!(
+            std::fs::read_to_string(&parent).expect("parent file should remain readable"),
+            "not a directory\n"
+        );
     }
 
     #[cfg(unix)]

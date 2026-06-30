@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::blueprint::agents;
 use crate::blueprint::components::{ComponentSelection, ManagedComponent};
-use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_file_if_exists};
+use crate::blueprint::files::{GeneratedFile, GeneratedFiles, remove_managed_files_if_exists};
 use crate::blueprint::gitattributes;
 use crate::blueprint::github_actions;
 use crate::blueprint::precommit;
@@ -206,9 +206,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
         PathBuf::from("CHANGELOG.md"),
         GeneratedFile::text(render_changelog()),
     );
-    files.extend(agents::render_agent_files(&[
-        "Preserve user-authored Python package code during managed infrastructure syncs.",
-    ]));
+    files.extend(agents::render_agent_files());
     if config.ci {
         files.insert(
             PathBuf::from(".github/workflows/ci.yaml"),
@@ -274,11 +272,7 @@ fn render_infrastructure_files(config: &ProjectConfig) -> GeneratedFiles {
 }
 
 pub fn clean_optional_files(root: &Path, config: &ProjectConfig) -> Result<()> {
-    for file in optional_cleanup_paths(config) {
-        remove_if_exists(&root.join(file))?;
-    }
-
-    Ok(())
+    remove_managed_files_if_exists(root, optional_cleanup_paths(config))
 }
 
 pub fn clean_optional_files_from_pyproject(root: &Path, content: &str) -> Result<()> {
@@ -311,10 +305,6 @@ pub fn optional_cleanup_paths(config: &ProjectConfig) -> Vec<PathBuf> {
 pub fn optional_cleanup_paths_from_pyproject(content: &str) -> Result<Vec<PathBuf>> {
     let config = config_from_pyproject(content)?;
     Ok(optional_cleanup_paths(&config))
-}
-
-fn remove_if_exists(path: &Path) -> Result<()> {
-    remove_managed_file_if_exists(path)
 }
 
 fn render_readme(config: &ProjectConfig) -> String {
@@ -1371,13 +1361,11 @@ prettier = true
 
         let files = render_project_files(&config);
 
-        // Check core source files exist
         assert!(files.contains_key(&PathBuf::from("src/my_cool_lib/__init__.py")));
         assert!(files.contains_key(&PathBuf::from("src/my_cool_lib/core.py")));
         assert!(files.contains_key(&PathBuf::from("src/my_cool_lib/py.typed")));
         assert!(files.contains_key(&PathBuf::from("tests/test_my_cool_lib.py")));
 
-        // Check infrastructure files
         assert!(files.contains_key(&PathBuf::from("README.md")));
         assert!(files.contains_key(&PathBuf::from("pyproject.toml")));
         assert!(files.contains_key(&PathBuf::from("justfile")));

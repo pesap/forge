@@ -76,11 +76,7 @@ impl DoctorScope {
             .with_context(|| format!("failed to validate Forge metadata at {}", root.display()))?;
         let enabled_components = enabled_components_from_pyproject(metadata.name, &pyproject)
             .with_context(|| format!("failed to validate Forge metadata at {}", root.display()))?;
-        let blueprint_version = Some(
-            metadata
-                .version
-                .expect("blueprint version metadata is required"),
-        );
+        let blueprint_version = Some(metadata.version);
 
         Ok(Self {
             blueprint: Some(metadata.name),

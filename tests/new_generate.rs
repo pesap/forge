@@ -1129,6 +1129,63 @@ fn new_github_creation_locks_dependencies_before_initial_commit() {
 }
 
 #[test]
+fn new_local_git_commit_failure_is_reported_without_failing_generation() {
+    let temp = TempDir::new().expect("temp dir should create");
+    let project_path = temp.path().join("repo-infra");
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).expect("fake bin dir should create");
+    let log_path = temp.path().join("commands.log");
+
+    write_executable(
+        &bin_dir.join("git"),
+        r#"#!/usr/bin/env bash
+printf 'git %s\n' "$*" >> "$FORGE_FAKE_LOG"
+if [ "$1" = "commit" ]; then
+  echo "missing git identity" >&2
+  exit 1
+fi
+exit 0
+"#,
+    );
+
+    let mut cmd = Command::cargo_bin("forge").expect("forge binary should build");
+    cmd.args([
+        "init",
+        "--blueprint",
+        "any-project",
+        "--path",
+        project_path.to_str().expect("valid UTF-8 path"),
+        "--project-name",
+        "repo-infra",
+        "--description",
+        "Repository infrastructure",
+        "--yes",
+    ])
+    .env("FORGE_FAKE_LOG", &log_path)
+    .env(
+        "PATH",
+        format!(
+            "{}:{}",
+            bin_dir.display(),
+            std::env::var("PATH").expect("PATH should be set")
+        ),
+    );
+
+    cmd.assert()
+        .success()
+        .stderr(contains("warning: initial git commit was skipped"))
+        .stderr(contains("missing git identity"))
+        .stderr(contains(
+            "git commit -m 'chore: initialize project with forge'",
+        ));
+
+    let log = fs::read_to_string(log_path).expect("command log should exist");
+    assert!(log.contains("git init -b main"));
+    assert!(log.contains("git add ."));
+    assert!(log.contains("git commit -m chore: initialize project with forge"));
+}
+
+#[test]
 fn new_github_lock_failure_reports_local_recovery_context() {
     let temp = TempDir::new().expect("temp dir should create");
     let project_path = temp.path().join("repo infra");
