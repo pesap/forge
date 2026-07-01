@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/pesap/forge/compare/v0.7.1...v0.7.2) (2026-07-01)
+
+
+### Refactors
+
+* clean up managed code paths ([#137](https://github.com/pesap/forge/issues/137)) ([6d5116c](https://github.com/pesap/forge/commit/6d5116c1477ad24349a46c863b1755321e8ba697))
+
 ## [0.7.1](https://github.com/pesap/forge/compare/v0.7.0...v0.7.1) (2026-06-27)
 
 
