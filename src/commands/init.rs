@@ -17,6 +17,10 @@ use crate::blueprint::{
 };
 use crate::cli::{InitArgs, NewArgs};
 use crate::commands::diff;
+use crate::commands::managed::{
+    SelectedOption, format_selected_options, managed_infrastructure_summary,
+    required_tools_summary_for_options,
+};
 use crate::commands::new::{self, ProjectRender, RenderScope};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
@@ -71,7 +75,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         new::render_blueprint(&render_args, blueprint, RenderScope::ManagedInfrastructure)?;
     apply_takeover_relocations(&mut project.files, &takeover_plan.relocations);
     let adopted_existing_pyproject = adopt_existing_pyproject(&args.path, &mut project.files)?;
-    let infrastructure = new::managed_infrastructure_summary(&project.files);
+    let infrastructure = managed_infrastructure_summary(&project.files);
     let apply_command = preview_init_command(&args, blueprint, &project, stdin_is_terminal);
     let actions = adoption_actions(
         &args.path,
@@ -105,10 +109,10 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         ui::info("blueprint", blueprint.as_str());
         ui::info("blueprint version", blueprint.version());
         print_detected_package_name(&args);
-        ui::info("options", new::format_selected_options(&project.options));
+        ui::info("options", format_selected_options(&project.options));
         ui::info(
             "required tools",
-            new::required_tools_summary_for_options(blueprint, &project.options),
+            required_tools_summary_for_options(blueprint, &project.options),
         );
         ui::info("infrastructure", &infrastructure);
         print_actions(&actions);
@@ -199,7 +203,7 @@ pub fn run(mut args: InitArgs) -> Result<()> {
         ui::info("infrastructure", infrastructure);
         ui::info(
             "required tools",
-            new::required_tools_summary_for_options(blueprint, &project.options),
+            required_tools_summary_for_options(blueprint, &project.options),
         );
         ui::info("managed sync", "forge sync --path .");
         print_next_steps(
@@ -1012,16 +1016,16 @@ fn append_forge_metadata(
     if !adopted.ends_with("\n\n") {
         adopted.push('\n');
     }
-    adopted.push_str(&external_pyproject_metadata(existing, forge_metadata));
+    adopted.push_str(&external_pyproject_metadata(existing, forge_metadata)?);
     Ok(adopted)
 }
 
-fn external_pyproject_metadata(existing: &str, forge_metadata: &str) -> String {
+fn external_pyproject_metadata(existing: &str, forge_metadata: &str) -> Result<String> {
     if existing_has_project_table(existing) && forge_metadata_is_python_library(forge_metadata) {
         return minimal_external_pyproject_metadata(forge_metadata);
     }
 
-    forge_metadata.to_string()
+    Ok(forge_metadata.to_string())
 }
 
 fn existing_has_project_table(existing: &str) -> bool {
@@ -1238,8 +1242,8 @@ fn print_json_report(
         status_code: init_status_code(dry_run, conflicts),
         dry_run,
         managed_sync: "forge sync --path .",
-        infrastructure: new::managed_infrastructure_summary(&project.files),
-        required_tools: new::required_tools_summary_for_options(blueprint, &project.options),
+        infrastructure: managed_infrastructure_summary(&project.files),
+        required_tools: required_tools_summary_for_options(blueprint, &project.options),
         options: &project.options,
         next_steps: next_steps_for_report(args, blueprint, dry_run, conflicts, takeover_notes),
         changes: count_changes(actions),
@@ -1284,7 +1288,7 @@ fn next_steps_for_report(
 
 fn init_setup_review_context(
     blueprint: BlueprintName,
-    options: &[new::SelectedOption],
+    options: &[SelectedOption],
     files: &GeneratedFiles,
     changes: usize,
     conflicts: usize,
@@ -1295,10 +1299,10 @@ fn init_setup_review_context(
         new::SetupReviewItem::new("changes", changes.to_string()),
         new::SetupReviewItem::new("overwrites", overwrites.to_string()),
         new::SetupReviewItem::new("conflicts", conflicts.to_string()),
-        new::SetupReviewItem::new("infrastructure", new::managed_infrastructure_summary(files)),
+        new::SetupReviewItem::new("infrastructure", managed_infrastructure_summary(files)),
         new::SetupReviewItem::new(
             "required tools",
-            new::required_tools_summary_for_options(blueprint, options),
+            required_tools_summary_for_options(blueprint, options),
         ),
         new::SetupReviewItem::new("apply", apply_command),
     ]
@@ -1438,7 +1442,7 @@ struct InitReport<'a> {
     managed_sync: &'a str,
     infrastructure: String,
     required_tools: String,
-    options: &'a [new::SelectedOption],
+    options: &'a [SelectedOption],
     next_steps: Vec<String>,
     changes: usize,
     conflicts: usize,
@@ -1458,6 +1462,7 @@ struct InitAction<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blueprint::ManagedOption;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -1616,14 +1621,8 @@ mod tests {
         ]);
 
         let options = vec![
-            new::SelectedOption {
-                name: "docs",
-                enabled: true,
-            },
-            new::SelectedOption {
-                name: "markdownlint",
-                enabled: true,
-            },
+            SelectedOption::new(ManagedOption::Docs, true),
+            SelectedOption::new(ManagedOption::Markdownlint, true),
         ];
 
         let context = init_setup_review_context(

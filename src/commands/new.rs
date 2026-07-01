@@ -21,6 +21,10 @@ use crate::blueprint::{
 };
 use crate::cli::{GithubVisibility, NewArgs};
 use crate::commands::diff;
+use crate::commands::managed::{
+    SelectedOption, format_selected_options, managed_infrastructure_summary,
+    required_tools_summary_for_options,
+};
 use crate::errors::{ErrorCode, coded_error};
 use crate::ui;
 
@@ -457,7 +461,7 @@ fn new_setup_review_context(
 fn pypi_publish_notice(options: &[SelectedOption]) -> bool {
     options
         .iter()
-        .any(|option| option.name == ManagedOption::PypiPublish.as_str() && option.enabled)
+        .any(|option| option.option == ManagedOption::PypiPublish && option.enabled)
 }
 
 fn preview_new_command(
@@ -494,7 +498,6 @@ pub(crate) fn resolved_new_args_from_rendered_pyproject(
     let empty_options = toml::Table::new();
     let options = forge
         .get("overrides")
-        .or_else(|| forge.get("options"))
         .and_then(Value::as_table)
         .unwrap_or(&empty_options);
 
@@ -621,74 +624,6 @@ fn new_command(args: &NewArgs, blueprint: BlueprintName, destination: &Path) -> 
     parts.join(" ")
 }
 
-pub(crate) fn managed_infrastructure_summary(files: &GeneratedFiles) -> String {
-    let mut parts = Vec::new();
-
-    if files.contains_key(Path::new("pyproject.toml")) {
-        parts.push("pyproject.toml".to_string());
-    }
-    if files.contains_key(Path::new("justfile")) {
-        parts.push("justfile".to_string());
-    }
-    if files.contains_key(Path::new(".pre-commit-config.yaml")) {
-        parts.push("prek hooks".to_string());
-    }
-    if files.contains_key(Path::new("AGENTS.md")) {
-        parts.push("AGENTS.md".to_string());
-    }
-    if files.contains_key(Path::new("CLAUDE.md")) {
-        parts.push("CLAUDE.md link".to_string());
-    }
-    if files.contains_key(Path::new("docs/package.json")) {
-        parts.push("docs".to_string());
-    }
-
-    let workflow_count = files
-        .keys()
-        .filter(|path| path.starts_with(Path::new(".github/workflows")))
-        .count();
-    if workflow_count > 0 {
-        parts.push(format!("github actions ({workflow_count})"));
-    }
-
-    if parts.is_empty() {
-        "managed files".to_string()
-    } else {
-        parts.join(", ")
-    }
-}
-
-pub(crate) fn required_tools_summary_for_options(
-    blueprint: BlueprintName,
-    options: &[SelectedOption],
-) -> String {
-    let mut tools = blueprint.definition().required_tools.to_vec();
-
-    for component in ManagedComponent::ALL {
-        if !blueprint.supports_option(component.option()) {
-            continue;
-        }
-        if !selected_option_enabled(options, component.option_name()) {
-            continue;
-        }
-
-        for required_tool in component.required_tools() {
-            if !tools.contains(required_tool) {
-                tools.push(required_tool);
-            }
-        }
-    }
-
-    tools.join(", ")
-}
-
-fn selected_option_enabled(options: &[SelectedOption], option_name: &str) -> bool {
-    options
-        .iter()
-        .find(|option| option.name == option_name)
-        .is_some_and(|option| option.enabled)
-}
-
 pub(crate) fn push_option(parts: &mut Vec<String>, name: &str, value: Option<&str>) {
     let Some(value) = value else {
         return;
@@ -764,47 +699,6 @@ struct NewReport<'a> {
 
 fn new_status_code(dry_run: bool) -> &'static str {
     if dry_run { "dry_run" } else { "created" }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct SelectedOption {
-    pub(crate) name: &'static str,
-    pub(crate) enabled: bool,
-}
-
-impl SelectedOption {
-    fn new(option: ManagedOption, enabled: bool) -> Self {
-        Self {
-            name: option.as_str(),
-            enabled,
-        }
-    }
-}
-
-pub(crate) fn format_selected_options(options: &[SelectedOption]) -> String {
-    let enabled = options
-        .iter()
-        .filter(|option| option.enabled)
-        .map(|option| option.name)
-        .collect::<Vec<_>>();
-    let disabled = options
-        .iter()
-        .filter(|option| !option.enabled)
-        .map(|option| option.name)
-        .collect::<Vec<_>>();
-
-    let enabled_summary = if enabled.is_empty() {
-        "none".to_string()
-    } else {
-        enabled.join(", ")
-    };
-    let disabled_summary = if disabled.is_empty() {
-        "none".to_string()
-    } else {
-        disabled.join(", ")
-    };
-
-    format!("enabled: {enabled_summary}; disabled: {disabled_summary}")
 }
 
 fn github_visibility_for_report(
@@ -1680,10 +1574,10 @@ fn initialize_git_repository(
     run_command(destination, "git", &["init", "-b", default_branch], quiet)?;
     run_command(destination, "git", &["add", "."], quiet)?;
 
-    if github_requested {
-        commit_initial_files(destination, quiet)?;
-    } else {
-        let _ = commit_initial_files(destination, quiet);
+    match commit_initial_files(destination, quiet) {
+        Ok(()) => {}
+        Err(error) if github_requested => return Err(error),
+        Err(error) => warn_initial_commit_skipped(destination, &error),
     }
 
     Ok(())
@@ -1696,6 +1590,14 @@ fn commit_initial_files(destination: &Path, quiet: bool) -> Result<()> {
         &["commit", "-m", "chore: initialize project with forge"],
         quiet,
     )
+}
+
+fn warn_initial_commit_skipped(destination: &Path, error: &anyhow::Error) {
+    eprintln!("warning: initial git commit was skipped: {error:#}");
+    eprintln!(
+        "  recover: cd {} && git commit -m 'chore: initialize project with forge'",
+        ui::shell_arg(destination.display().to_string())
+    );
 }
 
 fn create_github_repo(
@@ -2345,7 +2247,7 @@ mod tests {
             any_render
                 .options
                 .iter()
-                .map(|option| option.name)
+                .map(SelectedOption::name)
                 .collect::<Vec<_>>(),
             BlueprintName::AnyProject
                 .supported_options()
@@ -2396,7 +2298,7 @@ mod tests {
             python_render
                 .options
                 .iter()
-                .map(|option| option.name)
+                .map(SelectedOption::name)
                 .collect::<Vec<_>>(),
             BlueprintName::PythonLibrary
                 .supported_options()
@@ -2444,7 +2346,7 @@ mod tests {
             rust_render
                 .options
                 .iter()
-                .map(|option| option.name)
+                .map(SelectedOption::name)
                 .collect::<Vec<_>>(),
             BlueprintName::RustLibrary
                 .supported_options()
@@ -2456,7 +2358,6 @@ mod tests {
 
     #[test]
     fn command_exists_finds_common_commands() {
-        // These should exist on most systems
         assert!(command_exists("cargo"));
         assert!(command_exists("rustc"));
     }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use toml::Value;
 
 use crate::blueprint::components::ManagedComponent;
@@ -192,6 +192,16 @@ pub struct BlueprintDefinition {
     render_managed_files: fn(&str) -> Result<GeneratedFiles>,
     clean_optional_files: fn(&Path, &str) -> Result<()>,
     optional_cleanup_paths: fn(&str) -> Result<Vec<PathBuf>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ForgePyprojectFile<F> {
+    pub(crate) tool: Option<ForgeToolSection<F>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ForgeToolSection<F> {
+    pub(crate) forge: Option<F>,
 }
 
 pub const BLUEPRINT_REGISTRY: [BlueprintDefinition; 3] = [
@@ -492,13 +502,13 @@ pub(crate) fn forge_metadata_is_python_library(forge_metadata: &str) -> bool {
         })
 }
 
-pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> String {
+pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Result<String> {
     let overrides = forge_metadata
         .find("\n[tool.forge.overrides]")
         .map(|index| forge_metadata.split_at(index).1)
         .unwrap_or("");
     let blueprint = forge_metadata_blueprint(forge_metadata)
-        .unwrap_or_else(|| "python-library>=0.1.0".to_string());
+        .context("missing tool.forge.blueprint metadata")?;
     let mut metadata = format!(
         "[tool.forge]\nblueprint = {}\npyproject = \"external\"\n",
         toml_value::string_literal(&blueprint)
@@ -560,7 +570,7 @@ pub(crate) fn minimal_external_pyproject_metadata(forge_metadata: &str) -> Strin
         metadata.push('\n');
     }
     metadata.push_str(overrides);
-    metadata
+    Ok(metadata)
 }
 
 fn validate_managed_options_with_error_code(
@@ -636,7 +646,7 @@ pub fn detect_blueprint_metadata_from_pyproject(content: &str) -> Result<Bluepri
         .ok_or_else(|| coded_error(ErrorCode::Env, "missing tool.forge.blueprint"))?;
     let spec = BlueprintSpec::parse(blueprint, ErrorCode::Env)?;
 
-    // Read version: spec first, then legacy blueprint_version key.
+    // Accept both current spec-form versions and older blueprint_version metadata.
     let version = spec
         .version
         .map(|v| v.to_string())
@@ -646,14 +656,14 @@ pub fn detect_blueprint_metadata_from_pyproject(content: &str) -> Result<Bluepri
 
     Ok(BlueprintMetadata {
         name: spec.name,
-        version: Some(version),
+        version,
     })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BlueprintMetadata {
     pub name: BlueprintName,
-    pub version: Option<String>,
+    pub version: String,
 }
 
 fn validate_blueprint_version_compatibility(blueprint: BlueprintName, version: &str) -> Result<()> {
@@ -790,7 +800,7 @@ mod tests {
             detect_blueprint_metadata_from_pyproject(metadata).expect("metadata should parse");
 
         assert_eq!(parsed.name, BlueprintName::AnyProject);
-        assert_eq!(parsed.version.as_deref(), Some("0.1.0"));
+        assert_eq!(parsed.version, "0.1.0");
     }
 
     #[test]

@@ -3,15 +3,15 @@ use std::path::PathBuf;
 use crate::blueprint::files::{GeneratedFile, GeneratedFiles};
 use crate::blueprint::template_engine;
 
-pub fn render_agent_instructions(_extra_guidance: &[&str]) -> String {
+pub fn render_agent_instructions() -> String {
     template_engine::render_template("shared/agents.md.j2", ())
 }
 
-pub fn render_agent_files(extra_guidance: &[&str]) -> GeneratedFiles {
+pub fn render_agent_files() -> GeneratedFiles {
     let mut files = GeneratedFiles::new();
     files.insert(
         PathBuf::from("AGENTS.md"),
-        GeneratedFile::text(render_agent_instructions(extra_guidance)),
+        GeneratedFile::text(render_agent_instructions()),
     );
     files.insert(
         PathBuf::from("CLAUDE.md"),
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn agent_instructions_include_shared_safety_guidance() {
-        let instructions = render_agent_instructions(&[]);
+        let instructions = render_agent_instructions();
 
         assert!(instructions.contains("# AGENTS.md"));
         assert!(instructions.contains("Use red-green-refactor for features and bug fixes"));
@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn agent_instructions_include_requested_rules() {
-        let instructions = render_agent_instructions(&[]);
+        let instructions = render_agent_instructions();
 
         assert!(instructions.contains("Verify user claims against files, tests, or docs"));
         assert!(instructions.contains("Make surgical edits"));
@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn agent_files_include_shared_instructions_and_claude_symlink() {
-        let files = render_agent_files(&[]);
+        let files = render_agent_files();
 
         assert!(
             files
